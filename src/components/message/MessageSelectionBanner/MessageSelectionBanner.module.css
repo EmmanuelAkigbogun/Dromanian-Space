@@ -1,0 +1,30 @@
+.selectionBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  margin: var(--space-2) var(--space-4) 0;
+  background-color: var(--color-primary-bg, rgba(130, 166, 177, 0.1));
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  color: var(--color-primary);
+}
+
+.cancelButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+}
+
+.cancelButton:hover {
+  background-color: var(--color-surface-secondary);
+}

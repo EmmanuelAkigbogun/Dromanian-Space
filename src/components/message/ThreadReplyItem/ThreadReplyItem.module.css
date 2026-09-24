@@ -1,0 +1,215 @@
+.replyRow {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.replyRow:hover .replyItem {
+  background-color: var(--color-surface-secondary);
+}
+
+.replyGrouped {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.replyOwn {
+  /* reserved for own-message styling if needed */
+}
+
+.replyDeleted {
+  opacity: 0.6;
+  padding: var(--space-1) var(--space-3);
+}
+
+.replyItem {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+  transition: background-color var(--transition-fast);
+}
+
+.replyAvatar {
+  flex-shrink: 0;
+  width: 32px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 2px;
+}
+
+.replyTimestampInline {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  visibility: hidden;
+  white-space: nowrap;
+}
+
+.replyItem:hover .replyTimestampInline {
+  visibility: visible;
+}
+
+.replyContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.replyHeader {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: 2px;
+}
+
+.replyAuthor {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.replyTime {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+.replyEdited {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.replyText {
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.deletedText {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-style: italic;
+  padding: var(--space-1) 0;
+}
+
+.actionsBar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 0 var(--space-3) 0 44px;
+  height: 32px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+}
+
+.actionsBarVisible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.threadLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  background: none;
+  color: var(--color-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+
+.threadLink:hover {
+  background-color: var(--color-primary-bg);
+  text-decoration: underline;
+}
+
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.linkPreviews {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.reactions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  margin-top: var(--space-1);
+  padding: 2px;
+  background-color: var(--color-border);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+}
+
+.reactionPill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 3px var(--space-2);
+  border: none;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  background-color: var(--color-surface);
+  transition: all var(--transition-fast);
+  cursor: pointer;
+}
+
+.reactionPill:hover {
+  background-color: var(--color-surface-secondary);
+  border-color: var(--color-border-hover);
+}
+
+.reactionPillActive {
+  background-color: var(--color-primary-bg, rgba(130, 166, 177, 0.1));
+  border-color: var(--color-primary);
+}
+
+.reactionPillActive:hover {
+  background-color: var(--color-primary-bg, rgba(130, 166, 177, 0.15));
+}
+
+.reactionEmoji {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.reactionCount {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+.addReactionButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--color-text-muted);
+  background: none;
+  transition: all var(--transition-fast);
+}
+
+.addReactionButton:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background-color: var(--color-surface-secondary);
+}

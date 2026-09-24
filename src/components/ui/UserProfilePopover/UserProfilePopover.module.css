@@ -1,0 +1,70 @@
+.popover {
+  width: 260px;
+  padding: 12px;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary, #e4e4e7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.username {
+  font-size: 12px;
+  color: var(--text-secondary, #a1a1aa);
+}
+
+.bio {
+  font-size: 13px;
+  color: var(--text-secondary, #a1a1aa);
+  margin: 0 0 8px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.status {
+  font-size: 12px;
+  color: var(--text-tertiary, #71717a);
+}
+
+.localTime {
+  font-size: 12px;
+  color: var(--text-tertiary, #71717a);
+}
+
+.notFound {
+  font-size: 13px;
+  color: var(--text-tertiary, #71717a);
+  text-align: center;
+  padding: 8px 0;
+  margin: 0;
+}

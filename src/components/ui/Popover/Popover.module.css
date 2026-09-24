@@ -1,0 +1,56 @@
+.content {
+  position: fixed;
+  z-index: var(--z-popover);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-4);
+  min-width: 200px;
+  max-width: 400px;
+  animation: fadeIn var(--transition-fast) ease;
+}
+
+.arrow {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  transform: rotate(45deg);
+}
+
+.arrow[data-side='bottom'] {
+  top: -7px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.arrow[data-side='top'] {
+  bottom: -7px;
+  border-left: none;
+  border-top: none;
+}
+
+.arrow[data-side='left'] {
+  right: -7px;
+  border-left: none;
+  border-top: none;
+}
+
+.arrow[data-side='right'] {
+  left: -7px;
+  border-right: none;
+  border-bottom: none;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

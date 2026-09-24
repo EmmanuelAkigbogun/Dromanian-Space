@@ -1,0 +1,77 @@
+.actions {
+  display: flex;
+  gap: 2px;
+}
+
+.actionsOwn {
+}
+
+.actionButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.actionButton:hover {
+  background-color: var(--color-surface-secondary);
+  color: var(--color-text);
+}
+
+.actionDanger:hover {
+  background-color: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+.actionActive {
+  color: var(--color-primary);
+}
+
+.actionSelectActive {
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+.actionSelectActive:hover {
+  background-color: var(--color-primary-hover);
+  color: var(--color-text-inverse);
+}
+
+.shareMenu {
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.shareMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast);
+}
+
+.shareMenuItem:hover {
+  background-color: var(--color-surface-secondary);
+}

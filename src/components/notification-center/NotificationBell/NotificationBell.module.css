@@ -1,0 +1,77 @@
+.bellButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-secondary);
+  transition: all var(--transition-fast);
+  position: relative;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.bellButton:hover {
+  background-color: var(--color-surface-secondary);
+  color: var(--color-text);
+}
+
+.bellIcon {
+  transition: transform var(--transition-fast);
+}
+
+.bellButtonHasUnread .bellIcon {
+  animation: bellShake 0.4s ease-in-out;
+}
+
+.badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  background-color: var(--color-error);
+  border-radius: var(--radius-full);
+  border: 2px solid var(--color-surface);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.badgePulse {
+  animation: badgePulse 0.3s ease-in-out;
+}
+
+@keyframes bellShake {
+  0%, 100% {
+    transform: rotate(0);
+  }
+  25% {
+    transform: rotate(10deg);
+  }
+  50% {
+    transform: rotate(-8deg);
+  }
+  75% {
+    transform: rotate(4deg);
+  }
+}
+
+@keyframes badgePulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+  }
+}

@@ -1,0 +1,487 @@
+.form {
+  padding: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.wrapper {
+  position: relative;
+}
+
+.dragging {
+  outline: 2px dashed var(--color-primary);
+  outline-offset: -2px;
+  background-color: var(--color-primary-bg, rgba(130, 166, 177, 0.05));
+}
+
+.pendingFiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4) 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.inputWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--transition-fast);
+}
+
+.inputWrapper:focus-within {
+  border-color: var(--color-primary);
+}
+
+.inputActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.inputActionsLeft,
+.inputActionsRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.fileInput {
+  display: none;
+}
+
+.attachButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.attachButton:hover {
+  background-color: var(--color-surface-secondary);
+  color: var(--color-text);
+}
+
+.inputContainer {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+
+.input {
+  width: 100%;
+  border: none;
+  background: none;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  min-height: 20px;
+  max-height: 200px;
+  line-height: 1.5;
+}
+
+.input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.sendButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background-color: var(--color-primary);
+  color: white;
+  border: none;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.scheduleButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.scheduleButton:hover:not(:disabled) {
+  background-color: var(--color-surface-secondary);
+  color: var(--color-text);
+}
+
+.scheduleButtonActive {
+  background-color: var(--color-primary-bg, rgba(130, 166, 177, 0.15));
+  color: var(--color-primary);
+}
+
+.scheduleButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.scheduleBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+  background-color: rgba(45, 138, 78, 0.1);
+  border: 1px solid var(--color-success, #2d8a4e);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  color: var(--color-success, #2d8a4e);
+}
+
+.schedulePopover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: var(--space-3);
+  width: 280px;
+  padding: var(--space-3);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  z-index: 30;
+}
+
+.schedulePopoverTitle {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.schedulePresets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-1);
+}
+
+.schedulePreset {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.schedulePreset:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.scheduleInput {
+  width: 100%;
+  padding: var(--space-2);
+  background-color: var(--color-surface-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-family: inherit;
+  color-scheme: light dark;
+}
+
+[data-theme='light'] .scheduleInput {
+  color-scheme: light;
+}
+
+[data-theme='dark'] .scheduleInput {
+  color-scheme: dark;
+}
+
+.scheduleActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.scheduleCancel {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.scheduleCancel:hover {
+  background-color: var(--color-surface-secondary);
+}
+
+.scheduleSubmit {
+  padding: var(--space-1) var(--space-3);
+  border: none;
+  border-radius: var(--radius-md);
+  background-color: var(--color-primary);
+  color: white;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.scheduleSubmit:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.scheduleSubmit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sendButton:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.sendButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.editingBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+  background-color: var(--color-primary-bg, rgba(130, 166, 177, 0.1));
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  color: var(--color-primary);
+}
+
+.cancelEdit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm);
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+}
+
+.cancelEdit:hover {
+  background-color: var(--color-surface-secondary);
+}
+
+.errorBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid var(--color-error, #ef4444);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  color: var(--color-error, #ef4444);
+}
+
+.retryButton {
+  padding: var(--space-1) var(--space-2);
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.retryButton:hover {
+  opacity: 0.8;
+}
+
+.toolbarPlaceholder {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-4) 0;
+  min-height: 0;
+}
+
+.embedToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.embedToggle:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.embedToggleActive {
+  background-color: var(--color-primary-bg, rgba(130, 166, 177, 0.15));
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.embedToggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.embedChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.embedChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 260px;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background-color: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.embedChipUrl {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.embedChipRemove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.embedChipRemove:hover {
+  background-color: var(--color-surface);
+  color: var(--color-error, #ef4444);
+}
+
+.sendButtonLoading {
+  opacity: 0.7;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.inputOverLimit {
+  color: var(--color-error, #ef4444);
+}
+
+.hint {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.charCount {
+  font-variant-numeric: tabular-nums;
+}
+
+.charCountOver {
+  color: var(--color-error, #ef4444);
+  font-weight: var(--font-weight-medium);
+}
+
+@media (max-width: 639px) {
+  .form {
+    padding: var(--space-2);
+  }
+
+  .toolbarPlaceholder {
+    padding: var(--space-1) var(--space-2) 0;
+  }
+
+  .inputWrapper {
+    padding: var(--space-2);
+    border-radius: var(--radius-md);
+  }
+
+  .input {
+    max-height: 150px;
+  }
+
+  .attachButton {
+    width: 32px;
+    height: 32px;
+  }
+
+  .sendButton {
+    width: 32px;
+    height: 32px;
+  }
+
+  .scheduleButton {
+    width: 32px;
+    height: 32px;
+  }
+
+  .hint {
+    display: none;
+  }
+}

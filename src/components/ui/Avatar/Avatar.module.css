@@ -1,0 +1,142 @@
+.wrapper {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-weight: var(--font-weight-medium);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* Sizes */
+.xs {
+  width: 24px;
+  height: 24px;
+  font-size: 10px;
+}
+
+.sm {
+  width: 32px;
+  height: 32px;
+  font-size: var(--font-size-xs);
+}
+
+.md {
+  width: 40px;
+  height: 40px;
+  font-size: var(--font-size-sm);
+}
+
+.lg {
+  width: 48px;
+  height: 48px;
+  font-size: var(--font-size-base);
+}
+
+.xl {
+  width: 64px;
+  height: 64px;
+  font-size: var(--font-size-xl);
+}
+
+.image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.initials {
+  line-height: 1;
+}
+
+.emojiVariant {
+  background: linear-gradient(145deg, #ffffff, #f1f3f6);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme='dark'] .emojiVariant {
+  background: #2d2a32;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+}
+
+.emoji {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  filter: saturate(1.15) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+}
+
+[data-theme='light'] .emoji {
+  color: #000;
+}
+
+[data-theme='dark'] .emoji {
+  color: #ffffff;
+}
+
+.xs .emoji {
+  font-size: 14px;
+}
+
+.sm .emoji {
+  font-size: 17px;
+}
+
+.md .emoji {
+  font-size: 22px;
+}
+
+.lg .emoji {
+  font-size: 28px;
+}
+
+.xl .emoji {
+  font-size: 36px;
+}
+
+.statusIndicator {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--color-surface);
+}
+
+.statusOnline {
+  background-color: var(--color-success);
+}
+
+.statusOffline {
+  background-color: var(--color-text-muted);
+}
+
+.statusAway {
+  background-color: var(--color-warning);
+}
+
+.statusBusy {
+  background-color: var(--color-error);
+}
+
+@media (max-width: 768px) {
+  .sm {
+    width: 28px;
+    height: 28px;
+  }
+
+  .md {
+    width: 36px;
+    height: 36px;
+  }
+}

@@ -1,0 +1,63 @@
+.appLayout {
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background-color: var(--color-background);
+}
+
+.appLayoutMain {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.appLayoutContent {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.appLayoutSidebar {
+  display: flex;
+  height: 100%;
+  flex-shrink: 0;
+  transition: width var(--transition-normal);
+}
+
+/* Desktop: Expanded */
+@media (min-width: 1024px) {
+  .appLayoutSidebarExpanded {
+    width: var(--sidebar-width-expanded);
+  }
+
+  .appLayoutSidebarCollapsed {
+    width: var(--sidebar-width-collapsed);
+  }
+}
+
+/* Tablet: Always collapsed width */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .appLayoutSidebarExpanded,
+  .appLayoutSidebarCollapsed {
+    width: var(--sidebar-width-tablet);
+  }
+}
+
+/* Mobile: Hide sidebar, use drawer */
+@media (max-width: 639px) {
+  .appLayoutSidebarExpanded,
+  .appLayoutSidebarCollapsed {
+    display: none;
+  }
+}
+
+/* Safe area padding for mobile */
+@media (max-width: 639px) {
+  .appLayoutMain {
+    padding-top: var(--safe-area-inset-top);
+    padding-bottom: var(--safe-area-inset-bottom);
+  }
+}

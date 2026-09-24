@@ -1,0 +1,124 @@
+.monthGrid {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.weekdayHeader {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.weekdayCell {
+  padding: var(--space-2) var(--space-1);
+  text-align: center;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.daysGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  flex: 1;
+}
+
+.dayCell {
+  display: flex;
+  flex-direction: column;
+  min-height: 80px;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-top: none;
+  border-left: none;
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+  text-align: left;
+}
+
+.dayCell:hover {
+  background: var(--color-surface-secondary);
+}
+
+.dayCell:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+.otherMonth {
+  background: var(--color-surface-secondary);
+  opacity: 0.5;
+}
+
+.otherMonth:hover {
+  opacity: 0.7;
+}
+
+.today {
+  background: var(--color-primary-subtle, var(--color-info-subtle));
+}
+
+.today .dateNumber {
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  border-radius: var(--radius-full);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dateNumber {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+  margin-bottom: var(--space-1);
+}
+
+.otherMonth .dateNumber {
+  color: var(--color-text-muted);
+}
+
+.eventsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.eventDot {
+  display: flex;
+  align-items: center;
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+  color: white;
+  font-size: 10px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.eventDot:hover {
+  opacity: 0.9;
+}
+
+.eventTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.moreEvents {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  padding-left: var(--space-1);
+}

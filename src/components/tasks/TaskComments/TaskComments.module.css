@@ -1,0 +1,225 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.commentsList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.comment {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  transition: background-color var(--transition-fast);
+}
+
+.comment:hover {
+  background-color: var(--color-surface-secondary);
+}
+
+.commentBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.commentHeader {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: 2px;
+}
+
+.commentAuthor {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.commentTime {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.commentContent {
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  line-height: var(--line-height-relaxed);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.commentActions {
+  display: flex;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.comment:hover .commentActions {
+  opacity: 1;
+}
+
+.commentAction {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.commentAction:hover {
+  background-color: var(--color-surface-tertiary);
+  color: var(--color-text);
+}
+
+.commentActionDanger:hover {
+  color: var(--color-error);
+}
+
+.replyIndicator {
+  width: 2px;
+  background-color: var(--color-border);
+  border-radius: var(--radius-full);
+  margin-right: var(--space-1);
+  align-self: stretch;
+}
+
+.replySection {
+  margin-left: var(--space-8);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-border);
+}
+
+.addComment {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+}
+
+.addComment textarea {
+  flex: 1;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  resize: vertical;
+  min-height: 36px;
+  max-height: 100px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.addComment textarea:focus {
+  border-color: var(--color-primary);
+}
+
+.addCommentButton {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.addCommentButton:hover {
+  background-color: var(--color-primary-hover);
+}
+
+.addCommentButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.editInput {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  outline: none;
+  resize: vertical;
+  min-height: 36px;
+}
+
+.editSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.editActions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.editSaveButton {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.editSaveButton:hover {
+  background-color: var(--color-primary-hover);
+}
+
+.editSaveButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.editCancelButton {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+  background-color: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.editCancelButton:hover {
+  background-color: var(--color-surface-tertiary);
+  color: var(--color-text);
+}
+
+.emptyComments {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: var(--space-4);
+}
+
+.loadingSpinner {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-4);
+}

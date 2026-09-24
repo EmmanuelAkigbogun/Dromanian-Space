@@ -1,0 +1,173 @@
+.authLayout {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--space-4);
+  background-color: var(--color-background);
+  position: relative;
+}
+
+.authCard {
+  width: 100%;
+  max-width: 400px;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-8);
+}
+
+.authThemeToggle {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+}
+
+.authHeader {
+  text-align: center;
+  margin-bottom: var(--space-8);
+}
+
+.authLogo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto var(--space-4);
+  background-color: var(--color-primary);
+  border-radius: var(--radius-lg);
+}
+
+.authLogo span {
+  color: #fff;
+}
+
+.authTitle {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  margin-bottom: var(--space-2);
+}
+
+.authSubtitle {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.authForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.authDivider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin: var(--space-6) 0;
+}
+
+.authDividerLine {
+  flex: 1;
+  height: 1px;
+  background-color: var(--color-border);
+}
+
+.authDividerText {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.authFooter {
+  margin-top: var(--space-6);
+  text-align: center;
+}
+
+.authFooterText {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.authFooterLink {
+  color: var(--color-primary);
+  font-weight: var(--font-weight-medium);
+  transition: color var(--transition-fast);
+}
+
+.authFooterLink:hover {
+  color: var(--color-primary-hover);
+}
+
+.authError {
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--color-error-subtle);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-md);
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+}
+
+.authSuccess {
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--color-success-subtle);
+  border: 1px solid var(--color-success);
+  border-radius: var(--radius-md);
+  color: var(--color-success);
+  font-size: var(--font-size-sm);
+}
+
+.authInputGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.authRememberForgot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.authCheckboxLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.authForgotLink {
+  font-size: var(--font-size-sm);
+  color: var(--color-primary);
+  font-weight: var(--font-weight-medium);
+  transition: color var(--transition-fast);
+}
+
+.authForgotLink:hover {
+  color: var(--color-primary-hover);
+}
+
+.authOAuthButtons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.authIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 480px) {
+  .authCard {
+    padding: var(--space-6);
+  }
+
+  .authTitle {
+    font-size: var(--font-size-xl);
+  }
+}

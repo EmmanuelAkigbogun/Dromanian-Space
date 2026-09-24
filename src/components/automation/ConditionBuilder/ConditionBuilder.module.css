@@ -1,0 +1,135 @@
+.conditionBuilder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sectionLabel {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.sectionHint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.conditionList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.conditionRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.logicToggle {
+  align-self: flex-start;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.logicToggle:hover {
+  background: var(--color-surface-secondary);
+  border-color: var(--color-border-hover);
+  color: var(--color-text);
+}
+
+.conditionFields {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.fieldSelect {
+  flex: 1;
+}
+
+.operatorSelect {
+  flex: 1;
+}
+
+.valueInput {
+  flex: 1;
+}
+
+.removeButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.removeButton:hover {
+  background: var(--color-error-subtle);
+  color: var(--color-error);
+}
+
+.addButton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.addButton:hover {
+  background: var(--color-surface-secondary);
+  border-color: var(--color-border-hover);
+  color: var(--color-text);
+}
+
+@media (max-width: 639px) {
+  .conditionFields {
+    flex-wrap: wrap;
+  }
+
+  .fieldSelect,
+  .operatorSelect,
+  .valueInput {
+    flex: 1 1 calc(50% - var(--space-2));
+    min-width: 0;
+  }
+
+  .removeButton {
+    position: absolute;
+    top: var(--space-1);
+    right: var(--space-1);
+  }
+
+  .conditionRow {
+    position: relative;
+  }
+
+  .addButton {
+    width: 100%;
+    justify-content: center;
+  }
+}

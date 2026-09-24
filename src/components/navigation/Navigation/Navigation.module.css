@@ -1,0 +1,18 @@
+.navigation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+}
+
+.navigationSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.navigationDivider {
+  height: 1px;
+  background-color: var(--color-border);
+  margin: var(--space-2) 0;
+}

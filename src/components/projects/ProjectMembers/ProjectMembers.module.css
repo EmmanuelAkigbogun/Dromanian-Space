@@ -1,0 +1,218 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.title {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  margin: 0;
+}
+
+.addForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.searchResults {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.searchResult {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background-color var(--transition-fast);
+}
+
+.searchResult:hover {
+  background-color: var(--color-surface-secondary);
+}
+
+.resultInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.resultName {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+}
+
+.resultEmail {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.memberList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.memberRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  transition: background-color var(--transition-fast);
+}
+
+.memberRow:hover {
+  background-color: var(--color-surface-secondary);
+}
+
+.memberInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.memberName {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+}
+
+.youBadge {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-normal);
+  margin-left: var(--space-1);
+}
+
+.memberEmail {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.memberActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.roleBadge {
+  text-transform: capitalize;
+}
+
+.implicitNote {
+  text-transform: none;
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-normal);
+}
+
+.promoteBtn {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.promoteBtn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.roleSelect {
+  width: 120px;
+}
+
+.removeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  background: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.removeBtn:hover {
+  background-color: var(--color-error-subtle);
+  color: var(--color-error);
+}
+
+.emptyState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-12);
+}
+
+.emptyText {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 639px) {
+  .header {
+    align-items: flex-start;
+    gap: var(--space-2);
+    flex-direction: column;
+  }
+
+  .memberRow {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .memberInfo {
+    flex: 1 1 calc(100% - 56px);
+    min-width: 0;
+  }
+
+  .memberActions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    padding-left: calc(var(--space-md) + var(--space-3));
+  }
+
+  .roleSelect {
+    width: auto;
+    min-width: 96px;
+  }
+}

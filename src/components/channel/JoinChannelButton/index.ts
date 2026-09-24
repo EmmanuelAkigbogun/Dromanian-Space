@@ -1,0 +1,1 @@
+export { JoinChannelButton } from './JoinChannelButton';

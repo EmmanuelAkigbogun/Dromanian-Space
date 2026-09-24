@@ -1,0 +1,53 @@
+.indicator {
+  display: inline-block;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+/* Sizes */
+.sm {
+  width: 8px;
+  height: 8px;
+}
+
+.md {
+  width: 10px;
+  height: 10px;
+}
+
+.lg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Status colors */
+.online {
+  background-color: #22c55e;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.away {
+  background-color: #eab308;
+}
+
+.busy {
+  background-color: #ef4444;
+}
+
+.invisible {
+  background-color: #9ca3af;
+}
+
+.offline {
+  background-color: #d1d5db;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}

@@ -1,0 +1,669 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-8);
+  background-color: var(--color-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  min-width: 0;
+  width: min(960px, 96vw);
+  max-width: 96vw;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.videoMode {
+  width: min(1280px, 96vw);
+  height: min(760px, 94vh);
+  min-width: 0;
+  min-height: 0;
+  max-width: 96vw;
+  background-color: #000;
+  padding: var(--space-4);
+  box-sizing: border-box;
+}
+
+.fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  border-radius: 0;
+  min-width: unset;
+  min-height: unset;
+  width: 100vw;
+  height: 100vh;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.videoMode .header {
+  position: absolute;
+  top: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  background: rgba(0, 0, 0, 0.6);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(8px);
+}
+
+.title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  margin: 0;
+}
+
+.videoMode .title {
+  color: white;
+}
+
+.duration {
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.participantCount {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.videoMode .participantCount {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.participants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  justify-content: center;
+  max-width: 400px;
+}
+
+.participant {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--color-surface-secondary);
+  border-radius: var(--radius-lg);
+}
+
+.participantAvatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.participantName {
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  font-weight: var(--font-weight-medium);
+}
+
+.mutedIndicator {
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-normal);
+}
+
+.videoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-4);
+  width: 100%;
+  flex: 1;
+  align-content: center;
+  justify-items: center;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.videoGrid > :nth-child(1):nth-last-child(1) {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.videoGrid > :nth-child(1):nth-last-child(2),
+.videoGrid > :nth-child(2):nth-last-child(1) {
+  grid-column: span 1;
+}
+
+.videoTile {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background-color: #1a1a2e;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  min-width: 0;
+}
+
+.localTile {
+  border-color: var(--color-primary);
+}
+
+.videoElement {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.videoPlaceholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.4);
+  background: linear-gradient(135deg, #1a1a2e, #16213e);
+}
+
+.videoLabel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: var(--space-2) var(--space-3);
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+  color: white;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.participantSidebar {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 260px;
+  background-color: var(--color-surface);
+  border-left: 1px solid var(--color-border);
+  padding: var(--space-4);
+  overflow-y: auto;
+  z-index: 2;
+}
+
+.participantSidebar h3 {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  margin: 0 0 var(--space-3);
+}
+
+.participantListItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+.participantStatus {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.mutedBadge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background-color: var(--color-warning, #f59e0b);
+  color: white;
+  border-radius: var(--radius-sm);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  max-width: 100%;
+}
+
+.videoMode .controls {
+  position: absolute;
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.6);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-xl);
+  backdrop-filter: blur(8px);
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: min(760px, 100%);
+}
+
+.controlButton {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.videoMode .controlButton {
+  border-color: rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
+.controlButton:hover {
+  background-color: var(--color-surface-secondary);
+  border-color: var(--color-border-hover);
+}
+
+.videoMode .controlButton:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.controlButtonActive {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.controlButtonActive:hover {
+  background-color: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+}
+
+.endCallButton {
+  background-color: var(--color-error, #ef4444);
+  border-color: var(--color-error, #ef4444);
+  color: white;
+}
+
+.endCallButton:hover {
+  background-color: var(--color-error-hover, #dc2626);
+  border-color: var(--color-error-hover, #dc2626);
+}
+
+.floatingReaction {
+  position: absolute;
+  bottom: 80px;
+  font-size: 32px;
+  animation: floatUp 3s ease-out forwards;
+  pointer-events: none;
+  z-index: 10;
+}
+
+@keyframes floatUp {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-200px) scale(1.5); }
+}
+
+.reactionPicker {
+  position: absolute;
+  bottom: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 100;
+}
+
+.reactionEmoji {
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: none;
+  font-size: 20px;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: background-color var(--transition-fast);
+}
+
+.reactionEmoji:hover {
+  background-color: var(--color-surface-secondary);
+}
+
+.speakingTile {
+  border-color: #22c55e !important;
+  box-shadow: 0 0 0 2px #22c55e;
+}
+
+.speakingIndicator {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #22c55e;
+  margin-left: 4px;
+  animation: pulse-dot 1.5s infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.participantSpeaking {
+  border-color: #22c55e;
+  background-color: rgba(34, 197, 94, 0.08);
+}
+
+.speakingRing {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid #22c55e;
+  animation: speaking-ring 1.5s ease-in-out infinite;
+}
+
+@keyframes speaking-ring {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.08); }
+}
+
+.speakingBadge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background-color: #22c55e;
+  color: white;
+  border-radius: var(--radius-sm);
+  margin-left: 4px;
+}
+
+.networkBadge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.videoMode .networkBadge span {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.layoutButton {
+  min-width: 48px;
+}
+
+.activeSpeakerLayout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  flex: 1;
+  padding: var(--space-4);
+}
+
+.activeSpeakerMain {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.activeSpeakerMain .videoTile {
+  max-width: 800px;
+  width: 100%;
+}
+
+.activeSpeakerStrip {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: center;
+  overflow-x: auto;
+  padding: var(--space-2);
+}
+
+.activeSpeakerStrip .videoTile {
+  width: 160px;
+  max-width: 160px;
+  aspect-ratio: 16 / 9;
+  flex-shrink: 0;
+}
+
+.spotlightLayout {
+  display: flex;
+  width: 100%;
+  flex: 1;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.spotlightMain {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.spotlightMain .videoTile {
+  max-width: 900px;
+  width: 100%;
+}
+
+.spotlightSidebar {
+  width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow-y: auto;
+}
+
+.spotlightSidebar .videoTile {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-width: 180px;
+}
+
+.handRaisedBadge {
+  font-size: 12px;
+  margin-left: 4px;
+}
+
+.handIndicator {
+  font-size: 13px;
+  margin-left: var(--space-1);
+}
+
+.presentingIndicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #3b82f6;
+  margin-left: var(--space-1);
+}
+
+.screenShareBadge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  padding: 2px 6px;
+  background-color: rgba(59, 130, 246, 0.9);
+  color: white;
+  border-radius: var(--radius-sm);
+  z-index: 2;
+}
+
+.handBadge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background-color: #f59e0b;
+  color: white;
+  border-radius: var(--radius-sm);
+  margin-left: 4px;
+}
+
+.avatarHandRaised {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  font-size: 14px;
+}
+
+.participantAvatar {
+  position: relative;
+}
+
+@media (max-width: 640px) {
+  .container {
+    width: 100vw;
+    max-width: 100vw;
+    border-radius: 0;
+    padding: var(--space-4);
+  }
+
+  .videoMode {
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    border-radius: 0;
+    padding: var(--space-2);
+  }
+
+  .videoMode .header {
+    top: var(--space-2);
+    left: var(--space-2);
+    transform: none;
+    max-width: calc(100vw - var(--space-4));
+  }
+
+  .videoMode .header .title {
+    font-size: var(--font-size-base);
+  }
+
+  .videoMode .duration {
+    font-size: var(--font-size-base);
+  }
+
+  .videoGrid {
+    grid-template-columns: 1fr;
+    padding: var(--space-2);
+    gap: var(--space-2);
+  }
+
+  .videoTile {
+    max-width: 100%;
+  }
+
+  .videoMode .controls {
+    position: absolute;
+    left: 50%;
+    bottom: var(--space-2);
+    transform: translateX(-50%);
+    width: 100%;
+    max-width: calc(100vw - var(--space-4));
+    padding: var(--space-2);
+    gap: var(--space-2);
+  }
+
+  .videoMode .controlButton,
+  .controlButton {
+    width: 42px;
+    height: 42px;
+  }
+
+  .layoutButton {
+    min-width: 42px;
+  }
+
+  .participantSidebar {
+    width: 100%;
+    max-width: 100vw;
+    top: auto;
+    bottom: 0;
+    height: 50%;
+    border-left: none;
+    border-top: 1px solid var(--color-border);
+    box-sizing: border-box;
+  }
+
+  .spotlightLayout {
+    flex-direction: column;
+  }
+
+  .spotlightSidebar {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .spotlightSidebar .videoTile {
+    max-width: 160px;
+    width: 160px;
+    flex-shrink: 0;
+  }
+
+  .activeSpeakerStrip .videoTile {
+    width: 140px;
+    max-width: 140px;
+  }
+
+  .floatingReaction {
+    bottom: 72px;
+    font-size: 24px;
+  }
+
+  .reactionPicker {
+    bottom: 52px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+@media (min-width: 641px) and (max-width: 900px) {
+  .videoMode .controls {
+    max-width: min(560px, 100%);
+  }
+
+  .videoGrid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+
+  .spotlightLayout {
+    flex-direction: column;
+  }
+
+  .spotlightSidebar {
+    width: 100%;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .spotlightSidebar .videoTile {
+    max-width: 160px;
+    width: 160px;
+    flex-shrink: 0;
+  }
+}

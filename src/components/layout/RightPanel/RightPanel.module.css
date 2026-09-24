@@ -1,0 +1,125 @@
+.rightPanel {
+  display: flex;
+  flex-direction: column;
+  width: var(--right-panel-width);
+  background-color: var(--color-surface);
+  border-left: 1px solid var(--color-border);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.rightPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  min-height: var(--header-height);
+}
+
+.rightPanelTitle {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.rightPanelClose {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--touch-target-min);
+  height: var(--touch-target-min);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  transition: all var(--transition-fast);
+}
+
+.rightPanelClose:hover {
+  background-color: var(--color-surface-secondary);
+  color: var(--color-text);
+}
+
+.rightPanelContent {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Tablet: Overlay panel */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .rightPanel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: var(--right-panel-width);
+    max-width: 90vw;
+    z-index: var(--z-modal);
+    transform: translateX(100%);
+    transition: transform var(--transition-normal);
+    box-shadow: var(--shadow-xl);
+  }
+
+  .rightPanelOpen {
+    transform: translateX(0);
+  }
+
+  .rightPanelOverlay {
+    position: fixed;
+    inset: 0;
+    background-color: var(--color-overlay);
+    z-index: calc(var(--z-modal) - 1);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--transition-normal), visibility var(--transition-normal);
+  }
+
+  .rightPanelOverlayOpen {
+    opacity: 1;
+    visibility: visible;
+  }
+}
+
+/* Mobile: Full-screen panel */
+@media (max-width: 639px) {
+  .rightPanel {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    max-width: 100vw;
+    z-index: var(--z-modal);
+    transform: translateY(100%);
+    transition: transform var(--transition-normal);
+  }
+
+  .rightPanelOpen {
+    transform: translateY(0);
+  }
+
+  .rightPanelOverlay {
+    position: fixed;
+    inset: 0;
+    background-color: var(--color-overlay);
+    z-index: calc(var(--z-modal) - 1);
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--transition-normal), visibility var(--transition-normal);
+  }
+
+  .rightPanelOverlayOpen {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .rightPanelHeader {
+    padding-top: calc(var(--space-4) + var(--safe-area-inset-top));
+  }
+}
+
+/* Touch-friendly close button */
+@media (hover: none) and (pointer: coarse) {
+  .rightPanelClose {
+    min-width: var(--touch-target-comfortable);
+    min-height: var(--touch-target-comfortable);
+  }
+}

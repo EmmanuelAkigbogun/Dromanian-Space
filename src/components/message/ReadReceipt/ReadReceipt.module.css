@@ -1,0 +1,24 @@
+.receipt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: default;
+}
+
+.icon {
+  width: 16px;
+  height: 11px;
+}
+
+.sent .icon {
+  color: var(--color-text-muted);
+}
+
+.delivered .icon {
+  color: var(--color-text-muted);
+}
+
+.read .icon {
+  color: #3b82f6;
+}

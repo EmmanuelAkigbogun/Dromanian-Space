@@ -1,0 +1,124 @@
+.viewport {
+  position: fixed;
+  bottom: var(--space-4);
+  right: var(--space-4);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--space-2);
+  max-width: 380px;
+  width: 100%;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  pointer-events: all;
+  animation: slideInRight var(--transition-normal) ease;
+}
+
+.toast[data-state='closed'] {
+  animation: slideOutRight var(--transition-normal) ease forwards;
+}
+
+.toastIcon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+}
+
+.toastIcon[data-variant='success'] {
+  color: var(--color-success);
+}
+
+.toastIcon[data-variant='error'] {
+  color: var(--color-error);
+}
+
+.toastIcon[data-variant='warning'] {
+  color: var(--color-warning);
+}
+
+.toastIcon[data-variant='info'] {
+  color: var(--color-primary);
+}
+
+.toastContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.toastTitle {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  margin-bottom: var(--space-1);
+}
+
+.toastDescription {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.toastClose {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  transition: all var(--transition-fast);
+}
+
+.toastClose:hover {
+  background-color: var(--color-surface-secondary);
+  color: var(--color-text);
+}
+
+.toast[data-variant='success'] {
+  border-left: 3px solid var(--color-success);
+}
+
+.toast[data-variant='error'] {
+  border-left: 3px solid var(--color-error);
+}
+
+.toast[data-variant='warning'] {
+  border-left: 3px solid var(--color-warning);
+}
+
+.toast[data-variant='info'] {
+  border-left: 3px solid var(--color-primary);
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}

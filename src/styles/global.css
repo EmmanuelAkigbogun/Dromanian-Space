@@ -1,0 +1,62 @@
+@import './tokens.css';
+
+/* Global Styles */
+
+html,
+body {
+  font-family: var(--font-family);
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Prevent the browser from scrolling the document (e.g. to reveal a focused
+   input under the virtual keyboard) instead of the intended scroll container. */
+html,
+body {
+  overscroll-behavior: none;
+}
+
+/* Focus Styles */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+/* Scrollbar Styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-hover);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* Selection */
+::selection {
+  background-color: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+/* Message highlight for deep links */
+.message-highlight {
+  animation: highlightFade 2s ease;
+}
+
+@keyframes highlightFade {
+  0% { background-color: var(--color-primary-bg, rgba(130, 166, 177, 0.25)); }
+  100% { background-color: transparent; }
+}

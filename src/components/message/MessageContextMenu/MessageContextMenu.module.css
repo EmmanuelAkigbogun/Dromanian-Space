@@ -1,0 +1,67 @@
+.contextMenu {
+  min-width: 200px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  cursor: pointer;
+  border: none;
+  background: none;
+  text-align: left;
+  transition: all var(--transition-fast);
+}
+
+.item:hover:not(:disabled) {
+  background-color: var(--color-surface-secondary);
+}
+
+.item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.itemDanger:hover:not(:disabled) {
+  background-color: var(--color-error-bg);
+  color: var(--color-error);
+}
+
+.itemIcon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+}
+
+.itemDanger .itemIcon {
+  color: inherit;
+}
+
+.itemLabel {
+  flex: 1;
+}
+
+.itemShortcut {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin-left: var(--space-4);
+}
+
+.separator {
+  height: 1px;
+  background-color: var(--color-border);
+  margin: var(--space-1) var(--space-2);
+}
+
+.savedIndicator {
+  color: var(--color-primary);
+}

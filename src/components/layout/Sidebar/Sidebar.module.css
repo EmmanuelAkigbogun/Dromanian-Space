@@ -1,0 +1,167 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  transition: width var(--transition-normal);
+  overflow: hidden;
+}
+
+/* Desktop expanded */
+.sidebarExpanded {
+  width: var(--sidebar-width-expanded);
+}
+
+/* Desktop collapsed */
+.sidebarCollapsed {
+  width: var(--sidebar-width-collapsed);
+}
+
+/* Tablet: Always collapsed to icons */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .sidebarExpanded,
+  .sidebarCollapsed {
+    width: var(--sidebar-width-tablet);
+  }
+}
+
+.sidebarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  min-height: var(--header-height);
+}
+
+/* Collapsed header: center the logo and toggle */
+.sidebarCollapsed .sidebarHeader {
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  justify-content: center;
+}
+
+/* Tablet: Compact header */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .sidebarHeader {
+    padding: var(--space-3);
+    justify-content: center;
+  }
+}
+
+.sidebarLogo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  overflow: hidden;
+}
+
+.sidebarCollapsed .sidebarLogo {
+  justify-content: center;
+}
+
+.sidebarLogoIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background-color: var(--color-primary);
+  border-radius: var(--radius-lg);
+  flex-shrink: 0;
+}
+
+.sidebarLogoText {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebarCollapsed .sidebarLogoText {
+  display: none;
+}
+
+/* Tablet: Always hide text */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .sidebarLogoText {
+    display: none;
+  }
+}
+
+.sidebarToggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.sidebarToggle:hover {
+  background-color: var(--color-surface-secondary);
+  color: var(--color-text);
+}
+
+/* Collapsed toggle: center it */
+.sidebarCollapsed .sidebarToggle {
+  width: 32px;
+  height: 32px;
+}
+
+/* Rotate arrow based on state */
+.sidebarExpanded .sidebarToggle svg {
+  transform: rotate(0deg);
+}
+
+.sidebarCollapsed .sidebarToggle svg {
+  transform: rotate(180deg);
+}
+
+/* Tablet: Always hide toggle */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .sidebarToggle {
+    display: none;
+  }
+}
+
+.sidebarContent {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.sidebarWorkspace {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+@media (min-width: 640px) and (max-width: 1023px) {
+  .sidebarContent {
+    scrollbar-width: none;
+  }
+  
+  .sidebarContent::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.sidebarFooter {
+  padding: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+
+/* Touch-friendly targets on touch devices */
+@media (hover: none) and (pointer: coarse) {
+  .sidebarToggle {
+    width: var(--touch-target-min);
+    height: var(--touch-target-min);
+  }
+}

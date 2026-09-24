@@ -1,0 +1,31 @@
+.themeToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
+  min-width: var(--touch-target-min);
+  min-height: var(--touch-target-min);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.themeToggle:hover {
+  background-color: var(--color-surface-secondary);
+  color: var(--color-text);
+}
+
+.themeToggleIcon {
+  width: 20px;
+  height: 20px;
+}
+
+/* Light theme - show moon (to switch to dark) */
+[data-theme='light'] .themeToggleIconSun {
+  display: none;
+}
+
+/* Dark theme - show sun (to switch to light) */
+[data-theme='dark'] .themeToggleIconMoon {
+  display: none;
+}

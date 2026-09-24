@@ -1,0 +1,1 @@
+export { UserProfilePopover } from './UserProfilePopover';

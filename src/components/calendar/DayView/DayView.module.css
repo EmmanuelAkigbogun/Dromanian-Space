@@ -1,0 +1,175 @@
+.dayView {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.dayHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dayTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.todayTitle {
+  color: var(--color-primary);
+}
+
+.todayBadge {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.allDaySection {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.allDayLabel {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  width: 50px;
+  flex-shrink: 0;
+  padding-top: var(--space-1);
+}
+
+.allDayEvents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.allDayEvent {
+  padding: var(--space-1) var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: white;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.allDayEvent:hover {
+  opacity: 0.9;
+}
+
+.timeGridContainer {
+  display: flex;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.timeColumn {
+  width: 60px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--color-border);
+}
+
+.timeLabel {
+  height: 60px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding-right: var(--space-2);
+  font-size: 10px;
+  color: var(--color-text-muted);
+  transform: translateY(-6px);
+}
+
+.eventsColumn {
+  flex: 1;
+  position: relative;
+}
+
+.hourCell {
+  height: 60px;
+  border-bottom: 1px solid var(--color-border);
+  position: relative;
+}
+
+.halfHourLine {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  border-bottom: 1px dashed var(--color-border);
+  opacity: 0.5;
+}
+
+.eventBlock {
+  position: absolute;
+  left: var(--space-1);
+  right: var(--space-2);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  color: white;
+  text-align: left;
+  overflow: hidden;
+  cursor: pointer;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.eventBlock:hover {
+  opacity: 0.9;
+  z-index: 2;
+}
+
+.eventTime {
+  font-size: 10px;
+  font-weight: var(--font-weight-medium);
+  opacity: 0.9;
+}
+
+.eventTitle {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eventLocation {
+  font-size: 10px;
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nowIndicator {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-error);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.nowIndicator::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-error);
+}

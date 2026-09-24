@@ -1,0 +1,1 @@
+export { RoleChangeDialog } from './RoleChangeDialog';

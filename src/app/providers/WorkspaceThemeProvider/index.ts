@@ -1,0 +1,1 @@
+export { WorkspaceThemeProvider, useWorkspaceTheme } from './WorkspaceThemeProvider';

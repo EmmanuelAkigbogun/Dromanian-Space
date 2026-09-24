@@ -1,0 +1,1 @@
+export { SavedPinnedPage } from './SavedPinnedPage';

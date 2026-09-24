@@ -1,0 +1,98 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-8) 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+}
+
+.hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.empty {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.channelGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.channelOption {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.channelOption:hover {
+  background-color: var(--color-surface-secondary);
+}
+
+.channelOptionSelected {
+  background-color: var(--color-primary-subtle);
+  border-color: var(--color-primary);
+  color: var(--color-text);
+}
+
+.hash {
+  color: var(--color-text-muted);
+}
+
+.channelName {
+  font-weight: var(--font-weight-medium);
+}
+
+.privateBadge {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.retentionRow {
+  display: flex;
+  flex-direction: column;
+}
+
+.retentionInput {
+  max-width: 220px;
+}
+
+.quietHoursRow {
+  display: flex;
+  gap: var(--space-4);
+  max-width: 360px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+}

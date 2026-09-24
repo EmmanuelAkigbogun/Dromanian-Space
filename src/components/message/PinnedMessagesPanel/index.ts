@@ -1,0 +1,1 @@
+export { PinnedMessagesPanel } from './PinnedMessagesPanel';

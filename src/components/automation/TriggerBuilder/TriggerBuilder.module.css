@@ -1,0 +1,121 @@
+.triggerBuilder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.sectionLabel {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.sectionHint {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.selectedTriggers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-surface-secondary);
+  border-radius: var(--radius-md);
+}
+
+.selectedBadge {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.removeBadge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  opacity: 0.7;
+}
+
+.removeBadge:hover {
+  opacity: 1;
+}
+
+.categories {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.category {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.categoryName {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.eventList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.eventOption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: all var(--transition-fast);
+}
+
+.eventOption:hover {
+  background: var(--color-surface-secondary);
+  border-color: var(--color-border-hover);
+}
+
+.eventOptionSelected {
+  background: var(--color-primary-subtle, var(--color-info-subtle));
+  border-color: var(--color-primary);
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+  color: white;
+}
+
+.eventOptionSelected .checkbox {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.eventLabel {
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
