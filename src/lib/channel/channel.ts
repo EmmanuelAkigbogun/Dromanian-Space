@@ -54,8 +54,14 @@ export async function getWorkspaceChannels(workspaceId: string): Promise<Channel
     .is('archived_at', null)
     .order('created_at', { ascending: true });
 
-  if (error || !data) return [];
-  return data as Channel[];
+  // A failed query must not be indistinguishable from "no channels" — the
+  // caller needs to show a real error state instead of an empty page.
+  if (error) {
+    console.error('Failed to load workspace channels:', error);
+    throw new Error('Failed to load channels');
+  }
+
+  return (data ?? []) as Channel[];
 }
 
 export async function getArchivedChannels(workspaceId: string): Promise<Channel[]> {
@@ -66,8 +72,12 @@ export async function getArchivedChannels(workspaceId: string): Promise<Channel[
     .not('archived_at', 'is', null)
     .order('archived_at', { ascending: false });
 
-  if (error || !data) return [];
-  return data as Channel[];
+  if (error) {
+    console.error('Failed to load archived channels:', error);
+    throw new Error('Failed to load archived channels');
+  }
+
+  return (data ?? []) as Channel[];
 }
 
 export async function getChannelById(channelId: string): Promise<Channel | null> {
@@ -85,24 +95,36 @@ export async function getChannelBySlug(
   workspaceId: string,
   slug: string,
 ): Promise<Channel | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('channels')
     .select('*')
     .eq('workspace_id', workspaceId)
     .eq('slug', slug)
     .maybeSingle();
 
+  // Only a genuine miss returns null — a failed lookup must throw so the
+  // caller can offer a retry instead of showing "channel not found".
+  if (error) {
+    console.error('Failed to load channel by slug:', error);
+    throw new Error('Failed to open channel');
+  }
+
   if (data) return data as Channel;
 
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
   if (!isUuid) return null;
 
-  const { data: byId } = await supabase
+  const { data: byId, error: byIdError } = await supabase
     .from('channels')
     .select('*')
     .eq('workspace_id', workspaceId)
     .eq('id', slug)
     .maybeSingle();
+
+  if (byIdError) {
+    console.error('Failed to load channel by id:', byIdError);
+    throw new Error('Failed to open channel');
+  }
 
   return (byId as Channel) ?? null;
 }

@@ -76,21 +76,22 @@ async function getChannelMemberIdsForWorkspace(
   workspaceId: string,
   userId: string,
 ): Promise<Set<string>> {
-  const { supabase } = await import('@/lib/supabase');
+  const { data: channelRows, error: channelError } = await supabase
+    .from('channels')
+    .select('id')
+    .eq('workspace_id', workspaceId)
+    .is('archived_at', null);
+
+  if (channelError || !channelRows) return new Set();
+
+  const channelIds = channelRows.map((row) => row.id);
+  if (channelIds.length === 0) return new Set();
+
   const { data, error } = await supabase
     .from('channel_members')
     .select('channel_id')
     .eq('user_id', userId)
-    .in(
-      'channel_id',
-      (
-        await supabase
-          .from('channels')
-          .select('id')
-          .eq('workspace_id', workspaceId)
-          .is('archived_at', null)
-      ).data?.map((c) => c.id) ?? [],
-    );
+    .in('channel_id', channelIds);
 
   if (error || !data) return new Set();
   return new Set(data.map((row) => row.channel_id));
@@ -125,10 +126,10 @@ export function ChannelProvider({ children }: ChannelProviderProps) {
       return;
     }
 
-    try {
-      setIsLoading(true);
-      setError(null);
+    setIsLoading(true);
+    setError(null);
 
+    try {
       const [workspaceChannels, memberIds] = await Promise.all([
         getWorkspaceChannels(currentWorkspace.id),
         userId ? getChannelMemberIdsForWorkspace(currentWorkspace.id, userId) : Promise.resolve(new Set<string>()),
@@ -137,13 +138,16 @@ export function ChannelProvider({ children }: ChannelProviderProps) {
       setChannels(workspaceChannels);
       setMemberChannelIds(memberIds);
 
-      const counts = await getChannelMemberCounts(workspaceChannels.map((c) => c.id));
-      setMemberCounts(counts);
+      try {
+        const counts = await getChannelMemberCounts(workspaceChannels.map((c) => c.id));
+        setMemberCounts(counts);
+      } catch {
+        setMemberCounts({});
+      }
 
       if (workspaceChannels.length === 0) {
         setCurrentChannel(null);
         clearStoredSlug();
-        setIsLoading(false);
         return;
       }
 
@@ -161,8 +165,9 @@ export function ChannelProvider({ children }: ChannelProviderProps) {
       setCurrentChannel(selectedChannel);
       storeSlug(selectedChannel.slug);
     } catch (err) {
-      setError('Failed to load channels');
-      setCurrentChannel(null);
+      // A transient failure must not be surfaced as an empty workspace.
+      // Keep whatever channels we already have and let the UI show a retry.
+      setError(err instanceof Error ? err.message : 'Failed to load channels');
     } finally {
       setIsLoading(false);
     }
@@ -243,12 +248,22 @@ export function ChannelProvider({ children }: ChannelProviderProps) {
   const switchChannel = useCallback(
     async (slug: string) => {
       if (!currentWorkspace) return;
+
       setError(null);
-      const channel = await getChannelBySlug(currentWorkspace.id, slug);
+
+      let channel: Channel | null;
+      try {
+        channel = await getChannelBySlug(currentWorkspace.id, slug);
+      } catch {
+        setError('Failed to open channel. Please try again.');
+        return;
+      }
+
       if (!channel) {
         setError('Channel not found');
         return;
       }
+
       setChannels((prev) => prev.map((c) => (c.id === channel.id ? channel : c)));
       setCurrentChannel(channel);
       storeSlug(slug);

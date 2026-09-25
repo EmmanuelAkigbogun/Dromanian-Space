@@ -4,6 +4,7 @@ import { useChannel } from '@/hooks/useChannel';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { getArchivedChannels } from '@/lib/channel';
 import { useToast } from '@/components/ui/Toast';
+import { Button } from '@/components/ui/Button';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { useDmDisplayNames } from '@/hooks/useDmDisplayNames';
 import { ChannelEmpty } from '@/components/channel';
@@ -22,7 +23,7 @@ type FilterType = 'all' | 'public' | 'private' | 'joined' | 'not-joined';
 export function Channels() {
   const navigate = useNavigate();
   const { currentWorkspace } = useWorkspace();
-  const { channels, currentChannel, isLoading, hasChannels, isMember, memberCounts, restoreChannel } = useChannel();
+  const { channels, currentChannel, isLoading, hasChannels, isMember, memberCounts, restoreChannel, error, refreshChannels, clearError } = useChannel();
   const { toast } = useToast();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
@@ -32,6 +33,7 @@ export function Channels() {
   const [showArchived, setShowArchived] = useState(false);
   const [archivedChannels, setArchivedChannels] = useState<Channel[]>([]);
   const [isLoadingArchived, setIsLoadingArchived] = useState(false);
+  const [archivedError, setArchivedError] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<FilterType>('all');
 
@@ -78,9 +80,12 @@ export function Channels() {
   const fetchArchived = useCallback(async () => {
     if (!currentWorkspace) return;
     setIsLoadingArchived(true);
+    setArchivedError(false);
     try {
       const data = await getArchivedChannels(currentWorkspace.id);
       setArchivedChannels(data);
+    } catch {
+      setArchivedError(true);
     } finally {
       setIsLoadingArchived(false);
     }
@@ -109,6 +114,37 @@ export function Channels() {
             {[1, 2, 3].map((i) => (
               <div key={i} className={styles.channelCardSkeleton} />
             ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && channels.length === 0 && !showArchived) {
+    return (
+      <div className={styles.page}>
+        <div className={styles.pageHeader}>
+          <h2 className={styles.pageTitle}>Channels</h2>
+        </div>
+        <div className={styles.pageContent}>
+          <div className={styles.errorState}>
+            <span className={styles.errorIcon}>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+            </span>
+            <span className={styles.errorText}>{error}</span>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                clearError();
+                refreshChannels();
+              }}
+            >
+              Try again
+            </Button>
           </div>
         </div>
       </div>
@@ -202,6 +238,11 @@ export function Channels() {
               {[1, 2, 3].map((i) => (
                 <div key={i} className={styles.channelCardSkeleton} />
               ))}
+            </div>
+          ) : archivedError ? (
+            <div className={styles.emptyState}>
+              <span className={styles.errorText}>Failed to load archived channels.</span>
+              <Button variant="secondary" onClick={fetchArchived}>Try again</Button>
             </div>
           ) : archivedChannels.length === 0 ? (
             <div className={styles.emptyState}>

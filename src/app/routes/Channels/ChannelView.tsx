@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useChannel } from '@/hooks/useChannel';
 import { useDmDisplayNames } from '@/hooks/useDmDisplayNames';
@@ -6,6 +6,7 @@ import { useThread } from '@/app/providers/ThreadProvider';
 import { MessageProvider } from '@/app/providers/MessageProvider';
 import { EditProvider } from '@/app/providers/EditProvider';
 import { ChannelLoading, ChannelNotFound } from '@/components/channel';
+import { Button } from '@/components/ui/Button';
 import { CreateChannelDialog } from '@/components/channel/CreateChannelDialog';
 import { EditChannelDialog } from '@/components/channel/EditChannelDialog';
 import { DeleteChannelDialog } from '@/components/channel/DeleteChannelDialog';
@@ -44,12 +45,37 @@ export function ChannelView() {
   }
 
   if (error) {
-    return <ChannelNotFound />;
+    if (error === 'Channel not found') {
+      return <ChannelNotFound />;
+    }
+    // Transient failure (e.g. a hiccup in the slug lookup) — offer a retry
+    // instead of pretending the channel doesn't exist.
+    return (
+      <div className={styles.channelContent}>
+        <div className={styles.channelViewError}>
+          <span className={styles.channelViewErrorIcon}>
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          </span>
+          <span className={styles.channelViewErrorText}>{error}</span>
+          <div className={styles.channelViewErrorActions}>
+            <Button variant="secondary" onClick={() => slug && switchChannel(slug)}>
+              Try again
+            </Button>
+            <Button variant="ghost" onClick={() => navigate('/channels')}>
+              Back to channels
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!hasChannels) {
-    navigate('/channels');
-    return null;
+    return <Navigate to="/channels" replace />;
   }
 
   if (!currentChannel) {
