@@ -1,6 +1,7 @@
-﻿import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense, Fragment, type ReactNode } from 'react';
+import { useWorkspaceContext } from '@/app/providers/WorkspaceProvider';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { LayoutProvider } from '@/app/providers/LayoutProvider';
 import { AuthProvider } from '@/app/providers/AuthProvider';
@@ -27,11 +28,9 @@ import { DmConversationView } from '@/components/dm';
 import { CommandPalette } from '@/components/command-palette/CommandPalette';
 import { CallOverlay } from '@/components/call';
 import { Home } from '@/app/routes/Home';
-import { Placeholder } from '@/app/routes/Placeholder';
 import { Messages } from '@/app/routes/Messages';
 import { Channels } from '@/app/routes/Channels';
 import { ChannelView } from '@/app/routes/Channels/ChannelView';
-import { Files } from '@/app/routes/Files';
 import { Notifications } from '@/app/routes/Notifications';
 import { Invitations } from '@/app/routes/Invitations';
 import { Settings } from '@/app/routes/Settings';
@@ -56,7 +55,17 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useAuth } from '@/hooks/useAuth';
 import { useTabLeader } from '@/hooks/useTabLeader';
 import { supabase } from '@/lib/supabase';
-import { sendMessage } from '@/lib/message';
+
+const CRMPage = lazy(() => import('@/app/routes/CRM/CRMPage'));
+const ThreadsPage = lazy(() => import('@/app/routes/Threads/ThreadsPage'));
+const DrivePage = lazy(() => import('@/app/routes/Drive/DrivePage'));
+const AgentsPage = lazy(() => import('@/app/routes/Agents/AgentsPage'));
+
+function TenantBoundary({children}: {children: ReactNode}) {
+  const {currentWorkspace} = useWorkspaceContext();
+  const {userId} = useAuth();
+  return <Fragment key={`${userId}:${currentWorkspace?.id}`}>{children}</Fragment>;
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -71,13 +80,14 @@ const queryClient = new QueryClient({
 
 const primaryNavigation = [
   { to: '/', icon: <HomeIcon />, label: 'Home' },
-  { to: '/ai', icon: <AiIcon />, label: 'AI' },
-  { to: '/dm', icon: <MessageIcon />, label: 'Messages' },
+  { to: '/agents', icon: <AiIcon />, label: 'Agents' },
+  { to: '/dm', icon: <MessageIcon />, label: 'Chat' },
   { to: '/channels', icon: <UsersIcon />, label: 'Channels' },
   { to: '/tasks', icon: <TaskIcon />, label: 'Tasks' },
   { to: '/projects', icon: <ProjectIcon />, label: 'Projects' },
   { to: '/calendar', icon: <CalendarIcon />, label: 'Calendar' },
-  { to: '/files', icon: <FolderIcon />, label: 'Files' },
+  { to: '/drive', icon: <FolderIcon />, label: 'Drive' },
+  { to: '/crm', icon: <UsersIcon />, label: 'CRM' },
 ];
 
 const secondaryNavigation = [
@@ -92,68 +102,24 @@ const secondaryNavigation = [
 
 function AppLayoutWithThread() {
   const { activeThread, closeThread } = useThread();
+  const { pathname } = useLocation();
+  useEffect(() => {
+    if (!/^\/(channels|dm|threads)(\/|$)/.test(pathname)) closeThread();
+  }, [pathname, closeThread]);
   const { userId } = useAuth();
   const isLeaderTab = useTabLeader();
   useKeyboardShortcuts();
 
+  // Scheduled messages are delivered by Postgres (pg_cron), even with every
+  // tab closed. On projects without pg_cron, the leader tab nudges the same
+  // transactional server function; it can never post a message twice.
   useEffect(() => {
     if (!userId || !isLeaderTab) return;
-    const poll = async () => {
-      const now = new Date().toISOString();
-      const { data } = await supabase
-        .from('scheduled_messages' as never)
-        .select('id, channel_id, conversation_id, user_id, content, parent_id')
-        .eq('user_id', userId)
-        .eq('sent', false)
-        .lte('scheduled_at', now);
-      if (!data || data.length === 0) return;
-      const db = supabase as any;
-      for (const msg of data as { id: string; channel_id: string | null; conversation_id: string | null; user_id: string; content: string; parent_id: string | null }[]) {
-        // Atomically claim the row so the server cron never double-sends.
-        const claim = await supabase
-          .from('scheduled_messages' as never)
-          .update({ sent: true } as never)
-          .eq('id', msg.id)
-          .eq('sent', false)
-          .select('id')
-          .maybeSingle();
-        if (!claim.data) continue;
-        let targetChannelId = msg.channel_id;
-        if (!targetChannelId && msg.conversation_id) {
-          const { data: conv } = await supabase
-            .from('direct_conversations' as never)
-            .select('channel_id')
-            .eq('id', msg.conversation_id)
-            .single();
-          targetChannelId = (conv as { channel_id: string } | null)?.channel_id ?? null;
-        }
-        if (targetChannelId) {
-          const sent = await sendMessage(targetChannelId, msg.user_id, msg.content, { parentId: msg.parent_id ?? undefined });
-          // Move scheduled attachments to file_attachments
-          if (sent) {
-            const { data: attachments } = await db
-              .from('scheduled_message_attachments')
-              .select('*')
-              .eq('scheduled_message_id', msg.id);
-            if (attachments && attachments.length > 0) {
-              for (const att of attachments) {
-                await db.from('file_attachments').insert({
-                  message_id: sent.id,
-                  user_id: att.user_id,
-                  file_name: att.file_name,
-                  file_size: att.file_size,
-                  file_type: att.file_type,
-                  file_url: att.file_url,
-                });
-              }
-              await db.from('scheduled_message_attachments').delete().eq('scheduled_message_id', msg.id);
-            }
-          }
-        }
-      }
+    const nudge = () => {
+      void supabase.rpc('deliver_my_due_scheduled_messages' as never);
     };
-    poll();
-    const interval = setInterval(poll, 30000);
+    nudge();
+    const interval = setInterval(nudge, 60000);
     return () => clearInterval(interval);
   }, [userId, isLeaderTab]);
 
@@ -169,7 +135,7 @@ function AppLayoutWithThread() {
       rightPanelContent={activeThread ? <MessageProvider><ThreadPanel /></MessageProvider> : undefined}
       onRightPanelClose={closeThread}
     >
-      <Routes>
+      <Suspense fallback={<p role="status">Loading workspace…</p>}><Routes>
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/invitations" element={<Invitations />} />
         <Route path="/profile" element={<Profile />} />
@@ -184,11 +150,21 @@ function AppLayoutWithThread() {
           <WorkspaceGuard>
             <Routes>
               <Route path="/" element={<Home />} />
-              <Route path="/ai" element={<Placeholder title="AI" description="AI assistant — coming soon." />} />
+              <Route path="/ai" element={<Navigate to="/agents" replace />} />
+              <Route path="/agents" element={<AgentsPage />} />
+              <Route path="/agents/:agentId" element={<AgentsPage />} />
+              <Route path="/agents/conversations/:conversationId" element={<AgentsPage />} />
               <Route path="/messages" element={<Messages />} />
               <Route path="/channels" element={<Channels />} />
               <Route path="/channels/:slug" element={<ChannelView />} />
-              <Route path="/files" element={<Files />} />
+              <Route path="/files" element={<Navigate to="/drive" replace />} />
+              <Route path="/drive" element={<DrivePage />} />
+              <Route path="/threads" element={<ThreadsPage />} />
+              <Route path="/crm" element={<Navigate to="/crm/contacts" replace />} />
+              <Route path="/crm/:kind" element={<CRMPage />} />
+              <Route path="/crm/:kind/:recordId" element={<CRMPage />} />
+              <Route path="/drive/item/:itemId" element={<DrivePage />} />
+              <Route path="/drive/folder/:folderId" element={<DrivePage />} />
               <Route path="/tasks" element={<TaskPage />} />
               <Route path="/tasks/:taskId" element={<TaskPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
@@ -198,7 +174,7 @@ function AppLayoutWithThread() {
             </Routes>
           </WorkspaceGuard>
         } />
-      </Routes>
+      </Routes></Suspense>
     </AppLayout>
     </>
   );
@@ -231,7 +207,7 @@ function App() {
                     <ProfileProvider>
                       <OnboardingWrapper>
                         <WorkspaceProvider>
-                          <WorkspaceThemeProvider>
+                          <TenantBoundary><WorkspaceThemeProvider>
                           <PresenceProvider>
                             <ChannelProvider>
                               <ConversationProvider>
@@ -251,7 +227,7 @@ function App() {
                               </ConversationProvider>
                             </ChannelProvider>
                           </PresenceProvider>
-                          </WorkspaceThemeProvider>
+                          </WorkspaceThemeProvider></TenantBoundary>
                         </WorkspaceProvider>
                       </OnboardingWrapper>
                     </ProfileProvider>

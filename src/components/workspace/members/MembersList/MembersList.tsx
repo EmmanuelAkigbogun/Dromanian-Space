@@ -3,7 +3,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useToast } from '@/components/ui/Toast';
 import { supabase } from '@/lib/supabase';
-import { getWorkspaceMembers, updateMemberRole, removeWorkspaceMember, validateRemoveMember, validateRoleChange } from '@/lib/workspace';
+import { getWorkspaceMembers, validateRemoveMember, validateRoleChange } from '@/lib/workspace';
 import { getProfilesByUserIds } from '@/lib/profile';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
@@ -141,20 +141,16 @@ export function MembersList() {
     if (!currentWorkspace || !userId) return;
     setIsProcessing(true);
     try {
-      const validation = await validateRoleChange(currentWorkspace.id, memberId, userId, newRole);
-      if (!validation.allowed) {
-        toast({ variant: 'error', description: validation.reason ?? '' });
+      // change_member_role checks permissions and applies the change atomically.
+      const result = await validateRoleChange(currentWorkspace.id, memberId, userId, newRole);
+      if (!result.allowed) {
+        toast({ variant: 'error', description: result.reason ?? 'Failed to update role.' });
         return;
       }
-      const result = await updateMemberRole(currentWorkspace.id, memberId, newRole);
-      if (result) {
-        setMembers((prev) =>
-          prev.map((m) => (m.user_id === memberId ? { ...m, role: newRole } : m)),
-        );
-        toast({ variant: 'success', description: 'Role updated.' });
-      } else {
-        toast({ variant: 'error', description: 'Failed to update role.' });
-      }
+      setMembers((prev) =>
+        prev.map((m) => (m.user_id === memberId ? { ...m, role: newRole } : m)),
+      );
+      toast({ variant: 'success', description: 'Role updated.' });
     } catch {
       toast({ variant: 'error', description: 'An unexpected error occurred.' });
     } finally {
@@ -167,18 +163,14 @@ export function MembersList() {
     if (!currentWorkspace || !userId) return;
     setIsProcessing(true);
     try {
-      const validation = await validateRemoveMember(currentWorkspace.id, memberId, userId);
-      if (!validation.allowed) {
-        toast({ variant: 'error', description: validation.reason ?? '' });
+      // remove_workspace_member checks permissions and removes the member atomically.
+      const result = await validateRemoveMember(currentWorkspace.id, memberId, userId);
+      if (!result.allowed) {
+        toast({ variant: 'error', description: result.reason ?? 'Failed to remove member.' });
         return;
       }
-      const success = await removeWorkspaceMember(currentWorkspace.id, memberId);
-      if (success) {
-        setMembers((prev) => prev.filter((m) => m.user_id !== memberId));
-        toast({ variant: 'success', description: 'Member removed.' });
-      } else {
-        toast({ variant: 'error', description: 'Failed to remove member.' });
-      }
+      setMembers((prev) => prev.filter((m) => m.user_id !== memberId));
+      toast({ variant: 'success', description: 'Member removed.' });
     } catch {
       toast({ variant: 'error', description: 'An unexpected error occurred.' });
     } finally {

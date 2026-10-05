@@ -1,3 +1,4 @@
+import { MessageResources } from '@/features/platform/DriveShare';
 import { useState, useEffect, useCallback, memo } from 'react';
 import { useMessageSafe } from '@/hooks/useMessage';
 import { useEditSafe } from '@/app/providers/EditProvider';
@@ -263,6 +264,7 @@ export const ThreadReplyItem = memo(function ThreadReplyItem({ reply, isOwn, pro
                 );
               })()}
 
+              {!!reply.drive_resource_count && <MessageResources messageId={reply.id} workspaceId={reply.workspace_id ?? null} />}
               {attachments.length > 0 && (
                   <div className={styles.attachments}>
                     <AttachmentGrid

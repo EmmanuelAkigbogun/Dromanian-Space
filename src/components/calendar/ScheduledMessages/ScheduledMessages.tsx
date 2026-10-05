@@ -37,6 +37,8 @@ interface ScheduledMessagesProps {
   onCancel?: (id: string) => void;
   onSchedule?: (data: ScheduleFormData, onProgress?: (file: File, percent: number) => void) => void;
   onResend?: (id: string) => void;
+  /** Re-queue a message whose delivery failed. */
+  onRetry?: (id: string) => void;
   onEditSave?: (id: string, updates: Partial<Pick<ScheduledMessage, 'content' | 'scheduled_at' | 'channel_id' | 'conversation_id'>>) => void;
 }
 
@@ -89,7 +91,12 @@ function ScheduledAttachmentThumbs({ attachments }: { attachments: ScheduledMess
   );
 }
 
-export function ScheduledMessages({ messages, onCancel, onSchedule, onResend, onEditSave }: ScheduledMessagesProps) {
+function deliveryStatus(message: ScheduledMessage): 'draft' | 'pending' | 'sent' | 'failed' {
+  if (message.status === 'draft' || message.status === 'failed' || message.status === 'sent') return message.status;
+  return message.sent ? 'sent' : 'pending';
+}
+
+export function ScheduledMessages({ messages, onCancel, onSchedule, onResend, onRetry, onEditSave }: ScheduledMessagesProps) {
   const { currentWorkspace } = useWorkspace();
   const { userId } = useAuth();
   const [showForm, setShowForm] = useState(false);
@@ -549,17 +556,39 @@ export function ScheduledMessages({ messages, onCancel, onSchedule, onResend, on
                           {targetNames[message.conversation_id] ?? 'Direct'}
                         </Badge>
                       )}
-                      {message.sent ? (
-                        <Badge variant="success" size="sm">Sent</Badge>
-                      ) : (
-                        <Badge variant="primary" size="sm">Pending</Badge>
-                      )}
+                      {deliveryStatus(message) === 'sent' && <Badge variant="success" size="sm">Sent</Badge>}
+                      {deliveryStatus(message) === 'pending' && <Badge variant="primary" size="sm">Pending</Badge>}
+                      {deliveryStatus(message) === 'draft' && <Badge variant="warning" size="sm">Uploading</Badge>}
+                      {deliveryStatus(message) === 'failed' && <Badge variant="error" size="sm">Not sent</Badge>}
                       <span className={styles.scheduledTime}>
-                        {message.sent ? 'Sent' : 'Sends'} {formatRelativeTime(message.scheduled_at)}
+                        {deliveryStatus(message) === 'sent' ? 'Sent' : deliveryStatus(message) === 'failed' ? 'Was due' : 'Sends'}{' '}
+                        {formatRelativeTime(message.sent_at ?? message.scheduled_at)}
                       </span>
                     </div>
+                    {deliveryStatus(message) === 'failed' && message.last_error && (
+                      <p className={styles.deliveryError} role="status">{message.last_error}</p>
+                    )}
+                    {deliveryStatus(message) === 'draft' && (
+                      <p className={styles.deliveryError} role="status">
+                        Attachments are still uploading or did not finish. This message will not be sent until they do.
+                      </p>
+                    )}
                   </div>
                   <div className={styles.messageActions}>
+                    {deliveryStatus(message) === 'failed' && onRetry && (
+                      <button
+                        type="button"
+                        className={styles.actionButton}
+                        onClick={() => onRetry(message.id)}
+                        title="Retry sending"
+                        aria-label="Retry sending"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                          <polyline points="1 4 1 10 7 10" />
+                          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                        </svg>
+                      </button>
+                    )}
                     {!message.sent && (
                       <button
                         type="button"

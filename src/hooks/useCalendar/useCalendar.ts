@@ -3,8 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { generateId } from '@/utils';
-import { sendMessage } from '@/lib/message';
-import { uploadFile } from '@/lib/message/attachment';
+import { attachScheduledFiles } from '@/lib/message/schedule';
 import { createTypedNotification } from '@/features/notifications/service';
 import type { ScheduleAttachmentMeta } from '@/lib/message/schedule';
 import type {
@@ -33,7 +32,7 @@ interface UseCalendarReturn {
   updateScheduledMessage: (id: string, updates: Partial<Pick<ScheduledMessage, 'content' | 'scheduled_at' | 'channel_id' | 'conversation_id'>>) => Promise<boolean>;
   resendScheduledMessage: (id: string) => Promise<boolean>;
   cancelScheduledMessage: (id: string) => Promise<boolean>;
-  sendDueScheduledMessages: () => Promise<void>;
+  retryScheduledMessage: (id: string) => Promise<boolean>;
   planner: CalendarEvent[];
   pendingReminders: CalendarReminder[];
   refetch: () => Promise<void>;
@@ -288,11 +287,14 @@ export function useCalendar(): UseCalendarReturn {
       if (!userId || !currentWorkspace?.id) return null;
       const id = generateId();
       const { files, attachments, ...msgData } = messageData;
+      const hasAttachments = (files?.length ?? 0) > 0 || (attachments?.length ?? 0) > 0;
+      // Drafts are not delivered until every attachment has been uploaded.
       const payload = {
         id,
         user_id: userId,
         ...msgData,
         sent: false,
+        status: hasAttachments ? 'draft' : 'pending',
         created_at: new Date().toISOString(),
       };
       const { data, error } = await supabase
@@ -301,40 +303,13 @@ export function useCalendar(): UseCalendarReturn {
         .select()
         .single();
       if (error || !data) return null;
-      const msg = data as unknown as ScheduledMessage;
+      let msg = data as unknown as ScheduledMessage;
 
-      const db = supabase as any;
-
-      // Upload file attachments if any
-      if (files && files.length > 0) {
-        for (const file of files) {
-          const fileUrl = await uploadFile(file, msg.id, (p) => onFileProgress?.(file, p));
-          if (fileUrl) {
-            await db.from('scheduled_message_attachments').insert({
-              scheduled_message_id: msg.id,
-              user_id: userId,
-              file_name: file.name,
-              file_size: file.size,
-              file_type: file.type,
-              file_url: fileUrl,
-            });
-          }
-        }
-      }
-
-      // Reuse already-uploaded attachment metadata (e.g. when rescheduling a
-      // sent message, so its images stay attached without re-uploading).
-      if (attachments && attachments.length > 0) {
-        for (const att of attachments) {
-          if (!att.file_url) continue;
-          await db.from('scheduled_message_attachments').insert({
-            scheduled_message_id: msg.id,
-            user_id: userId,
-            file_name: att.file_name || 'file',
-            file_size: Number(att.file_size) || 0,
-            file_type: att.file_type || '',
-            file_url: att.file_url,
-          });
+      if (hasAttachments) {
+        const uploaded = await attachScheduledFiles(msg.id, userId, files, attachments, onFileProgress);
+        if (uploaded) {
+          const { error: queueError } = await supabase.rpc('queue_scheduled_message' as never, { p_id: msg.id } as never);
+          if (!queueError) msg = { ...msg, status: 'pending' };
         }
       }
 
@@ -357,46 +332,37 @@ export function useCalendar(): UseCalendarReturn {
     return true;
   }, []);
 
+  // Resending queues a copy due now and delivers it through the same
+  // transactional server path as scheduled delivery (no client-side send).
   const resendScheduledMessage = useCallback(async (id: string) => {
-    const msg = scheduledMessages.find((m) => m.id === id);
-    if (!msg) return false;
-    let targetChannelId = msg.channel_id;
-    if (!targetChannelId && msg.conversation_id) {
-      const { data: conv } = await supabase
-        .from('direct_conversations' as never)
-        .select('channel_id')
-        .eq('id', msg.conversation_id)
-        .single();
-      targetChannelId = (conv as { channel_id: string } | null)?.channel_id ?? null;
-    }
-    if (!targetChannelId) return false;
-    const sent = await sendMessage(targetChannelId, msg.user_id, msg.content);
-    if (!sent) return false;
-    const newScheduledAt = new Date(Date.now() + 60000).toISOString();
-    await supabase
+    const { data, error } = await supabase.rpc('resend_scheduled_message' as never, { p_id: id } as never);
+    if (error || !data) return false;
+    const { data: copy } = await supabase
       .from('scheduled_messages' as never)
-      .update({ sent: true } as never)
-      .eq('id', id);
-    const { data: newData } = await supabase
-      .from('scheduled_messages' as never)
-      .insert({
-        user_id: msg.user_id,
-        channel_id: msg.channel_id,
-        conversation_id: msg.conversation_id,
-        content: msg.content,
-        scheduled_at: newScheduledAt,
-        sent: false,
-      } as never)
-      .select()
-      .single();
-    if (newData) {
+      .select('*')
+      .eq('id', data as unknown as string)
+      .maybeSingle();
+    if (copy) {
       setScheduledMessages((prev) =>
-        prev.map((m) => (m.id === id ? { ...m, sent: true } : m)).concat(newData as unknown as ScheduledMessage)
-          .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+        [...prev, copy as unknown as ScheduledMessage].sort(
+          (a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime(),
+        ),
       );
     }
     return true;
-  }, [scheduledMessages]);
+  }, []);
+
+  // A failed message is re-queued by setting it back to pending (the server
+  // resets its attempts); delivery itself only happens server-side.
+  const retryScheduledMessage = useCallback(async (id: string) => {
+    const { error } = await supabase
+      .from('scheduled_messages' as never)
+      .update({ status: 'pending' } as never)
+      .eq('id', id);
+    if (error) return false;
+    setScheduledMessages((prev) => prev.map((m) => (m.id === id ? { ...m, status: 'pending', last_error: null } : m)));
+    return true;
+  }, []);
 
   const cancelScheduledMessage = useCallback(async (id: string) => {
     const { error } = await supabase.from('scheduled_messages' as never).delete().eq('id', id);
@@ -404,20 +370,6 @@ export function useCalendar(): UseCalendarReturn {
     setScheduledMessages((prev) => prev.filter((m) => m.id !== id));
     return true;
   }, []);
-
-  const sendDueScheduledMessages = useCallback(async () => {
-    const now = new Date().toISOString();
-    const due = scheduledMessages.filter((m) => !m.sent && m.scheduled_at <= now);
-    for (const msg of due) {
-      if (msg.channel_id) {
-        await sendMessage(msg.channel_id, msg.user_id, msg.content);
-      }
-      await supabase.from('scheduled_messages' as never).update({ sent: true } as never).eq('id', msg.id);
-    }
-    if (due.length > 0) {
-      setScheduledMessages((prev) => prev.map((m) => due.find((d) => d.id === m.id) ? { ...m, sent: true } : m));
-    }
-  }, [scheduledMessages]);
 
   const planner = events.filter((e) => {
     const now = new Date();
@@ -445,7 +397,7 @@ export function useCalendar(): UseCalendarReturn {
     updateScheduledMessage,
     resendScheduledMessage,
     cancelScheduledMessage,
-    sendDueScheduledMessages,
+    retryScheduledMessage,
     planner,
     pendingReminders,
     refetch,

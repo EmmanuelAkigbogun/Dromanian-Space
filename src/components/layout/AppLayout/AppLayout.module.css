@@ -30,11 +30,11 @@
 /* Desktop: Expanded */
 @media (min-width: 1024px) {
   .appLayoutSidebarExpanded {
-    width: var(--sidebar-width-expanded);
+    width: 320px;
   }
 
   .appLayoutSidebarCollapsed {
-    width: var(--sidebar-width-collapsed);
+    width: 64px;
   }
 }
 
@@ -42,7 +42,7 @@
 @media (min-width: 640px) and (max-width: 1023px) {
   .appLayoutSidebarExpanded,
   .appLayoutSidebarCollapsed {
-    width: var(--sidebar-width-tablet);
+    width: 64px;
   }
 }
 

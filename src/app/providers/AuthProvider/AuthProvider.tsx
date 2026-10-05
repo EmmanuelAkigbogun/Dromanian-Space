@@ -7,6 +7,8 @@ import {
   useMemo,
   type ReactNode,
 } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { clearSignedUrlCache } from '@/lib/message/attachment';
 import { supabase } from '@/lib/supabase';
 import type { AuthState, AuthError, SignUpCredentials, SignInCredentials, AuthResponse } from '@/types/auth';
 
@@ -30,6 +32,7 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
+  const queryClient = useQueryClient();
   const [state, setState] = useState<AuthState>({
     status: 'loading',
     user: null,
@@ -71,6 +74,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
+      if (event === 'SIGNED_OUT') { queryClient.clear(); clearSignedUrlCache(); localStorage.removeItem('dark-space-thread'); void supabase.removeAllChannels(); }
 
       setState((prev) => ({
         ...prev,
@@ -84,7 +88,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [false]);
+  }, [queryClient]);
   // temporarily block auth
   // setTimeout(() => {
   //   setState({

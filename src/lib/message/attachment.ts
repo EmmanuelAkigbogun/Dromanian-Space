@@ -179,6 +179,7 @@ export function isLocalUrl(url: string): boolean {
 
 const SIGNED_URL_TTL_MS = 50 * 60 * 1000;
 const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
+export function clearSignedUrlCache(): void { signedUrlCache.clear(); }
 
 function cacheSignedUrl(fileUrl: string, signedUrl: string): void {
   signedUrlCache.set(fileUrl, { url: signedUrl, expiresAt: Date.now() + SIGNED_URL_TTL_MS });

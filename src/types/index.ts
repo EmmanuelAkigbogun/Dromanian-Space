@@ -85,6 +85,9 @@ export type ChannelRole = 'owner' | 'admin' | 'member';
 export type LinkDisplayMode = 'text' | 'embed' | 'grid';
 
 export interface Message {
+  workspace_id?: string | null;
+  agent_id?: string | null;
+  drive_resource_count?: number;
   id: UUID;
   channel_id: UUID;
   user_id: UUID;
@@ -311,6 +314,13 @@ export interface CalendarReminder {
   created_at: string;
 }
 
+/**
+ * Delivery lifecycle (server-managed, see 20261004000200_scheduled_delivery.sql):
+ * draft (attachments still uploading) -> pending -> sent | failed. `sent` is
+ * kept in sync for older code paths.
+ */
+export type ScheduledMessageStatus = 'draft' | 'pending' | 'sent' | 'failed' | 'cancelled';
+
 export interface ScheduledMessage {
   id: UUID;
   user_id: UUID;
@@ -319,6 +329,11 @@ export interface ScheduledMessage {
   content: string;
   scheduled_at: string;
   sent: boolean;
+  status?: ScheduledMessageStatus;
+  attempts?: number;
+  last_error?: string | null;
+  sent_message_id?: UUID | null;
+  sent_at?: string | null;
   parent_id?: UUID | null;
   link_mode?: string | null;
   created_at: string;

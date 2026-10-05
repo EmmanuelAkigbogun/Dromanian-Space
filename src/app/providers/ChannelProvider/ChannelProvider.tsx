@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import {
   getWorkspaceChannels,
   getChannelBySlug,
+  getChannelById,
   getChannelMemberCounts,
   createChannel as createChannelService,
   updateChannel as updateChannelService,
@@ -253,7 +254,8 @@ export function ChannelProvider({ children }: ChannelProviderProps) {
 
       let channel: Channel | null;
       try {
-        channel = await getChannelBySlug(currentWorkspace.id, slug);
+        channel = /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(slug) ? await getChannelById(slug) : await getChannelBySlug(currentWorkspace.id, slug);
+        if (channel?.workspace_id !== currentWorkspace.id) channel = null;
       } catch {
         setError('Failed to open channel. Please try again.');
         return;
@@ -266,7 +268,7 @@ export function ChannelProvider({ children }: ChannelProviderProps) {
 
       setChannels((prev) => prev.map((c) => (c.id === channel.id ? channel : c)));
       setCurrentChannel(channel);
-      storeSlug(slug);
+      storeSlug(channel.slug);
     },
     [currentWorkspace],
   );

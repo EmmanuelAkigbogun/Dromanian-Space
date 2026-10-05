@@ -1,3 +1,5 @@
+import { DriveShare } from '@/features/platform/DriveShare';
+import { api } from '@/features/platform/client';
 import { useState, useRef, useCallback, useEffect, type FormEvent, type KeyboardEvent, type DragEvent } from 'react';
 import { useMessageContextSafe } from '@/app/providers/MessageProvider';
 import { useChannelContextSafe } from '@/app/providers/ChannelProvider';
@@ -130,8 +132,8 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
   }, [activeEdit]);
 
   useEffect(() => {
-    if (!channelId || parentId) return;
-    const draft = getDraft(channelId);
+    if (!channelId) return;
+    const draft = getDraft(`${userId}:${channelId}:${parentId ?? 'root'}`);
     if (draft) {
       setContent(draft);
       requestAnimationFrame(() => {
@@ -140,7 +142,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
     } else {
       setContent('');
     }
-  }, [channelId, parentId]);
+  }, [userId, channelId, parentId]);
 
   useEffect(() => {
     if (!channelId) {
@@ -187,7 +189,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
     handleResize(e.target);
 
     if (channelId && !parentId && !activeEdit) {
-      saveDraft(channelId, value);
+      saveDraft(`${userId}:${channelId}:${parentId ?? 'root'}`, value);
     }
 
     const lastAtIndex = value.lastIndexOf('@');
@@ -419,9 +421,10 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
             uploadFiles(message.id),
             useGrid ? createLinkEmbeds(message.id) : Promise.resolve(true),
           ]);
+          if (sendContent.includes('@')) void api('agents/mention', { message_id: message.id }).catch(() => setSendError('Message sent. The agent could not start; check AI configuration.'));
           setContent('');
-          if (channelId && !parentId) {
-            saveDraft(channelId, '');
+          if (channelId) {
+            saveDraft(`${userId}:${channelId}:${parentId ?? 'root'}`, '');
           }
           if (textareaRef.current) {
             textareaRef.current.style.height = 'auto';
@@ -521,8 +524,8 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
       setPendingLinkEmbeds([]);
       setIsScheduleOpen(false);
       setScheduleInfo(`Scheduled for ${new Date(scheduled.scheduled_at).toLocaleString()}`);
-      if (channelId && !parentId) {
-        saveDraft(channelId, '');
+      if (channelId) {
+        saveDraft(`${userId}:${channelId}:${parentId ?? 'root'}`, '');
       }
     } else {
       setSendError('Failed to schedule message. Tap to retry.');
@@ -702,6 +705,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
         )}
       </div>
 
+      {channelId && !activeEdit && <DriveShare channelId={channelId} parentId={parentId} />}
       <form className={styles.form} onSubmit={handleSubmit}>
         <div className={styles.inputWrapper}>
           <input

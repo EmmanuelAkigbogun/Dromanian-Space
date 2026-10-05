@@ -208,6 +208,7 @@ export function MessageProvider({ children }: MessageProviderProps) {
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           setConnectionStatus('connected');
+          void fetchMessages();
         } else if (status === 'CHANNEL_ERROR') {
           setConnectionStatus('disconnected');
         } else if (status === 'TIMED_OUT') {
@@ -224,6 +225,12 @@ export function MessageProvider({ children }: MessageProviderProps) {
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    const refresh = (event: Event) => { if ((event as CustomEvent).detail.channelId === channelId) void fetchMessages(); };
+    window.addEventListener('drive-message-sent', refresh);
+    return () => window.removeEventListener('drive-message-sent', refresh);
+  }, [channelId, fetchMessages]);
 
   // Reconnect logic for disconnected/reconnecting states
   useEffect(() => {

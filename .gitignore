@@ -29,3 +29,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local Supabase emulation state (tools/local-supabase)
+.local/
+
+# Supabase CLI cache
+supabase/.temp/

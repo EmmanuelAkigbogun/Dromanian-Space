@@ -1,0 +1,10 @@
+import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useWorkspaceContext } from '@/app/providers/WorkspaceProvider';
+import { useThread } from '@/app/providers/ThreadProvider';
+import { useAuth } from '@/hooks/useAuth';
+import { platform,result,errorText } from '@/features/platform/client';
+import type { Message } from '@/types';
+import s from '@/features/platform/Platform.module.css';
+export default function ThreadsPage(){const {currentWorkspace}=useWorkspaceContext();const {userId}=useAuth();const {openThread}=useThread();const navigate=useNavigate();const [error,setError]=useState('');const data=useQuery({queryKey:['platform',currentWorkspace!.id,userId,'threads'],queryFn:()=>result(platform.rpc('get_followed_threads',{p_workspace_id:currentWorkspace!.id})),staleTime:5000});return <div className={s.page}><header className={s.header}><div><div className={s.eyebrow}>Conversations</div><h1>Followed threads</h1><p className={s.muted}>Stay with the discussions you participate in.</p></div></header>{(error||data.error)&&<p role="alert" className={s.error}>{error||errorText(data.error)}</p>}<div className={s.stack}>{data.data?.map(t=><button className={`${s.card} ${s.link}`} key={t.root_message_id} onClick={()=>void(async()=>{try{const [message,channel,dm]=await Promise.all([result(platform.from('messages').select('*').eq('id',t.root_message_id).single()),result(platform.from('channels').select('slug').eq('id',t.channel_id).single()),result(platform.from('direct_conversations').select('id').eq('channel_id',t.channel_id).maybeSingle())]);navigate(dm?`/dm/${dm.id}`:`/channels/${channel.slug}`);openThread(message as unknown as Message);await result(platform.rpc('mark_thread_read',{p_root_message_id:t.root_message_id}));await data.refetch();}catch(e){setError(errorText(e));}})()}><p>{t.root_content}</p><span className={s.pill}>{t.unread_count} unread · {t.reply_count} replies</span></button>)}</div>{!data.isPending&&!data.data?.length&&<div className={s.empty}>Reply to a thread to start following it.</div>}</div>;}

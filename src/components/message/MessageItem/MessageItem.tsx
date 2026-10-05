@@ -1,3 +1,4 @@
+import { MessageResources } from '@/features/platform/DriveShare';
 import { useState, useEffect, useCallback, memo } from 'react';
 import { useMessageSafe } from '@/hooks/useMessage';
 import { useEditSafe } from '@/app/providers/EditProvider';
@@ -65,7 +66,7 @@ export const MessageItem = memo(function MessageItem({ message, isOwn, profile, 
 
   const isDeleted = !!message.deleted_at;
   const isEdited = !!message.edited_at;
-  const displayName = getDisplayName(profile, message.user_id);
+  const displayName = message.agent_id ? 'AI assistant' : getDisplayName(profile, message.user_id);
   const replyCount = threadCountsCtx?.replyCounts.get(message.id) ?? 0;
 
   const canDelete = isOwn || hasPermission(userRole as 'owner' | 'admin' | 'member' | null, 'message:delete_any');
@@ -304,6 +305,7 @@ export const MessageItem = memo(function MessageItem({ message, isOwn, profile, 
                 );
               })()}
 
+              {!!message.drive_resource_count && <MessageResources messageId={message.id} workspaceId={message.workspace_id ?? null} />}
               {attachments.length > 0 && (
                   <div className={`${styles.attachments} ${attachments.length === 1 ? styles.attachmentsSingle : ''}`}>
                     <AttachmentGrid

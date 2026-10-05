@@ -7,6 +7,8 @@ import {
   useMemo,
   type ReactNode,
 } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { clearSignedUrlCache } from '@/lib/message/attachment';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/supabase';
 import {
@@ -70,6 +72,7 @@ interface WorkspaceProviderProps {
 }
 
 export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
+  const queryClient = useQueryClient();
   const { userId, isAuthenticated } = useAuth();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [currentWorkspace, setCurrentWorkspace] = useState<Workspace | null>(null);
@@ -184,6 +187,11 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
       return;
     }
     setWorkspaces((prev) => prev.map((w) => (w.id === workspace.id ? workspace : w)));
+    await queryClient.cancelQueries();
+    queryClient.clear();
+    clearSignedUrlCache();
+    localStorage.removeItem('dark-space-thread');
+    setCurrentRole(null);
     setCurrentWorkspace(workspace);
     storeSlug(slug);
 
@@ -192,7 +200,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
       const membership = members.find((m) => m.user_id === userId);
       setCurrentRole(membership ? (membership.role as WorkspaceRole) : null);
     }
-  }, [userId]);
+  }, [userId, queryClient]);
 
   const createWorkspace = useCallback(
     async (name: string, slug: string, description?: string): Promise<Workspace | null> => {

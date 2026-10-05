@@ -478,3 +478,10 @@
     min-width: 100%;
   }
 }
+
+.deliveryError {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+  color: var(--color-error);
+}

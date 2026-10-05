@@ -22,6 +22,7 @@ export function CalendarPage() {
     cancelScheduledMessage,
     updateScheduledMessage,
     resendScheduledMessage,
+    retryScheduledMessage,
     scheduleMessage,
     refetch,
     isLoading,
@@ -89,6 +90,7 @@ export function CalendarPage() {
             onCancel={cancelScheduledMessage}
             onSchedule={scheduleMessage as any}
             onResend={resendScheduledMessage}
+            onRetry={retryScheduledMessage}
             onEditSave={updateScheduledMessage}
           />
         </div>

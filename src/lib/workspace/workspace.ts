@@ -127,12 +127,19 @@ export async function updateMemberRole(
   userId: string,
   role: WorkspaceRole,
 ): Promise<WorkspaceMember | null> {
+  // Roles change only through change_member_role, which checks the caller's
+  // authority and records the change in the audit log.
+  const { data: sessionData } = await supabase.auth.getSession();
+  const callerId = sessionData.session?.user.id;
+  if (!callerId) return null;
+  const result = await validateRoleChange(workspaceId, userId, callerId, role);
+  if (!result.allowed) return null;
+
   const { data, error } = await supabase
     .from('workspace_members')
-    .update({ role })
+    .select()
     .eq('workspace_id', workspaceId)
     .eq('user_id', userId)
-    .select()
     .single();
 
   if (error || !data) return null;

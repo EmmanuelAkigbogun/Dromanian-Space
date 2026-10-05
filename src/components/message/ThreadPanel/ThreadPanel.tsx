@@ -1,3 +1,6 @@
+import { Link } from 'react-router-dom';
+import { platform } from '@/features/platform/client';
+import platformStyles from '@/features/platform/Platform.module.css';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useThread, useThreadCounts } from '@/app/providers/ThreadProvider';
@@ -15,6 +18,8 @@ export function ThreadPanel() {
   const { activeThread, openThread } = useThread();
   const { replyCounts, setReplyCount } = useThreadCounts();
   const { userId } = useAuth();
+  const [following, setFollowing] = useState(true);
+  const [followError, setFollowError] = useState('');
   const [replies, setReplies] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [parentMessage, setParentMessage] = useState<Message | null>(null);
@@ -47,6 +52,12 @@ export function ThreadPanel() {
       setIsLoading(false);
     });
   }, [activeThread]);
+
+  useEffect(() => {
+    const refresh = (event: Event) => { if ((event as CustomEvent).detail.parentId === activeThread?.id) fetchReplies(); };
+    window.addEventListener('drive-message-sent', refresh);
+    return () => window.removeEventListener('drive-message-sent', refresh);
+  }, [activeThread?.id, fetchReplies]);
 
   const applyReplyInsert = useCallback((reply: Message) => {
     setReplies((prev) => {
@@ -175,6 +186,7 @@ export function ThreadPanel() {
   return (
     <EditProvider>
     <div className={styles.threadPanel}>
+      <div className={platformStyles.actions}><Link className={platformStyles.button} to={`/agents?channel=${activeThread.channel_id}&thread=${activeThread.id}`}>Summarize thread</Link><button className={platformStyles.button} onClick={() => { void platform.rpc('set_thread_follow', {p_root_message_id:activeThread.id,p_following:!following}).then(({error}) => {if(error)setFollowError(error.message);else setFollowing(!following);}); }}>{following?'Unfollow':'Follow'}</button></div>{followError&&<p role="alert">{followError}</p>}
       {isNestedThread && parentMessage && (
         <div className={styles.backHeader}>
           <button type="button" className={styles.backButton} onClick={handleBackToParent}>

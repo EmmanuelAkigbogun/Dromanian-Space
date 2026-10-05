@@ -1,68 +1,47 @@
-﻿# Dromanian-Space
+# Dromanian Space
 
-Communication-first collaboration platform.
+A React/TypeScript workspace with messaging, tasks, projects, Drive documents and files, CRM, and permission-aware AI agents. See [implementation status](docs/IMPLEMENTATION_STATUS.md) for completed work and remaining scope.
 
-## Setup
+## Local preview
 
-```bash
-npm install
-cp .env.example .env.local
+Requires Node 24, PostgreSQL 17 and PostgREST. The local adapter defaults to Homebrew paths on macOS; set `LOCAL_PG_BIN` and `LOCAL_POSTGREST_BIN` for other installations.
+
+```sh
+npm ci
+npm run supabase:local -- start
+npm run dev:local
 ```
 
-Edit `.env.local` with your Supabase credentials.
+Open **http://127.0.0.1:5173**. The local Auth/Storage gateway runs on port 55321, PostgREST on 55320, PostgreSQL on 55432, and the API adapter on 5174. Data and generated local credentials are in `.local/` (git-ignored).
 
-## Development
+For a new installation, create a preview owner, teammate, two workspaces and a sample document:
 
-```bash
-npm run dev
+```sh
+node --import tsx scripts/seed-preview.ts
 ```
 
-Application runs at `http://localhost:3000`.
+The email and password are saved in `.local/preview.json`. Re-running the seed creates additional fixtures; it does not replace an existing account. Do not run `supabase:local reset` to restart the preview: it deletes the local database. Use `stop` / `start` instead.
 
-## Build
+AI requests need a server-side `ANTHROPIC_API_KEY` and a model available to that account. The app shows a setup state when the provider is absent. Set the key in the shell before starting `dev:local`; local database configuration is loaded automatically. Voyage embeddings are optional. Never place server keys in `VITE_` variables.
 
-```bash
+The emulator supports database authorization, password login and Storage for development. It does not implement Supabase Realtime, OAuth, email delivery, or production storage infrastructure.
+
+## Checks
+
+```sh
+npm test
 npm run build
-npm run preview
+npm run lint
+npm run types:platform
 ```
 
-## Environment Variables
+Tests and type generation require the local database. `npm run dev` starts only Vite; use `dev:local` for the API-backed preview.
 
-| Variable | Description |
-|----------|-------------|
-| `VITE_SUPABASE_URL` | Supabase project URL |
-| `VITE_SUPABASE_ANON_KEY` | Supabase anonymous key |
-| `VITE_APP_NAME` | Application name |
-| `VITE_APP_URL` | Application URL |
+## Deployment and architecture
 
-## Project Structure
+- [Database migrations](docs/DATABASE.md)
+- [Permissions](docs/PERMISSIONS.md)
+- [Testing and evidence](docs/TESTING.md)
+- [Deployment](docs/DEPLOYMENT.md)
 
-```
-src/
-  app/              # Application setup
-    routes/         # Route definitions
-    providers/      # Context providers
-    configuration/
-  features/         # Feature modules
-    authentication/
-    workspace/
-    messaging/
-    channels/
-    files/
-    notifications/
-  components/       # Shared components
-    ui/             # Base UI components
-    shared/         # Shared components
-    layout/         # Layout components
-  services/         # External services
-  hooks/            # Custom hooks
-  lib/              # Libraries
-  utils/            # Utilities
-  types/            # TypeScript types
-  styles/           # Global styles
-  assets/           # Static assets
-```
-
-## License
-
-MIT
+`src/` contains the browser app; `api/` contains Vercel web handlers; `server/` contains provider adapters, agent tools and background jobs. `supabase/migrations/` is the ordered schema history. Never replay `supabase/SQL/all/all.sql` on an existing project.

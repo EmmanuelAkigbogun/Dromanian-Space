@@ -17,12 +17,15 @@ const FILTER_TABS: Array<{ id: SearchFilter; label: string }> = [
   { id: 'messages', label: 'Messages' },
   { id: 'channels', label: 'Channels' },
   { id: 'users', label: 'Users' },
+  { id: 'files', label: 'Drive' },
+  { id: 'tasks', label: 'Tasks' },
+  { id: 'agents', label: 'Agents' },
 ];
 
 const GROUP_LABELS: Record<string, string> = {
   message: 'Messages',
   channel: 'Channels',
-  user: 'People',
+  user: 'People', file: 'Drive', task: 'Tasks', agent: 'Agents',
 };
 
 export function SearchModal({ open, onClose }: SearchModalProps) {
@@ -124,7 +127,7 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
             ref={inputRef}
             className={styles.searchInput}
             type="search"
-            placeholder="Search messages, channels, people..."
+            placeholder="Search this workspace…"
             value={query}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}

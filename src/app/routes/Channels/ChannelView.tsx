@@ -35,10 +35,10 @@ export function ChannelView() {
   const [showPinned, setShowPinned] = useState(false);
 
   useEffect(() => {
-    if (slug && currentChannel?.slug !== slug) {
+    if (slug && currentChannel?.slug !== slug && currentChannel?.id !== slug) {
       switchChannel(slug);
     }
-  }, [slug, currentChannel?.slug, switchChannel]);
+  }, [slug, currentChannel?.slug, currentChannel?.id, switchChannel]);
 
   if (isLoading) {
     return <ChannelLoading />;
@@ -110,6 +110,8 @@ export function ChannelView() {
             )}
           </div>
           <div className={styles.channelHeaderActions}>
+            <Button variant="secondary" onClick={() => navigate(`/agents?channel=${currentChannel.id}`)}>Ask AI</Button>
+            <Button variant="secondary" onClick={() => navigate(`/drive?view=channel&channel=${currentChannel.id}`)}>Files</Button>
             <CallButton
               channelId={currentChannel.id}
               callType="channel"
