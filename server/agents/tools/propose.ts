@@ -10,10 +10,10 @@ interface ProposalResult {
   sources?: Array<{ kind: string; label: string | null }>;
 }
 
-async function propose(
+export async function proposeAction(
   ctx: RunContext,
   toolUseId: string,
-  actionType: 'create_task' | 'save_document' | 'post_message',
+  actionType: 'create_task' | 'save_document' | 'post_message' | 'create_event',
   args: Record<string, unknown>,
   summary: string,
 ): Promise<ToolOutput> {
@@ -123,7 +123,7 @@ export const proposeTask = defineTool({
       (assigneeNames.length ? ` for ${assigneeNames.join(', ')}` : '') +
       (input.due_date ? `, due ${input.due_date}` : '') +
       (projectName ? ` in ${projectName}` : '');
-    return propose(ctx, call.toolUseId, 'create_task', args, summary);
+    return proposeAction(ctx, call.toolUseId, 'create_task', args, summary);
   },
 });
 
@@ -150,7 +150,7 @@ export const proposeDocument = defineTool({
       folderName = folder.name;
     }
     const summary = `Save document “${input.title}”${folderName ? ` in ${folderName}` : ' in My files'}`;
-    return propose(ctx, call.toolUseId, 'save_document', { title: input.title, body: input.body, folder_id: input.folder_id ?? null }, summary);
+    return proposeAction(ctx, call.toolUseId, 'save_document', { title: input.title, body: input.body, folder_id: input.folder_id ?? null }, summary);
   },
 });
 
@@ -170,7 +170,7 @@ export const proposeChannelMessage = defineTool({
       return { content: 'No conversation with that name among the ones the requester belongs to.', summary: { error: 'not_found' }, isError: true };
     }
     const summary = input.thread_root_id ? `Reply in a thread in ${channelLabel(channel)}` : `Post in ${channelLabel(channel)}`;
-    return propose(
+    return proposeAction(
       ctx,
       call.toolUseId,
       'post_message',

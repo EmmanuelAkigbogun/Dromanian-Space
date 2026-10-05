@@ -1,0 +1,21 @@
+.root { white-space: normal; font-size: 14px; line-height: 1.75; overflow-wrap: anywhere; }
+.root > :first-child { margin-top: 0; }
+.root > :last-child { margin-bottom: 0; }
+.root p { margin: 0 0 10px; }
+.root h1, .root h2, .root h3 { margin: 16px 0 8px; line-height: 1.35; }
+.root h1 { font-size: 18px; }
+.root h2 { font-size: 16px; }
+.root h3 { font-size: 14px; }
+.root ul, .root ol { margin: 0 0 10px; padding-left: 22px; }
+.root ul { list-style: disc; }
+.root ol { list-style: decimal; }
+.root li { margin: 2px 0; display: list-item; }
+.root code { font-family: var(--font-mono); font-size: 12px; padding: 1px 5px; border-radius: 4px; background: var(--color-surface-tertiary); }
+.root pre { margin: 0 0 10px; padding: 12px 14px; border-radius: 8px; background: var(--color-surface-tertiary); overflow-x: auto; }
+.root pre code { padding: 0; background: none; }
+.root a { color: var(--color-primary); }
+.root blockquote { margin: 0 0 10px; padding-left: 12px; border-left: 3px solid var(--color-border); color: var(--color-text-secondary); }
+.tableWrap { overflow-x: auto; margin: 0 0 10px; }
+.root table { border-collapse: collapse; font-size: 13px; }
+.root th, .root td { border: 1px solid var(--color-border); padding: 6px 10px; text-align: left; vertical-align: top; }
+.root th { background: var(--color-surface-secondary); font-weight: 600; }

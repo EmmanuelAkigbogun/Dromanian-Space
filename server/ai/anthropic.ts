@@ -168,6 +168,14 @@ class AnthropicSession implements ModelSession {
       input_schema: t.inputSchema as { type: 'object'; properties?: unknown; required?: string[] },
       eager_input_streaming: true,
     }));
+    if (input.webFetch && input.webFetch.allowedDomains.length > 0) {
+      this.tools.push({
+        type: 'web_fetch_20260209',
+        name: 'web_fetch',
+        allowed_domains: input.webFetch.allowedDomains,
+        max_uses: input.webFetch.maxUses,
+      });
+    }
     if (input.webSearch) {
       this.tools.push({ type: 'web_search_20260209', name: 'web_search', max_uses: input.webSearch.maxUses });
     }
@@ -198,6 +206,10 @@ class AnthropicSession implements ModelSession {
           const query = (block.input as { query?: unknown }).query;
           if (typeof query === 'string') cb.onWebSearch?.(query);
         }
+        if (block.type === 'server_tool_use' && block.name === 'web_fetch') {
+          const url = (block.input as { url?: unknown }).url;
+          if (typeof url === 'string') cb.onWebFetch?.(url);
+        }
       });
       message = await stream.finalMessage();
     } catch (err) {
@@ -219,6 +231,9 @@ class AnthropicSession implements ModelSession {
       }
       if (block.type === 'web_search_tool_result' && Array.isArray(block.content)) {
         for (const r of block.content) webSources.push({ url: r.url, title: r.title ?? null });
+      }
+      if (block.type === 'web_fetch_tool_result' && block.content.type === 'web_fetch_result') {
+        webSources.push({ url: block.content.url, title: block.content.content.title ?? null });
       }
     }
     const { usage, fallbackUsed } = usageOf(message.usage);

@@ -200,7 +200,9 @@ GRANT EXECUTE ON FUNCTION storage.foldername(text), storage.filename(text), stor
   TO anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
--- pg_cron stand-in (hosted Supabase provides the real extension)
+-- pg_cron stand-in (Supabase provides the real extension). Jobs are recorded
+-- but never executed here, so they are inactive: the worker runs maintenance
+-- locally (run_unscheduled_maintenance skips only active cron jobs).
 -- ---------------------------------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS cron;
 CREATE TABLE IF NOT EXISTS cron.job (
@@ -208,7 +210,7 @@ CREATE TABLE IF NOT EXISTS cron.job (
   jobname text UNIQUE,
   schedule text NOT NULL,
   command text NOT NULL,
-  active boolean NOT NULL DEFAULT true
+  active boolean NOT NULL DEFAULT false
 );
 
 CREATE OR REPLACE FUNCTION cron.schedule(job_name text, schedule text, command text)

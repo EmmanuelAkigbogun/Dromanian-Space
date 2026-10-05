@@ -1,0 +1,135 @@
+# Dromanian Space application on Coolify (Docker Compose build pack).
+#
+# Self-hosted Supabase is a separate, independently maintained resource
+# (deploy/supabase/). This stack is stateless: web (Nginx: SPA + /api proxy),
+# api (Node) and worker (jobs and agent runs). Redeploying it never touches
+# database or file data. Assign the app domain to the "web" service, port 8080.
+# See docs/SELF_HOSTING.md.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+x-hardening: &hardening
+  restart: unless-stopped
+  logging: *logging
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+x-server-env: &server-env
+  # Reach Supabase over the private network (gateway alias), never via Docker service names in the browser.
+  SUPABASE_URL: ${SUPABASE_URL:-http://supabase-gateway:8000}
+  SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?Supabase secret (service role) key}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  ANTHROPIC_REFUSAL_FALLBACK: ${ANTHROPIC_REFUSAL_FALLBACK:-on}
+  VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-voyage-3.5}
+  CRON_SECRET: ${CRON_SECRET:-}
+  AGENT_RUN_BUDGET_MS: ${AGENT_RUN_BUDGET_MS:-600000}
+  NODE_OPTIONS: --max-old-space-size=384
+
+services:
+  web:
+    <<: *hardening
+    build:
+      context: .
+      target: web
+      args:
+        # Browser-safe values only; they are compiled into the bundle at build time.
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?public HTTPS URL of the Supabase gateway}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?Supabase anon or publishable key}
+        VITE_APP_NAME: ${VITE_APP_NAME:-Dromanian Space}
+        VITE_APP_URL: ${VITE_APP_URL:-}
+    environment:
+      API_UPSTREAM: api:3000
+    expose:
+      - "8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  api:
+    <<: *hardening
+    build:
+      context: .
+      target: server
+    command: ["node", "--enable-source-maps", "dist-server/main.mjs"]
+    environment:
+      <<: *server-env
+      PORT: "3000"
+    expose:
+      - "3000"
+    networks:
+      - default
+      - supabase
+    read_only: true
+    tmpfs:
+      - /tmp
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 512M
+    healthcheck:
+      # Liveness. Readiness (worker heartbeat, queue lag) is at /api/ready.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  worker:
+    <<: *hardening
+    build:
+      context: .
+      target: server
+    command: ["node", "--enable-source-maps", "dist-server/worker-main.mjs"]
+    environment:
+      <<: *server-env
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+      NODE_OPTIONS: --max-old-space-size=768
+    networks:
+      - default
+      - supabase
+    read_only: true
+    tmpfs:
+      - /tmp
+    # Give in-flight jobs time to finish; anything unfinished resumes on the
+    # next worker after its lease expires (agent runs restart cleanly).
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+          memory: 1G
+    healthcheck:
+      # The loop touches this file each pass; job progress is reported to the
+      # database and checked by /api/ready.
+      test: ["CMD", "node", "-e", "const t=+require('fs').readFileSync('/tmp/worker-alive','utf8');process.exit(Date.now()-t<120000?0:1)"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+networks:
+  # Private network shared with the Supabase resource (created once on the
+  # server: docker network create dromanian-supabase).
+  supabase:
+    name: ${SUPABASE_NETWORK:-dromanian-supabase}
+    external: true

@@ -60,7 +60,7 @@ beforeAll(async () => {
   await addMember(wsA, bob);
   await addMember(wsA, carol);
   team = await createChannel(alice, wsA, { name: 'team', members: [bob] });
-  knowledgeAgent = (await admin<{ id: string }>(`SELECT id FROM workspace_agents WHERE workspace_id = $1 AND template_key = 'knowledge_assistant'`, [wsA]))[0].id;
+  knowledgeAgent = (await admin<{ id: string }>(`SELECT id FROM workspace_agents WHERE workspace_id = $1 AND template_key = 'support_specialist'`, [wsA]))[0].id;
   privateDoc = await uploadDoc(alice, wsA, 'Compensation.txt', 'Executive compensation bands are confidential: band A is 200k.');
   sharedDoc = await uploadDoc(alice, wsA, 'Travel policy.txt', 'Travel policy: economy class for flights under six hours. Hotel limit 180 per night.');
   await q(alice, `SELECT drive_share($1, 'channel', $2, 'viewer')`, [sharedDoc, team]);
@@ -69,12 +69,13 @@ beforeAll(async () => {
 });
 
 describe('agent catalog', () => {
-  it('seeds the eight specialists once and shows them only to members', async () => {
+  it('seeds the twelve specialists and the team coordinator once and shows them only to members', async () => {
     expect(await q<{ n: number }>(alice, 'SELECT ensure_workspace_agents($1) AS n', [wsA])).toEqual([{ n: 0 }]);
-    const dir = await q<{ template_key: string }>(bob, 'SELECT * FROM agent_directory($1)', [wsA]);
-    expect(dir.map((d) => d.template_key).sort()).toEqual([
-      'data_assistant', 'knowledge_assistant', 'meeting_thread_assistant', 'project_assistant',
-      'research_assistant', 'sales_assistant', 'workspace_assistant', 'writer']);
+    const dir = await q<{ template_key: string; kind: string }>(bob, 'SELECT * FROM agent_directory($1)', [wsA]);
+    expect(dir.filter((d) => d.kind === 'specialist').map((d) => d.template_key).sort()).toEqual([
+      'commerce_manager', 'copywriter', 'data_analyst', 'email_marketer', 'executive_assistant', 'growth_strategist',
+      'personal_coach', 'recruiter', 'sales_rep', 'seo_specialist', 'social_manager', 'support_specialist']);
+    expect(dir.filter((d) => d.kind === 'coordinator').map((d) => d.template_key)).toEqual(['team_coordinator']);
     expect(await q(mallory, 'SELECT * FROM agent_directory($1)', [wsA])).toHaveLength(0);
   });
 

@@ -1,11 +1,10 @@
-// POST /api/agents/run — start (or resume watching) an agent run and stream it
-// as server-sent events. The run is persisted before generation and keeps
-// going if the client disconnects; clients recover it from the database.
-import { waitUntil } from '@vercel/functions';
-import { executeRun } from '../../server/agents/engine.js';
+// POST /api/agents/run — persist a run, queue it for the worker, and follow it
+// as server-sent events. GET /api/agents/run?run_id=… reattaches to a run
+// after a disconnect. Generation happens in the worker, so a closed tab or an
+// API restart never stops or duplicates it.
 import { RunRequest, startRun } from '../../server/agents/start.js';
-import { errorResponse, readJson, sseResponse } from '../../server/http.js';
-import { log } from '../../server/log.js';
+import { enqueueRun, tailRun } from '../../server/agents/tail.js';
+import { errorResponse, HttpError, readJson, sseResponse } from '../../server/http.js';
 import { authenticate } from '../../server/supabase.js';
 
 export async function POST(request: Request): Promise<Response> {
@@ -13,20 +12,23 @@ export async function POST(request: Request): Promise<Response> {
     const user = await authenticate(request);
     const body = await readJson(request, RunRequest);
     const started = await startRun(user.id, body);
+    if (!started.reused || started.status === 'queued') await enqueueRun(started.run_id, body.workspace_id, user.id);
     return sseResponse((channel) => {
       channel.send('run', started);
-      if (started.reused && started.status !== 'queued') {
-        channel.send('done', { status: started.status });
-        channel.close();
-        return;
-      }
-      const work = executeRun(started.run_id, { events: { emit: channel.send } })
-        .catch((err) => {
-          log.error('run execution crashed', { run_id: started.run_id, error: err instanceof Error ? err : String(err) });
-          channel.send('done', { status: 'failed', error_code: 'internal' });
-        })
-        .finally(() => channel.close());
-      waitUntil(work);
+      void tailRun(started.run_id, user.id, channel);
+    });
+  } catch (err) {
+    return errorResponse(err);
+  }
+}
+
+export async function GET(request: Request): Promise<Response> {
+  try {
+    const user = await authenticate(request);
+    const runId = new URL(request.url).searchParams.get('run_id') ?? '';
+    if (!/^[0-9a-f-]{36}$/i.test(runId)) throw new HttpError(400, 'invalid_request', 'run_id is required.');
+    return sseResponse((channel) => {
+      void tailRun(runId, user.id, channel);
     });
   } catch (err) {
     return errorResponse(err);

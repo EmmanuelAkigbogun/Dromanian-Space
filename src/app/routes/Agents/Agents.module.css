@@ -1,0 +1,41 @@
+.hero { display: flex; gap: 18px; align-items: center; justify-content: space-between; flex-wrap: wrap; padding: 22px; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface-secondary); margin-bottom: 22px; }
+.hero h2 { margin: 0 0 6px; font-size: 18px; }
+.hero p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--color-text-secondary); max-width: 620px; }
+
+.avatar { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-weight: 700; font-size: 17px; color: #fff; flex-shrink: 0; }
+.cardTop { display: flex; align-items: center; gap: 12px; }
+.cardTop h2 { margin: 0; }
+.role { font-size: 12px; color: var(--color-text-secondary); }
+.handle { font-family: var(--font-mono); font-size: 12px; color: var(--color-text-secondary); }
+.cardActions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+
+.state { display: flex; align-items: flex-start; gap: 6px; font-size: 12px; line-height: 1.5; margin: 4px 0; }
+.dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+.ready { background: var(--color-success); }
+.limited { background: var(--color-warning); }
+.blocked { background: var(--color-error); }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; align-items: start; }
+.side { display: grid; gap: 16px; position: sticky; top: 0; }
+.side section { border: 1px solid var(--color-border); border-radius: 10px; padding: 14px 16px; background: var(--color-surface); }
+.side h3 { margin: 0 0 10px; font-size: 13px; }
+.side ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.side li { font-size: 12px; line-height: 1.5; }
+
+.delegation { margin: 10px 0 10px 28px; padding: 12px 16px; border-left: 3px solid var(--color-border); border-radius: 0 8px 8px 0; background: var(--color-surface-secondary); font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.author { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+.mini { width: 20px; height: 20px; border-radius: 6px; font-size: 11px; display: grid; place-items: center; color: #fff; font-weight: 700; }
+
+.team { display: grid; gap: 8px; margin: 12px 0; }
+.task { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 13px; }
+.task span:last-child { color: var(--color-text-secondary); font-size: 12px; white-space: nowrap; }
+
+.picker { display: grid; gap: 8px; }
+.picker label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.note { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+.linkButton { background: none; border: 0; padding: 0; color: var(--color-text-secondary); cursor: pointer; font-size: 12px; text-decoration: underline; }
+
+@media (max-width: 960px) {
+  .layout { grid-template-columns: 1fr; }
+  .side { position: static; }
+}

@@ -1,25 +1,29 @@
 # Deployment
 
-Deployment was not performed. Hosted Supabase credentials and a live Anthropic API key were unavailable. Local evidence is recorded in TESTING.md.
+The supported target is Docker Compose on your own server, managed with Coolify, with self-hosted Supabase. The full procedure (first deployment, verification, backups and restore, upgrades, diagnosis, rollback and recovery) is in [SELF_HOSTING.md](SELF_HOSTING.md). Vercel is not supported or required.
 
-## Configuration
+Nothing has been deployed by this implementation, and the Docker images have not been built (no server access; no Docker on the development machine).
 
-Use Node 24. Vercel builds the Vite app with `npm run build` and serves `dist`; `api/**/*.ts` are Node web handlers. `vercel.json` preserves API routes, rewrites app navigation to the SPA, allows 300-second functions and schedules the worker daily at 03:00 UTC.
+## Files
 
-Public build variables: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, optional `VITE_APP_NAME`/`VITE_APP_URL`.
+| File | Purpose |
+| --- | --- |
+| `Dockerfile` | `web` target (Nginx, built SPA) and `server` target (Node API and worker) with pinned base images |
+| `docker-compose.yml` | Application resource for Coolify: `web`, `api`, `worker` |
+| `deploy/nginx/` | Nginx template: SPA fallback, uncached entry point, immutable assets, `/api/` proxy with streaming |
+| `deploy/supabase/` | Overrides for the pinned Supabase release (data on `/srv/...` with a fail-closed mount guard, private network, no public database ports) and the Coolify proxy route |
+| `deploy/prepare-host.sh` | Read-only server inventory; `--apply` creates data directories, mount markers and the network |
+| `deploy/migrate.sh` | Applies `supabase/migrations` in order, compatible with the Supabase CLI's bookkeeping |
+| `deploy/backup/` | Encrypted backup (database, file bytes, configuration) and isolated restore check |
+| `.env.example` | Public and server-only variables (placeholders only) |
 
-Server variables: `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (or `SUPABASE_SERVICE_ROLE_KEY`), `ANTHROPIC_API_KEY`, `CRON_SECRET`. Optional: `VOYAGE_API_KEY`, `EMBEDDING_MODEL`, `ANTHROPIC_REFUSAL_FALLBACK`, `JOBS_BUDGET_MS`. See `.env.example`. Do not copy local emulator tokens to production.
+## Verified locally (2026-10-05)
 
-After following DATABASE.md on a staging database, configure Supabase Auth allowed URLs and verify the private Storage buckets/policies created by migrations. Configure a model accessible to the Anthropic account through workspace AI settings; the seeded model name has not been verified with a live provider here.
+- `npm run build` and `npm run build:server`; the bundled API and worker run on Node 24.
+- The Nginx configuration rendered from `deploy/nginx/default.conf.template` passed `nginx -t` (nginx 1.31.6, Homebrew) and served the built SPA: deep links return `index.html` with `no-cache`; `/assets/*` are immutable and gzip-compressed; missing assets return 404; unknown `/api/*` routes return the API's JSON 404; Nginx's request ID reaches the API.
+- An authenticated `POST /api/agents/run` through Nginx was queued by the API, executed by the separate worker and streamed back. Without a provider key it ended as `provider_not_configured`.
+- `/api/ready` reported the database, a fresh worker heartbeat and queue lag.
+- `deploy/migrate.sh` applied all migrations to a fresh database (through a stand-in for `docker exec`), recorded them, and a second run made no changes. All shell scripts pass `shellcheck`.
+- The compose, override and proxy YAML files parse; resource limits, log rotation, networks and port overrides resolve as intended.
 
-## Background processing
-
-`POST /api/jobs/run` accepts a member token and workspace ID; it nudges only that workspace's queue. `GET /api/jobs/run` requires `Authorization: Bearer <CRON_SECRET>` and performs maintenance plus a bounded queue drain. Configure that same secret in the deployment scheduler.
-
-The supplied daily cron is suitable for Hobby scheduling restrictions, but cannot provide timely retry processing at scale. For production latency requirements, use a supported frequent scheduler and monitor backlog/dead-letter jobs. An interactive nudge is best effort and is not a substitute for a recurring worker.
-
-## Release verification
-
-Verify authenticated upload → Storage → extraction → search → cited answer → reviewed action using two users with different access. Test workspace switches, member removal, expired URLs, channel mentions, duplicate approvals, scheduled delivery with browsers closed and two-browser Realtime. Exercise real provider streaming/cancellation and token usage. Check worker logs/backlog and confirm server secrets do not appear in browser assets.
-
-The local emulator does not validate these hosted-service properties. The production build still reports a large legacy main bundle; split additional legacy routes before setting strict performance targets.
+Not verified: image builds, Coolify, the pinned Supabase stack, backups and restores against real containers, live model calls, email, OAuth, Realtime through the proxy and two-user behavior on the server.

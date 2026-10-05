@@ -53,7 +53,6 @@ import { CallsPage } from '@/app/routes/Calls';
 import { HomeIcon, MessageIcon, UsersIcon, BellIcon, SettingsIcon, UserIcon, FolderIcon, MailIcon, TaskIcon, ProjectIcon, CalendarIcon, AutomationIcon, AiIcon, BookmarkIcon, PhoneIcon } from '@/components/shared/Icons';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useAuth } from '@/hooks/useAuth';
-import { useTabLeader } from '@/hooks/useTabLeader';
 import { supabase } from '@/lib/supabase';
 
 const CRMPage = lazy(() => import('@/app/routes/CRM/CRMPage'));
@@ -106,22 +105,10 @@ function AppLayoutWithThread() {
   useEffect(() => {
     if (!/^\/(channels|dm|threads)(\/|$)/.test(pathname)) closeThread();
   }, [pathname, closeThread]);
-  const { userId } = useAuth();
-  const isLeaderTab = useTabLeader();
   useKeyboardShortcuts();
 
-  // Scheduled messages are delivered by Postgres (pg_cron), even with every
-  // tab closed. On projects without pg_cron, the leader tab nudges the same
-  // transactional server function; it can never post a message twice.
-  useEffect(() => {
-    if (!userId || !isLeaderTab) return;
-    const nudge = () => {
-      void supabase.rpc('deliver_my_due_scheduled_messages' as never);
-    };
-    nudge();
-    const interval = setInterval(nudge, 60000);
-    return () => clearInterval(interval);
-  }, [userId, isLeaderTab]);
+  // Scheduled messages are delivered on the server only: by pg_cron, or by the
+  // worker where pg_cron has no active job (never both). Browsers do not send them.
 
   return (
     <>
@@ -154,6 +141,7 @@ function AppLayoutWithThread() {
               <Route path="/agents" element={<AgentsPage />} />
               <Route path="/agents/:agentId" element={<AgentsPage />} />
               <Route path="/agents/conversations/:conversationId" element={<AgentsPage />} />
+              <Route path="/agents/c/:conversationId" element={<AgentsPage />} />
               <Route path="/messages" element={<Messages />} />
               <Route path="/channels" element={<Channels />} />
               <Route path="/channels/:slug" element={<ChannelView />} />

@@ -14,7 +14,7 @@ First back up the database and inspect its schema against the frozen legacy base
 supabase migration repair 20261004000000 --status applied
 ```
 
-Review the pending migration list/diff on a staging copy before `supabase db push`. A partly provisioned schema must be reconciled first; marking a migration applied is not a repair for missing tables. Enable the Supabase `pg_cron` extension required by the legacy scheduled jobs. No hosted migrations were applied during this implementation.
+Review the pending migration list/diff on a staging copy before `supabase db push --db-url <connection string>` (self-hosted Supabase: `deploy/migrate.sh`, see `docs/SELF_HOSTING.md`). A partly provisioned schema must be reconciled first; marking a migration applied is not a repair for missing tables. Enable the Supabase `pg_cron` extension required by the legacy scheduled jobs. No hosted migrations were applied during this implementation.
 
 ## Migration groups
 
@@ -31,6 +31,8 @@ Review the pending migration list/diff on a staging copy before `supabase db pus
 | 00900 | Atomic Drive references in messages and dashboard aggregates |
 | 01000–01100 | CRM, activity, resource links and reviewed agent CRM actions |
 | 01200 | Explicit channel-share consent and authorized CRM task links |
+| 01300 | Twelve role agents and the Team Chat coordinator (previous built-ins archived), team delegation, durable run restarts, connectors, brand kit/site settings, personal notes, calendar events and workspace metrics |
+| 20261005000100 | Worker heartbeats, readiness summary and one authoritative scheduler per maintenance task |
 
 New tenant relationships use workspace-scoped composite keys. Migration backfill gives existing attachments access tied to their existing message audience. Drive ownership does not grant access after workspace membership is revoked.
 
@@ -38,4 +40,6 @@ New tenant relationships use workspace-scoped composite keys. Migration backfill
 
 The jobs table uses leases, retry backoff and dead-letter state. Interactive writes nudge the workspace queue; the cron endpoint performs maintenance and drains pending work. The worker claims one job at a time so sequential extraction cannot consume another job's lease. Document indexing is debounced; the interactive worker waits briefly for newly queued work to become due.
 
-Scheduled chat delivery uses the transactional database delivery function and pg_cron. A leader browser tab can nudge the same function when cron is unavailable. Without database cron, delivery while every browser is closed is not guaranteed.
+Scheduled chat delivery uses the transactional database delivery function and pg_cron. The worker also runs it every minute as part of maintenance, so delivery does not depend on an open browser even where pg_cron is unavailable.
+
+Agent runs are `agent.run` jobs. A run whose worker stops is reclaimed after its lease expires and restarted from its persisted input; it is marked interrupted only when no job will resume it.

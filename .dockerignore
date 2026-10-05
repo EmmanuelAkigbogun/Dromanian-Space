@@ -1,0 +1,11 @@
+.git
+node_modules
+dist
+dist-server
+.local
+.env
+.env.*
+!.env.example
+supabase/.temp
+*.log
+.DS_Store

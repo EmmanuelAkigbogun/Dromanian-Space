@@ -1,0 +1,98 @@
+# Overrides for the pinned upstream self-hosted Supabase release:
+#   supabase/supabase @ ff80bb14991e68667c04f74248b954e8babe6fde (docker/, 2026-09-30)
+#   images include supabase/postgres:17.6.1.136, supabase/gotrue:v2.196.0,
+#   postgrest/postgrest:v14.17, supabase/realtime:v2.134.10,
+#   supabase/storage-api:v1.74.0, envoyproxy/envoy:v1.39.1 (api-gw).
+# Place next to that release's docker-compose.yml. Service names match that
+# release; a Coolify Supabase template uses different names and must be
+# adapted, not assumed. Requires Docker Compose 2.24.4+ (for !reset/!override).
+
+services:
+  # Fails closed when the data disks are not mounted: stateful services do not
+  # start, and nothing is written to an empty mountpoint on the system disk.
+  mount-guard:
+    image: busybox:1.37.0
+    restart: "no"
+    command:
+      - sh
+      - -c
+      - |
+        for d in /check/app /check/cloud; do
+          if [ ! -f "$$d/.dromanian-space-mount" ]; then
+            echo "Required data mount is missing: $$d (marker file not found)"; exit 1
+          fi
+        done
+        echo "Data mounts present"
+    volumes:
+      - type: bind
+        source: /srv/app-data/dromanian-space
+        target: /check/app
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /srv/cloud-data/dromanian-space
+        target: /check/cloud
+        read_only: true
+        bind:
+          create_host_path: false
+
+  db:
+    depends_on:
+      mount-guard:
+        condition: service_completed_successfully
+    volumes:
+      - type: bind
+        source: /srv/app-data/dromanian-space/supabase/db/data
+        target: /var/lib/postgresql/data
+        bind:
+          create_host_path: false
+
+  storage:
+    depends_on:
+      mount-guard:
+        condition: service_completed_successfully
+    volumes:
+      - type: bind
+        source: /srv/cloud-data/dromanian-space/storage
+        target: /var/lib/storage
+        bind:
+          create_host_path: false
+
+  imgproxy:
+    depends_on:
+      mount-guard:
+        condition: service_completed_successfully
+    volumes:
+      - type: bind
+        source: /srv/cloud-data/dromanian-space/storage
+        target: /var/lib/storage
+        bind:
+          create_host_path: false
+
+  # Public HTTPS goes through Coolify's proxy (API paths only, see
+  # traefik-dynamic.yml). The host port is loopback-only, for administrators
+  # reaching Studio through an SSH tunnel or Tailscale. The app reaches the
+  # gateway privately as "supabase-gateway".
+  api-gw:
+    ports: !override
+      - "127.0.0.1:${API_GW_HTTP_PORT:-8000}:8000"
+    networks:
+      default:
+        aliases:
+          - envoy
+          - kong
+      dromanian-supabase:
+        aliases:
+          - supabase-gateway
+      coolify: {}
+
+  # Postgres stays internal: no pooler ports on the host.
+  supavisor:
+    ports: !reset []
+
+networks:
+  dromanian-supabase:
+    external: true
+  coolify:
+    external: true

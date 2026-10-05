@@ -53,6 +53,8 @@ export interface SessionInput {
   userMessage: string;
   tools: ToolSpec[];
   webSearch: { maxUses: number } | null;
+  /** Page fetches run by the provider, restricted to these domains (never by this server). */
+  webFetch: { allowedDomains: string[]; maxUses: number } | null;
   maxTokens: number;
 }
 
@@ -60,6 +62,7 @@ export interface TurnCallbacks {
   signal: AbortSignal;
   onText: (delta: string) => void;
   onWebSearch?: (query: string) => void;
+  onWebFetch?: (url: string) => void;
 }
 
 export interface ModelSession {

@@ -12,14 +12,16 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "dev:local": "node --import tsx --env-file=.local/supabase/env scripts/dev.ts",
-    "types:platform": "node --import tsx scripts/generate-platform-types.ts"
+    "types:platform": "node --import tsx scripts/generate-platform-types.ts",
+    "build:server": "esbuild server/main.ts server/worker-main.ts --bundle --platform=node --target=node24 --format=esm --packages=external --sourcemap --outdir=dist-server --out-extension:.js=.mjs",
+    "start:api": "node --enable-source-maps dist-server/main.mjs",
+    "start:worker": "node --enable-source-maps dist-server/worker-main.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
     "@supabase/supabase-js": "^2.110.5",
     "@tanstack/react-query": "^5.101.2",
     "@tanstack/react-virtual": "^3.14.6",
-    "@vercel/functions": "^3.9.11",
     "mammoth": "^1.13.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
@@ -33,6 +35,7 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "esbuild": "^0.28.2",
     "jose": "^6.2.12",
     "oxlint": "^1.71.0",
     "pg": "^8.23.1",
@@ -42,6 +45,6 @@
     "vitest": "^5.0.3"
   },
   "engines": {
-    "node": "24.x"
+    "node": ">=24"
   }
 }

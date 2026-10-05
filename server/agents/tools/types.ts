@@ -21,6 +21,10 @@ export interface RunContext {
   signal: AbortSignal;
   /** Per-run memo for lookups such as the requester's channels. */
   memo: Map<string, unknown>;
+  /** Workspace AI settings the tools depend on. */
+  settings: { brandKitFolderId: string | null; siteUrl: string | null };
+  /** Present only on coordinator runs (team chat); specialists cannot delegate. */
+  delegate?: (tasks: Array<{ agent: string; instruction: string }>, toolUseId: string) => Promise<ToolOutput>;
 }
 
 export interface ProposalInfo {

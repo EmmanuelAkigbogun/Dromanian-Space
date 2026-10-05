@@ -7,19 +7,22 @@
 import { env } from '../env.js';
 import { log } from '../log.js';
 import { rpc, serviceClient } from '../supabase.js';
+import { HttpError } from '../http.js';
 import { anthropicProvider } from '../ai/anthropic.js';
 import { addUsage, emptyUsage, ProviderError, type Effort, type ModelProvider, type TurnUsage } from '../ai/provider.js';
 import { CitationRegistry, resolveCitations, sourcesFooter } from './citations.js';
-import { TOOL_REGISTRY, toolSpecs } from './tools/index.js';
+import { PROVIDER_TOOLS, TOOL_REGISTRY, toolSpecs } from './tools/index.js';
 import { readConversation, memberChannels } from './tools/read.js';
 import type { AgentTool, RunContext, RunScope, SourceKind, ToolOutput } from './tools/types.js';
 
 const HEARTBEAT_MS = 5000;
-const CHECKPOINT_MS = 1500;
+// Viewers follow a run by reading its checkpoints, so keep them frequent.
+const CHECKPOINT_MS = 500;
 const MAX_TOKENS = 32000;
 const MAX_JSON_RETRIES = 2;
-/** Stop before the hosting platform's hard limit so partial output is kept. */
-const RUN_BUDGET_MS = Number(process.env.AGENT_RUN_BUDGET_MS ?? 270_000);
+/** Stop before the worker's own limit so partial output is kept. */
+const RUN_BUDGET_MS = Number(process.env.AGENT_RUN_BUDGET_MS ?? 600_000);
+const MAX_PARALLEL_SPECIALISTS = 2;
 
 export interface RunEvents {
   emit(event: string, data: unknown): void;
@@ -38,6 +41,8 @@ interface ClaimedRun {
   scope: RunScope;
   model: string;
   effort: Effort;
+  depth: number;
+  parent_run_id: string | null;
 }
 
 interface ClaimResult {
@@ -50,8 +55,8 @@ interface ClaimResult {
     source_scope: { mode: string; item_ids?: string[] };
     max_tool_steps: number;
   };
-  agent?: { id: string; name: string; handle: string; template_key: string | null };
-  settings?: { web_research_enabled: boolean };
+  agent?: { id: string; name: string; handle: string; template_key: string | null; kind: 'specialist' | 'coordinator' };
+  settings?: { web_research_enabled: boolean; brand_kit_folder_id: string | null; site_url: string | null };
 }
 
 export interface RunOutcome {
@@ -78,7 +83,7 @@ function errorMessage(err: unknown): { code: string; message: string } {
 
 export async function executeRun(
   runId: string,
-  opts: { worker?: string; events?: RunEvents; provider?: ModelProvider } = {},
+  opts: { worker?: string; events?: RunEvents; provider?: ModelProvider; budgetMs?: number } = {},
 ): Promise<RunOutcome> {
   const worker = opts.worker ?? env().workerId;
   const emit = (event: string, data: unknown) => {
@@ -143,6 +148,7 @@ export async function executeRun(
     allowedItemIds,
     citations: new CitationRegistry(),
     memo: new Map(),
+    settings: { brandKitFolderId: claim.settings.brand_kit_folder_id ?? null, siteUrl: claim.settings.site_url ?? null },
     signal: new AbortController().signal,
     async recordSource(kind: SourceKind, refId: string, o = {}) {
       const key = `${kind}:${refId}`;
@@ -204,14 +210,35 @@ export async function executeRun(
   if (run.destination?.type === 'channel') {
     contextLines.push('Your answer may be posted back into that conversation, so write it for everyone in it.');
   }
+  const canFetchSite = version.tools.includes('fetch_site_page') && Boolean(ctx.settings.siteUrl);
+  if (canFetchSite) contextLines.push(`The workspace site is ${ctx.settings.siteUrl} — you may fetch pages on that site only.`);
+  const isCoordinator = agent.kind === 'coordinator' && run.depth === 0;
+  if (isCoordinator) {
+    const { data: team } = await db
+      .from('workspace_agents')
+      .select('handle, name, description, template_key, status, archived_at')
+      .eq('workspace_id', run.workspace_id)
+      .eq('status', 'active')
+      .is('archived_at', null);
+    const specialists = (team ?? []).filter((a) => a.handle !== agent.handle);
+    contextLines.push(
+      'Specialists you can delegate to (handle — name: what they do):',
+      ...specialists.map((a) => `- ${a.handle} — ${a.name}: ${a.description}`),
+    );
+  }
+  if (run.depth > 0) contextLines.push('You are working on a task assigned by the team coordinator; answer the task directly.');
   const userMessage =
     `<context>\n${contextLines.join('\n')}\n</context>\n` +
     (snapshot ? `<conversation_snapshot>\n${snapshot}\n</conversation_snapshot>\n` : '') +
     `\n${inputMsg.data.content}`;
 
   // ---- Tools ----------------------------------------------------------------
-  const tools: AgentTool[] = version.tools.map((n) => TOOL_REGISTRY[n]).filter((t): t is AgentTool => Boolean(t));
+  const tools: AgentTool[] = version.tools
+    .filter((n) => !PROVIDER_TOOLS.includes(n) && (n !== 'delegate_to_specialists' || isCoordinator))
+    .map((n) => TOOL_REGISTRY[n])
+    .filter((t): t is AgentTool => Boolean(t));
   const webSearch = version.tools.includes('web_search') && claim.settings.web_research_enabled ? { maxUses: 5 } : null;
+  const webFetch = canFetchSite ? { allowedDomains: [new URL(ctx.settings.siteUrl!).hostname], maxUses: 8 } : null;
   const session = provider.startSession({
     model: run.model,
     effort: run.effort,
@@ -220,6 +247,7 @@ export async function executeRun(
     userMessage,
     tools: toolSpecs(tools),
     webSearch,
+    webFetch,
     maxTokens: MAX_TOKENS,
   });
 
@@ -239,7 +267,14 @@ export async function executeRun(
       /* transient; the next beat decides */
     }
   }, HEARTBEAT_MS);
-  const budget = setTimeout(() => abort('timeout'), RUN_BUDGET_MS);
+  const budgetMs = opts.budgetMs ?? RUN_BUDGET_MS;
+  const deadline = Date.now() + budgetMs;
+  const budget = setTimeout(() => abort('timeout'), budgetMs);
+
+  if (isCoordinator) {
+    ctx.delegate = (tasks) =>
+      delegate({ runId, workspaceId: run.workspace_id, worker, provider: opts.provider, ctx, tasks, deadline, emit, signal: controller.signal });
+  }
 
   let committed = '';
   let turnText = '';
@@ -326,6 +361,10 @@ export async function executeRun(
             checkpoint();
           },
           onWebSearch: (query) => emit('tool', { phase: 'started', id: `web:${query}`, name: 'web_search', label: `Searching the web for “${query}”` }),
+          onWebFetch: (url) => {
+            emit('tool', { phase: 'started', id: `fetch:${url}`, name: 'fetch_site_page', label: `Reading ${url}` });
+            void rpc('agent_add_event', { p_run_id: runId, p_type: 'tool_started', p_data: { name: 'fetch_site_page', label: `Reading ${url}` } }).catch(() => undefined);
+          },
         });
       } catch (err) {
         if (err instanceof ProviderError && err.code === 'invalid_tool_json' && jsonRetries < MAX_JSON_RETRIES) {
@@ -424,4 +463,134 @@ export async function executeRun(
     clearTimeout(budget);
     checkpointing = false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Team chat: the coordinator's delegate tool
+// ---------------------------------------------------------------------------
+interface DelegateArgs {
+  runId: string;
+  workspaceId: string;
+  worker: string;
+  provider?: ModelProvider;
+  ctx: RunContext;
+  tasks: Array<{ agent: string; instruction: string }>;
+  deadline: number;
+  emit: (event: string, data: unknown) => void;
+  signal: AbortSignal;
+}
+
+interface SpecialistResult {
+  agent: string;
+  handle: string;
+  status: string;
+  text: string;
+}
+
+const handleOf = (h: string) => h.trim().replace(/^@/, '').toLowerCase();
+
+/**
+ * Creates (or, after a restart, reuses) specialist runs and executes them
+ * under the same requester. Specialists' citations are renumbered into the
+ * coordinator's registry so the combined answer can cite them.
+ */
+async function delegate(a: DelegateArgs): Promise<ToolOutput> {
+  const db = serviceClient();
+  const handles = [...new Set(a.tasks.map((t) => handleOf(t.agent)))];
+  const { data: agents, error } = await db
+    .from('workspace_agents')
+    .select('id, handle, name')
+    .eq('workspace_id', a.workspaceId)
+    .in('handle', handles);
+  if (error) throw new Error(error.message);
+  const byHandle = new Map((agents ?? []).map((x) => [x.handle as string, x as { id: string; handle: string; name: string }]));
+  const missing = handles.filter((h) => !byHandle.has(h));
+  if (missing.length) {
+    return { content: `Unknown specialist handle(s): ${missing.join(', ')}. Use the handles listed in your context.`, summary: { error: 'unknown_agent' }, isError: true };
+  }
+
+  let created: Array<{ task_id: string; child_run_id: string; agent_id: string; reused: boolean }>;
+  try {
+    created = await rpc('agent_delegate', {
+      p_parent_run_id: a.runId,
+      p_tasks: a.tasks.map((t) => ({ agent_id: byHandle.get(handleOf(t.agent))!.id, instruction: t.instruction })),
+    });
+  } catch (err) {
+    if (err instanceof HttpError && err.status < 500) return { content: err.message, summary: { error: err.code }, isError: true };
+    throw err;
+  }
+  const info = new Map((agents ?? []).map((x) => [x.id as string, { name: x.name as string, handle: x.handle as string }]));
+  a.emit('team', { tasks: created.map((c) => ({ task_id: c.task_id, agent: info.get(c.agent_id)?.name, status: 'queued' })) });
+
+  const results: SpecialistResult[] = new Array(created.length);
+  let next = 0;
+  const lane = async () => {
+    while (next < created.length) {
+      const i = next++;
+      const c = created[i];
+      const who = info.get(c.agent_id) ?? { name: 'Specialist', handle: 'specialist' };
+      const { data: before } = await db.from('agent_runs').select('status').eq('id', c.child_run_id).single();
+      if (!a.signal.aborted && before && ['queued', 'running'].includes(before.status as string)) {
+        a.emit('team', { task_id: c.task_id, agent: who.name, status: 'running' });
+        await executeRun(c.child_run_id, {
+          worker: a.worker,
+          provider: a.provider,
+          budgetMs: Math.max(30_000, a.deadline - Date.now() - 15_000),
+        }).catch((err) => log.error('specialist run crashed', { run_id: c.child_run_id, error: err instanceof Error ? err : String(err) }));
+      }
+      await rpc('agent_settle_team_task', { p_task_id: c.task_id });
+      results[i] = await specialistResult(a.ctx, c.child_run_id, who);
+      a.emit('team', { task_id: c.task_id, agent: who.name, status: results[i].status });
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(MAX_PARALLEL_SPECIALISTS, created.length) }, lane));
+
+  const content = results
+    .map((r) => quoteSpecialist(r))
+    .join('\n\n');
+  return {
+    content: `${content}\n\nCombine these results for the requester. Attribute each part to its specialist and keep the [n] citations.`,
+    summary: { tasks: results.map((r) => ({ agent: r.agent, status: r.status })) },
+  };
+}
+
+function quoteSpecialist(r: SpecialistResult): string {
+  const body = r.text.replace(/<\/specialist>/gi, '');
+  return `<specialist name="${r.agent}" handle="${r.handle}" status="${r.status}">\n${body || '(no output)'}\n</specialist>`;
+}
+
+async function specialistResult(ctx: RunContext, childRunId: string, who: { name: string; handle: string }): Promise<SpecialistResult> {
+  const db = serviceClient();
+  const { data: run } = await db.from('agent_runs').select('status, output_message_id, error_message').eq('id', childRunId).single();
+  if (!run) return { agent: who.name, handle: who.handle, status: 'failed', text: '' };
+  const { data: msg } = await db.from('agent_messages').select('content').eq('id', run.output_message_id).single();
+  const status = run.status === 'awaiting_approval' ? 'completed' : (run.status as string);
+  let text = (msg?.content as string | undefined) ?? '';
+  if (status !== 'completed') {
+    text = `${text}\n\n[This specialist did not finish: ${run.error_message ?? status}.]`.trim();
+  }
+  // Renumber the specialist's citations into the coordinator's registry.
+  const { data: cites } = await db.from('agent_citations').select('ordinal, chunk_id, item_id').eq('run_id', childRunId);
+  const map = new Map<number, number>();
+  if (cites && cites.length) {
+    const { data: chunks } = await db.from('knowledge_chunks').select('id, content, location, item_id').in('id', cites.map((c) => c.chunk_id));
+    const { data: items } = await db.from('drive_items').select('id, name').in('id', cites.map((c) => c.item_id));
+    for (const c of cites) {
+      const chunk = chunks?.find((k) => k.id === c.chunk_id);
+      if (!chunk) continue;
+      const p = ctx.citations.add({
+        chunkId: c.chunk_id as string,
+        itemId: c.item_id as string,
+        itemName: (items?.find((i) => i.id === c.item_id)?.name as string | undefined) ?? 'Source',
+        location: (chunk.location as Record<string, unknown>) ?? {},
+        content: chunk.content as string,
+      });
+      map.set(c.ordinal as number, p.n);
+    }
+  }
+  text = text.replace(/\[(\d{1,3}(?:\s*,\s*\d{1,3})*)\](?!\()/g, (_m, group: string) => {
+    const ns = group.split(',').map((k) => map.get(Number(k.trim()))).filter((n): n is number => n !== undefined);
+    return ns.length ? `[${ns.join(', ')}]` : '';
+  });
+  return { agent: who.name, handle: who.handle, status, text };
 }

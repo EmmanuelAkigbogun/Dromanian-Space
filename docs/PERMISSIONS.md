@@ -10,7 +10,13 @@ The workspace is the tenant boundary. Browser data operations use the signed-in 
 | Documents | Save requires editor/owner access and the expected base revision. Concurrent changes produce a conflict, preserving the user's draft. |
 | Knowledge | Search/read recheck source access and current membership. Results retain source version/revision information. |
 | Agents | Private conversations persist by user and workspace. Channel invocations restrict source use to the destination audience; inaccessible history/citations are redacted on read. Tool execution rechecks access. |
-| Agent writes | Task, document, message and CRM writes produce review cards. Approval is tied to the stored arguments hash and rechecks permissions before a transactional, idempotent execution. |
+| Agent writes | Task, document, message, calendar-event and CRM writes produce review cards. Approval is tied to the stored arguments hash and rechecks permissions before a transactional, idempotent execution. The same action proposed again after a restart returns the existing card. |
+| Team chat | The coordinator can delegate one level deep, to at most 4 specialists per call and 8 per team run. Specialists run as the same requester with the same access; they cannot delegate, and delegation never adds permissions. Everything a specialist read becomes a source of the team run, so sharing the combined answer is checked against all of it. Cancelling the team run cancels its specialists. |
+| Personal notes | Notes kept with the personal coach are readable and deletable only by their owner (not by workspace admins) and are never used for retrieval or by other agents. |
+| Workspace metrics | Aggregates count only records the requester can see; counted tasks and conversations are recorded as run sources. Deal values are summed per currency. |
+| Calendar | Agents read only events the requester organizes or attends. Proposed events are visible to the whole workspace, so they are blocked when the run used sources some members cannot open. |
+| Site fetches | The SEO specialist's page reads are run by the model provider and restricted to the domain an admin configured; this server makes no outbound requests on the model's behalf. |
+| Connectors | Connection state is written only by the server; members can read it. Nothing is shown as connected without a real integration. |
 | CRM | Current workspace members can read records. Creator, assigned owner or workspace admin/owner can edit. Owners must be active members. Linked file/task/channel rows remain hidden if the viewer cannot access the target. |
 | Internal functions | Job and privileged agent functions are service-role-only; authenticated RPCs derive identity from `auth.uid()`. |
 

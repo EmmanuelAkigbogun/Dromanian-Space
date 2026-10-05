@@ -2,12 +2,25 @@ import { rpc } from '../supabase.js';
 import { log } from '../log.js';
 import { handleKnowledgeExtract } from '../knowledge/worker.js';
 import { handleDrivePurge, handleGcObject } from '../drive/gc.js';
+import { executeRun } from '../agents/engine.js';
 import { PermanentJobError, type JobHandler, type JobRow } from './types.js';
 
 const LEASE_SECONDS = 120;
 const HEARTBEAT_MS = 30_000;
 
+/** Agent runs: a restarted worker reclaims the run through its expired lease. */
+const handleAgentRun: JobHandler = async (job, ctx) => {
+  const runId = String(job.payload.run_id ?? '');
+  if (!runId) throw new PermanentJobError('Job has no run_id');
+  const outcome = await executeRun(runId, { worker: ctx.worker });
+  if (outcome.status === 'running_elsewhere' || outcome.status === 'lost') {
+    throw new Error(`Run ${runId} is held by another worker`);
+  }
+  return { status: outcome.status, error_code: outcome.error_code ?? null };
+};
+
 const handlers: Record<string, JobHandler> = {
+  'agent.run': handleAgentRun,
   'knowledge.extract': handleKnowledgeExtract,
   'drive.purge': handleDrivePurge,
   'drive.gc_object': handleGcObject,
@@ -97,21 +110,10 @@ export async function drainQueue(options: DrainOptions): Promise<DrainSummary> {
   return summary;
 }
 
-/** Scheduled maintenance; each step is independent and safe to repeat. */
+/**
+ * Database maintenance the worker is responsible for: each task runs here
+ * only when no active pg_cron job runs it (one authoritative scheduler per task).
+ */
 export async function runMaintenance(): Promise<Record<string, unknown>> {
-  const out: Record<string, unknown> = {};
-  const steps: Array<[string, string]> = [
-    ['recovered_runs', 'agent_recover_stale_runs'],
-    ['scheduled_messages', 'send_due_scheduled_messages'],
-    ['abandoned_uploads', 'drive_cleanup_abandoned_uploads'],
-    ['expired_drafts', 'expire_stale_scheduled_drafts'],
-  ];
-  for (const [key, fn] of steps) {
-    try {
-      out[key] = await rpc(fn);
-    } catch (err) {
-      out[key] = { error: err instanceof Error ? err.message : String(err) };
-    }
-  }
-  return out;
+  return rpc<Record<string, unknown>>('run_unscheduled_maintenance');
 }

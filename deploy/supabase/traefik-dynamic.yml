@@ -1,0 +1,20 @@
+# Coolify proxy (Traefik) route for the browser-reachable Supabase gateway.
+# Add under Servers -> Proxy -> Dynamic configuration. Verify the entry point
+# and certificate resolver names against your Coolify proxy configuration.
+# Only the APIs browsers need are public; Studio (the dashboard) is not routed.
+http:
+  routers:
+    dromanian-supabase:
+      rule: >-
+        Host(`supabase-space.digitalromanian.com`) && (PathPrefix(`/auth/v1`) || PathPrefix(`/rest/v1`)
+        || PathPrefix(`/realtime/v1`) || PathPrefix(`/storage/v1`) || PathPrefix(`/functions/v1`))
+      entryPoints:
+        - https
+      service: dromanian-supabase
+      tls:
+        certResolver: letsencrypt
+  services:
+    dromanian-supabase:
+      loadBalancer:
+        servers:
+          - url: http://supabase-envoy:8000

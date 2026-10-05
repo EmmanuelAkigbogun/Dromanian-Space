@@ -12,7 +12,7 @@ npm run supabase:local -- start
 npm run dev:local
 ```
 
-Open **http://127.0.0.1:5173**. The local Auth/Storage gateway runs on port 55321, PostgREST on 55320, PostgreSQL on 55432, and the API adapter on 5174. Data and generated local credentials are in `.local/` (git-ignored).
+Open **http://127.0.0.1:5173**. The local Auth/Storage gateway runs on port 55321, PostgREST on 55320, PostgreSQL on 55432, and the API adapter and background worker on 5174. Data and generated local credentials are in `.local/` (git-ignored).
 
 For a new installation, create a preview owner, teammate, two workspaces and a sample document:
 
@@ -42,6 +42,6 @@ Tests and type generation require the local database. `npm run dev` starts only 
 - [Database migrations](docs/DATABASE.md)
 - [Permissions](docs/PERMISSIONS.md)
 - [Testing and evidence](docs/TESTING.md)
-- [Deployment](docs/DEPLOYMENT.md)
+- [Deployment](docs/DEPLOYMENT.md) and [self-hosting with Coolify](docs/SELF_HOSTING.md)
 
-`src/` contains the browser app; `api/` contains Vercel web handlers; `server/` contains provider adapters, agent tools and background jobs. `supabase/migrations/` is the ordered schema history. Never replay `supabase/SQL/all/all.sql` on an existing project.
+`src/` contains the browser app; `api/` contains the web-standard HTTP handlers; `server/` contains the API server and worker entry points, provider adapters, agent tools and background jobs. Production runs as Docker containers (`Dockerfile`, `docker-compose.yml`, `deploy/`) on Coolify with self-hosted Supabase; see the self-hosting guide. `supabase/migrations/` is the ordered schema history. Never replay `supabase/SQL/all/all.sql` on an existing project.

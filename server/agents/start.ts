@@ -69,9 +69,9 @@ interface MentionTarget {
  * counts as a valid mention (author, recency, no agent authors, active and
  * visible agents); the idempotency key makes repeated deliveries harmless.
  */
-export async function startMentionRuns(actorId: string, messageId: string): Promise<Array<StartedRun & { handle: string }>> {
+export async function startMentionRuns(actorId: string, messageId: string): Promise<Array<StartedRun & { handle: string; workspace_id: string }>> {
   const targets = await rpc<MentionTarget[]>('agent_mention_targets', { p_actor: actorId, p_message_id: messageId });
-  const runs: Array<StartedRun & { handle: string }> = [];
+  const runs: Array<StartedRun & { handle: string; workspace_id: string }> = [];
   for (const t of targets) {
     const started = await rpc<StartedRun>('agent_start_run', {
       p_actor: actorId,
@@ -86,7 +86,7 @@ export async function startMentionRuns(actorId: string, messageId: string): Prom
       p_idempotency_key: `mention:${messageId}:${t.agent_id}`,
       p_estimated_tokens: 20000,
     });
-    runs.push({ ...started, handle: t.handle });
+    runs.push({ ...started, handle: t.handle, workspace_id: t.workspace_id });
   }
   return runs;
 }
