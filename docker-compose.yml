@@ -126,7 +126,10 @@ services:
     expose:
       - "3000"
     healthcheck:
-      test: ["CMD", "postgrest", "--ready"]
+      # The distroless image has no shell or HTTP client, and `--ready` refuses
+      # the all-interfaces server host. Parsing the live config still catches
+      # invalid database/JWT settings; the API readiness probe verifies queries.
+      test: ["CMD", "postgrest", "--dump-config"]
       interval: 5s
       timeout: 5s
       retries: 20
