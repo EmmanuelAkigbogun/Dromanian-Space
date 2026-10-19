@@ -1,0 +1,18 @@
+# Daily encrypted backup of Dromanian Space (see docs/DISASTER_RECOVERY.md).
+# Install:
+#   sudo cp deploy/backup/dromanian-backup.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now dromanian-backup.timer
+# Adjust REPO if the checkout lives elsewhere.
+[Unit]
+Description=Dromanian Space encrypted backup
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+Environment=REPO=/srv/app-data/dromanian-space/repo
+EnvironmentFile=/srv/app-data/dromanian-space/config/backup.env
+ExecStart=/usr/bin/env bash ${REPO}/deploy/backup/backup.sh
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=6h

@@ -6,6 +6,8 @@ function read(name: string): string | null {
   return value ? value : null;
 }
 
+export type ProviderName = 'anthropic' | 'openai';
+
 export interface ServerEnv {
   supabaseUrl: string | null;
   /** Secret (service role) key. Server jobs and API functions only. */
@@ -13,9 +15,20 @@ export interface ServerEnv {
   anthropicApiKey: string | null;
   /** Server-side refusal fallback (`fallbacks: "default"`); on unless set to "off". */
   refusalFallback: boolean;
+  openaiApiKey: string | null;
+  /** Optional OpenAI-compatible endpoint (for example a regional or proxy URL). */
+  openaiBaseUrl: string | null;
+  openaiOrganization: string | null;
+  openaiProject: string | null;
+  /** Provider and model new workspaces start with (existing workspaces keep their choice). */
+  defaultProvider: ProviderName;
+  defaultModels: Record<ProviderName, string>;
   voyageApiKey: string | null;
   embeddingModel: string;
   cronSecret: string | null;
+  /** Shared secret for signed n8n webhooks; the integration is off without it. */
+  n8nWebhookSecret: string | null;
+  n8nBaseUrl: string | null;
   workerId: string;
 }
 
@@ -23,15 +36,27 @@ let cached: ServerEnv | null = null;
 
 export function env(): ServerEnv {
   if (cached) return cached;
+  const provider = read('AI_DEFAULT_PROVIDER');
   cached = {
     supabaseUrl: read('SUPABASE_URL') ?? read('VITE_SUPABASE_URL'),
     supabaseSecretKey: read('SUPABASE_SECRET_KEY') ?? read('SUPABASE_SERVICE_ROLE_KEY'),
     anthropicApiKey: read('ANTHROPIC_API_KEY'),
     refusalFallback: read('ANTHROPIC_REFUSAL_FALLBACK') !== 'off',
+    openaiApiKey: read('OPENAI_API_KEY'),
+    openaiBaseUrl: read('OPENAI_BASE_URL'),
+    openaiOrganization: read('OPENAI_ORG_ID'),
+    openaiProject: read('OPENAI_PROJECT_ID'),
+    defaultProvider: provider === 'openai' ? 'openai' : 'anthropic',
+    defaultModels: {
+      anthropic: read('AI_DEFAULT_ANTHROPIC_MODEL') ?? 'claude-opus-5-5',
+      openai: read('AI_DEFAULT_OPENAI_MODEL') ?? 'gpt-5.4',
+    },
     voyageApiKey: read('VOYAGE_API_KEY'),
     embeddingModel: read('EMBEDDING_MODEL') ?? 'voyage-3.5',
     cronSecret: read('CRON_SECRET'),
-    workerId: `${read('VERCEL_REGION') ?? 'local'}:${process.pid}:${Math.random().toString(36).slice(2, 8)}`,
+    n8nWebhookSecret: read('N8N_WEBHOOK_SECRET'),
+    n8nBaseUrl: read('N8N_BASE_URL'),
+    workerId: `${read('HOSTNAME') ?? 'local'}:${process.pid}:${Math.random().toString(36).slice(2, 8)}`,
   };
   return cached;
 }

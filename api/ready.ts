@@ -2,6 +2,7 @@
 // database answers, at least one worker sent a heartbeat in the last two
 // minutes, and due jobs are not piling up. Counts only; no secrets or content.
 import { json } from '../server/http.js';
+import { providerStates } from '../server/ai/registry.js';
 import { rpc } from '../server/supabase.js';
 
 const MAX_QUEUE_LAG_SECONDS = Number(process.env.READY_MAX_QUEUE_LAG_SECONDS ?? 300);
@@ -29,5 +30,7 @@ export async function GET(): Promise<Response> {
     queue: (state.oldest_due_job_seconds ?? 0) <= MAX_QUEUE_LAG_SECONDS ? 'ok' : `oldest due job waiting ${state.oldest_due_job_seconds}s`,
   };
   const ready = Object.values(checks).every((c) => c === 'ok');
-  return json({ ready, checks, ...state }, ready ? 200 : 503);
+  // Informational: a missing AI key is a setup state, not an outage.
+  const ai = Object.fromEntries(providerStates().map((p) => [p.name, p.configured ? 'configured' : 'not configured']));
+  return json({ ready, checks, ai_providers: ai, ...state }, ready ? 200 : 503);
 }

@@ -5,6 +5,7 @@ import * as status from '../api/ai/status.js';
 import * as run from '../api/agents/run.js';
 import * as mention from '../api/agents/mention.js';
 import * as jobs from '../api/jobs/run.js';
+import * as n8n from '../api/integrations/n8n.js';
 
 export type Handler = (request: Request) => Promise<Response>;
 
@@ -15,4 +16,5 @@ export const ROUTES: Record<string, Partial<Record<'GET' | 'POST', Handler>>> = 
   '/api/agents/run': run,
   '/api/agents/mention': mention,
   '/api/jobs/run': jobs,
+  '/api/integrations/n8n/runs': n8n,
 };

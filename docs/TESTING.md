@@ -1,5 +1,39 @@
 # Testing
 
+## Test commands
+
+| Command | Needs | Covers |
+| --- | --- | --- |
+| `npm run test:unit` | nothing | OpenAI adapter (scripted Responses stream), provider routing, startup configuration, rate limits, n8n signing and callback rules, vendored Supabase files, compose safety, migration ordering and additivity |
+| `npm run db:check` | nothing (PGlite) | All migrations in order, plus behavioural checks of the 2026-10-19 migrations including an upgrade of an existing workspace |
+| `npm test` | local PostgreSQL 17 + PostgREST (`npm run supabase:local -- start`) | Everything: unit, database and server suites |
+| `deploy/test/run.sh` | Docker (for example on the server) | `npm test`, build, server bundle and lint inside a throwaway container with its own PostgreSQL 17, pgvector and PostgREST. No ports, no network, nothing persistent |
+
+## Automated checks (2026-10-19)
+
+On the Windows development machine (no PostgreSQL, no Docker):
+
+- `npm run test:unit`: 42 pass.
+- `npm run db:check`: 20 migrations applied, 42 checks pass.
+- `npm run build`, `npm run build:server`, `npm run lint`: pass.
+
+`tests/db/providers-automation.test.ts` is the PostgreSQL 17 counterpart of the PGlite checks, across
+two independent workspaces. It covers:
+
+- catalog access and server-only platform state;
+- defaults and seeding on an OpenAI-only server;
+- cost estimation;
+- the admin bulk model switch;
+- the expanded roster;
+- automation keys: admin-only creation, secrets never readable by clients, one run per request id,
+  no cross-workspace agents, admin-only execution log, revocation, and keys deactivated when their
+  owner leaves.
+
+**Not yet run on PostgreSQL 17** (needs the local harness or `deploy/test/run.sh` on the server):
+that file and the earlier database and server suites. The SQL-only suites were also tried over
+PGlite's socket server. They are not valid there: PGlite multiplexes connections into one session,
+so concurrent test transactions interleave. Those results were discarded.
+
 ## Automated checks (2026-10-05)
 
 - `npm test`: 114 tests pass in ten files against local PostgreSQL 17/PostgREST/Auth/Storage emulation.

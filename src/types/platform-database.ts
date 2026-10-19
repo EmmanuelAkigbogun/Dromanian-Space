@@ -401,4 +401,21 @@ export interface PlatformDatabase { public: { Tables: {
 "workspace_members_guard": { Args: Record<never, never>; Returns: string };
 "workspaces_guard_update": { Args: Record<never, never>; Returns: string };
 "write_audit_log": { Args: { "p_workspace_id": string | null; "p_action": string | null; "p_entity_type"?: string | null; "p_entity_id"?: string | null; "p_metadata"?: Json | null }; Returns: undefined };
+"ai_apply_model_to_agents": { Args: { "p_workspace_id": string | null; "p_model": string | null }; Returns: number };
+"ai_cost_summary": { Args: { "p_workspace_id": string | null; "p_since"?: string | null }; Returns: { "provider": string; "model": string; "runs": number; "input_tokens": number; "output_tokens": number; "cache_read_tokens": number; "cache_write_tokens": number; "cost_usd": number; "unpriced_rows": number }[] };
+"ai_estimate_cost": { Args: { "p_model": string | null; "p_input": number | null; "p_output": number | null; "p_cache_read": number | null; "p_cache_write": number | null }; Returns: number };
+"ai_platform_allowed_models": { Args: Record<never, never>; Returns: (string)[] };
+"ai_platform_default_model": { Args: Record<never, never>; Returns: string };
+"ai_provider_of": { Args: { "p_model": string | null }; Returns: string };
+"ai_report_platform": { Args: { "p_providers": Json | null; "p_default_model": string | null }; Returns: Json };
+"ai_usage_ledger_enrich": { Args: Record<never, never>; Returns: string };
+"automation_callback_for_run": { Args: { "p_run_id": string | null }; Returns: Json };
+"automation_key_create": { Args: { "p_workspace_id": string | null; "p_name": string | null; "p_agent_ids"?: (string)[] | null }; Returns: Json };
+"automation_key_for": { Args: { "p_key_id": string | null }; Returns: Json };
+"automation_key_revoke": { Args: { "p_key_id": string | null }; Returns: undefined };
+"automation_keys_list": { Args: { "p_workspace_id": string | null }; Returns: { "id": string; "name": string; "provider": string; "principal_id": string; "principal_name": string; "allowed_agent_ids": (string)[]; "created_at": string; "last_used_at": string; "revoked_at": string; "requests_24h": number; "failures_24h": number }[] };
+"automation_log_rejection": { Args: { "p_key_id": string | null; "p_request_key": string | null; "p_error": string | null }; Returns: undefined };
+"automation_record_delivery": { Args: { "p_request_id": string | null; "p_status": string | null; "p_error"?: string | null }; Returns: undefined };
+"automation_start_run": { Args: { "p_key_id": string | null; "p_request_key": string | null; "p_agent_handle": string | null; "p_message": string | null; "p_callback_url"?: string | null }; Returns: Json };
+"workspace_ai_settings_check_models": { Args: Record<never, never>; Returns: string };
 }; Enums: Record<never, never>; CompositeTypes: Record<never, never> } }

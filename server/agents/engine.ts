@@ -8,7 +8,7 @@ import { env } from '../env.js';
 import { log } from '../log.js';
 import { rpc, serviceClient } from '../supabase.js';
 import { HttpError } from '../http.js';
-import { anthropicProvider } from '../ai/anthropic.js';
+import { PROVIDER_KEYS, PROVIDER_LABELS, providerFor, providerNameFor } from '../ai/registry.js';
 import { addUsage, emptyUsage, ProviderError, type Effort, type ModelProvider, type TurnUsage } from '../ai/provider.js';
 import { CitationRegistry, resolveCitations, sourcesFooter } from './citations.js';
 import { PROVIDER_TOOLS, TOOL_REGISTRY, toolSpecs } from './tools/index.js';
@@ -93,8 +93,6 @@ export async function executeRun(
       /* the client went away; the run continues */
     }
   };
-  const provider = opts.provider ?? anthropicProvider;
-
   const claim = await rpc<ClaimResult>('agent_claim_run', { p_run_id: runId, p_worker: worker });
   if (!claim.claimed || !claim.run || !claim.version || !claim.agent || !claim.settings) {
     emit('done', { status: claim.reason ?? 'not_claimed' });
@@ -119,8 +117,19 @@ export async function executeRun(
     return { status: final, error_code: code };
   };
 
+  // The provider follows from the model stored on the agent version, so
+  // specialists in one team run may use different providers.
+  const provider = opts.provider ?? providerFor(run.model);
+  if (!provider) {
+    return finish('failed', null, null, null, 'model_unavailable', `No provider supports the model "${run.model}". Choose another model in the agent's settings.`);
+  }
   if (!provider.configured()) {
-    return finish('failed', null, null, null, 'provider_not_configured', 'The AI provider is not configured on the server yet (ANTHROPIC_API_KEY).');
+    const name = providerNameFor(run.model);
+    const which = name ? `${PROVIDER_LABELS[name]} is not configured on the server (${PROVIDER_KEYS[name]})` : 'The AI provider is not configured on the server';
+    return finish(
+      'failed', null, null, null, 'provider_not_configured',
+      `${which}. An administrator can add the key or switch this agent to a configured provider's model.`,
+    );
   }
 
   // ---- Context ---------------------------------------------------------------

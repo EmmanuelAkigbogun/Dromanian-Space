@@ -4,11 +4,13 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
-import { errorResponse, HttpError, methodNotAllowed } from './http.js';
+import { errorResponse, HttpError, json, methodNotAllowed } from './http.js';
 import { log } from './log.js';
+import { clientAddress, limitFor, RateLimiter } from './rate-limit.js';
 import { ROUTES } from './routes.js';
 
 const MAX_BODY = 256 * 1024;
+const limiter = new RateLimiter();
 
 async function send(res: ServerResponse, response: Response, requestId: string) {
   const headers = Object.fromEntries(response.headers);
@@ -28,7 +30,16 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
   const started = Date.now();
   const url = new URL(req.url ?? '/', 'http://localhost');
   let status = 500;
+  const client = clientAddress(req.headers['x-forwarded-for'] as string | undefined, req.socket.remoteAddress);
   try {
+    const limit = limitFor(req.method ?? 'GET', url.pathname);
+    const retryAfter = limit ? limiter.hit(`${limit.bucket}:${client}`, limit.limit) : 0;
+    if (retryAfter > 0) {
+      const r = json({ error: { code: 'rate_limited', message: 'Too many requests. Try again shortly.' } }, 429, { 'retry-after': String(retryAfter) });
+      status = r.status;
+      await send(res, r, requestId);
+      return;
+    }
     const route = ROUTES[url.pathname];
     const method = (req.method ?? 'GET') as 'GET' | 'POST';
     const handler = route?.[method];
@@ -56,6 +67,6 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
     status = response.status;
     await send(res, response, requestId);
   } finally {
-    log.info('request', { request_id: requestId, method: req.method, path: url.pathname, status, ms: Date.now() - started });
+    log.info('request', { request_id: requestId, method: req.method, path: url.pathname, status, ms: Date.now() - started, client });
   }
 }

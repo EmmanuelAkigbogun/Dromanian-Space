@@ -39,7 +39,9 @@ function collector(): SseChannel & { events: Array<[string, unknown]> } {
 
 beforeAll(async () => {
   loadEnvFile(ENV_FILE);
-  delete process.env.ANTHROPIC_API_KEY; // nothing here may reach a real provider
+  // Nothing here may reach a real provider.
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.OPENAI_API_KEY;
   user = await createUser('team-user');
   other = await createUser('team-other');
   ws = await createWorkspace(user, 'Team chat');

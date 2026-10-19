@@ -15,7 +15,9 @@
     "types:platform": "node --import tsx scripts/generate-platform-types.ts",
     "build:server": "esbuild server/main.ts server/worker-main.ts --bundle --platform=node --target=node24 --format=esm --packages=external --sourcemap --outdir=dist-server --out-extension:.js=.mjs",
     "start:api": "node --enable-source-maps dist-server/main.mjs",
-    "start:worker": "node --enable-source-maps dist-server/worker-main.mjs"
+    "start:worker": "node --enable-source-maps dist-server/worker-main.mjs",
+    "test:unit": "vitest run --config vitest.unit.config.ts",
+    "db:check": "node tools/pglite-check/run.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
@@ -23,6 +25,7 @@
     "@tanstack/react-query": "^5.101.2",
     "@tanstack/react-virtual": "^3.14.6",
     "mammoth": "^1.13.0",
+    "openai": "^6.49.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.1",
@@ -30,6 +33,8 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.10",
+    "@electric-sql/pglite-pgvector": "0.0.11",
     "@types/node": "^24.13.2",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.2.17",

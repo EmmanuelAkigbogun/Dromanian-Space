@@ -24,12 +24,22 @@ x-server-env: &server-env
   # Reach Supabase over the private network (gateway alias), never via Docker service names in the browser.
   SUPABASE_URL: ${SUPABASE_URL:-http://supabase-gateway:8000}
   SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?Supabase secret (service role) key}
+  # Model providers: set one or both. Without a key, agents show a setup state.
+  AI_DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-anthropic}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   ANTHROPIC_REFUSAL_FALLBACK: ${ANTHROPIC_REFUSAL_FALLBACK:-on}
+  AI_DEFAULT_ANTHROPIC_MODEL: ${AI_DEFAULT_ANTHROPIC_MODEL:-claude-opus-5-5}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+  OPENAI_ORG_ID: ${OPENAI_ORG_ID:-}
+  OPENAI_PROJECT_ID: ${OPENAI_PROJECT_ID:-}
+  AI_DEFAULT_OPENAI_MODEL: ${AI_DEFAULT_OPENAI_MODEL:-gpt-5.4}
   VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
   EMBEDDING_MODEL: ${EMBEDDING_MODEL:-voyage-3.5}
   CRON_SECRET: ${CRON_SECRET:-}
   AGENT_RUN_BUDGET_MS: ${AGENT_RUN_BUDGET_MS:-600000}
+  # Optional n8n integration: callbacks are only sent to this host.
+  N8N_BASE_URL: ${N8N_BASE_URL:-}
   NODE_OPTIONS: --max-old-space-size=384
 
 services:
@@ -48,6 +58,10 @@ services:
       API_UPSTREAM: api:3000
     expose:
       - "8080"
+    # Loopback only: for servers whose ingress is a Cloudflare Tunnel or a host
+    # reverse proxy instead of Coolify's Traefik. Harmless otherwise.
+    ports:
+      - "127.0.0.1:${WEB_HOST_PORT:-3008}:8080"
     depends_on:
       api:
         condition: service_healthy
@@ -73,6 +87,8 @@ services:
     environment:
       <<: *server-env
       PORT: "3000"
+      API_RATE_LIMIT_PER_MINUTE: ${API_RATE_LIMIT_PER_MINUTE:-300}
+      API_AGENT_RATE_LIMIT_PER_MINUTE: ${API_AGENT_RATE_LIMIT_PER_MINUTE:-30}
     expose:
       - "3000"
     networks:
@@ -86,6 +102,8 @@ services:
         limits:
           cpus: "1.00"
           memory: 512M
+    # Let open event streams and in-flight requests finish.
+    stop_grace_period: 15s
     healthcheck:
       # Liveness. Readiness (worker heartbeat, queue lag) is at /api/ready.
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]

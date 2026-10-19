@@ -1,29 +1,68 @@
 # Deployment
 
-The supported target is Docker Compose on your own server, managed with Coolify, with self-hosted Supabase. The full procedure (first deployment, verification, backups and restore, upgrades, diagnosis, rollback and recovery) is in [SELF_HOSTING.md](SELF_HOSTING.md). Vercel is not supported or required.
-
-Nothing has been deployed by this implementation, and the Docker images have not been built (no server access; no Docker on the development machine).
+The supported target is Docker Compose on your own server, managed with Coolify, with self-hosted
+Supabase. The installation sequence is in [COOLIFY_SETUP.md](COOLIFY_SETUP.md). Vercel, Railway and
+hosted Supabase are not required.
 
 ## Files
 
 | File | Purpose |
 | --- | --- |
-| `Dockerfile` | `web` target (Nginx, built SPA) and `server` target (Node API and worker) with pinned base images |
-| `docker-compose.yml` | Application resource for Coolify: `web`, `api`, `worker` |
-| `deploy/nginx/` | Nginx template: SPA fallback, uncached entry point, immutable assets, `/api/` proxy with streaming |
-| `deploy/supabase/` | Overrides for the pinned Supabase release (data on `/srv/...` with a fail-closed mount guard, private network, no public database ports) and the Coolify proxy route |
-| `deploy/prepare-host.sh` | Read-only server inventory; `--apply` creates data directories, mount markers and the network |
-| `deploy/migrate.sh` | Applies `supabase/migrations` in order, compatible with the Supabase CLI's bookkeeping |
-| `deploy/backup/` | Encrypted backup (database, file bytes, configuration) and isolated restore check |
-| `.env.example` | Public and server-only variables (placeholders only) |
+| `Dockerfile` | `web` target (Nginx, built SPA) and `server` target (Node API and worker), pinned base images |
+| `docker-compose.yml` | Application resource: `web`, `api`, `worker` |
+| `.env.production.example` | Application variables (build-time public values and server-only secrets) |
+| `deploy/nginx/` | SPA fallback, uncached entry point, immutable assets, `/api/` proxy with streaming, security headers (HSTS, structural CSP) |
+| `deploy/supabase/docker-compose.yml` | The complete pinned Supabase stack as a Coolify resource: fail-closed `/srv` data, no public database ports, private network alias, public route for browser APIs only |
+| `deploy/supabase/.env.example`, `generate-env.sh` | Supabase variables and secret generation (pinned upstream generators) |
+| `deploy/supabase/volumes/`, `utils/`, `UPSTREAM.md` | Vendored upstream configuration files with checksums |
+| `deploy/supabase/traefik-dynamic.yml` | Fallback proxy route if the compose labels are not applied |
+| `deploy/n8n/` | Optional, isolated n8n with its own PostgreSQL |
+| `deploy/prepare-host.sh` | Read-only inventory; `--apply` creates data directories, mount markers and the network |
+| `deploy/preflight.sh` | Read-only checks before migrating or deploying |
+| `deploy/migrate.sh` | Transactional migration runner with checksums and drift detection |
+| `deploy/backup/` | Encrypted backup, systemd timer, isolated restore check, restore into a fresh stack, full restore drill |
+| `deploy/test/` | Full test suite in a disposable container (PostgreSQL 17, pgvector, PostgREST) |
 
-## Verified locally (2026-10-05)
+## Verification log
 
-- `npm run build` and `npm run build:server`; the bundled API and worker run on Node 24.
-- The Nginx configuration rendered from `deploy/nginx/default.conf.template` passed `nginx -t` (nginx 1.31.6, Homebrew) and served the built SPA: deep links return `index.html` with `no-cache`; `/assets/*` are immutable and gzip-compressed; missing assets return 404; unknown `/api/*` routes return the API's JSON 404; Nginx's request ID reaches the API.
-- An authenticated `POST /api/agents/run` through Nginx was queued by the API, executed by the separate worker and streamed back. Without a provider key it ended as `provider_not_configured`.
-- `/api/ready` reported the database, a fresh worker heartbeat and queue lag.
-- `deploy/migrate.sh` applied all migrations to a fresh database (through a stand-in for `docker exec`), recorded them, and a second run made no changes. All shell scripts pass `shellcheck`.
-- The compose, override and proxy YAML files parse; resource limits, log rotation, networks and port overrides resolve as intended.
+2026-10-19 (development machine: Windows, Node 22; no Docker, no server access):
 
-Not verified: image builds, Coolify, the pinned Supabase stack, backups and restores against real containers, live model calls, email, OAuth, Realtime through the proxy and two-user behavior on the server.
+- **Checks:**
+  - `npm run build`, `npm run build:server` and `npm run lint` pass (no new lint warnings).
+  - Server and client TypeScript checks pass.
+- **Unit suite:** `npm run test:unit` passes 42 tests, with no database and no network. They cover:
+  - the OpenAI adapter against a scripted Responses stream;
+  - provider routing and startup configuration checks;
+  - rate limiting and n8n request signing;
+  - vendored-file checksums;
+  - compose safety properties;
+  - migration ordering and additivity.
+- **Migrations:** `npm run db:check` applies all 20 migrations in order to an in-memory PostgreSQL
+  (PGlite 0.5.10: PostgreSQL 18.6 compiled to WebAssembly, with pgvector, pgcrypto, pg_trgm and
+  uuid-ossp; pg_cron stubbed as in the local harness). 42 behavioural checks of the new migrations
+  pass:
+  - upgrading a pre-existing workspace: untouched agents refocused, a customized agent left alone,
+    usage costs backfilled;
+  - an OpenAI-only server: new workspaces, seeded agents and a run start;
+  - cost estimation;
+  - the admin bulk model switch;
+  - the roster;
+  - automation-key permissions, idempotency and isolation between two workspaces.
+
+  This is a different PostgreSQL major version than production (17.6), so it validates SQL and
+  behaviour, not the production image.
+- **Supabase environment:** `deploy/supabase/generate-env.sh` produced a complete environment with
+  the pinned upstream generators, and refused to overwrite it on a second run.
+- **YAML:** the compose and override files parse with unique keys. Every required variable is
+  documented, and no service publishes ports beyond loopback.
+- **Shell:** all shell scripts pass `bash -n` and ShellCheck at warning level.
+
+Earlier (2026-10-05, macOS): `nginx -t` and live requests through the Nginx config, an
+authenticated agent run through Nginx to API and worker, `/api/ready`, and the migration runner
+against a fresh database.
+
+**Not yet verified** (needs the server): Docker image builds, Coolify deployment of the three
+resources, the Supabase stack on its pinned images, the existing database and server test suites on
+PostgreSQL 17 (`deploy/test/run.sh`), Auth email/OAuth, Storage, Realtime through the proxy, backups
+and restore drills against real containers, live Anthropic and OpenAI requests, and two-user
+behaviour on the deployed site.

@@ -143,3 +143,34 @@ Hosted Realtime, email/OAuth, live provider streaming/cancellation, provider mod
   and PostgREST (see `docs/TESTING.md`). Applying migrations to a hosted project is a manual step.
 - No `ANTHROPIC_API_KEY` is available, so live model generation (including Team Chat and the SEO page fetch) has not been exercised.
 - No server or Coolify access, and no Docker on the development machine: the images, compose stack, Supabase overrides and backup scripts are written and checked statically but not built or run against real containers. Next step on the server: `deploy/prepare-host.sh` (read-only inventory), then `docs/SELF_HOSTING.md` section 2.
+
+## 6. Production platform brief (2026-10-19)
+
+Brief: transform the repository into a deployable, self-hosted AI business platform (Coolify, self-hosted Supabase, Claude and OpenAI, twelve business specializations, optional n8n, backups and recovery).
+
+### Audit findings
+
+- Already implemented: React/Node/worker architecture, PostgreSQL job queue with leases, Anthropic adapter behind a provider-neutral engine, twelve role agents plus Team Lead, CRM, Drive, RLS-based tenancy, Nginx web image, hardened app compose file, transactional migration runner, encrypted backups.
+- No Eva/Ollama code existed; nothing to remove.
+- Gaps found and closed:
+  - **AI:** no OpenAI support; no cost estimation (the `cost_usd` ledger column was never filled).
+  - **Supabase stack:** deployed by hand rather than as a Coolify resource; `API_EXTERNAL_URL` documented without the `/auth/v1` this release requires; the pgsodium key volume on the system disk.
+  - **Migrations:** no checksum or drift detection; no read-only preflight.
+  - **Backups:** missed the database key directory, could fail on files changing during the read, gave no failure signal, and had no restore path into a fresh stack and no isolated drill.
+  - **API:** no rate limiting, header timeouts, start-up configuration validation or database wait.
+  - **Integrations:** no n8n integration.
+
+### Decisions
+
+| Area | Decision |
+| --- | --- |
+| Providers | Provider derived from the model id; `server/ai/openai.ts` uses the Responses API statelessly (`store: false`, encrypted reasoning replayed) so restarts stay clean. Platform default chosen by `AI_DEFAULT_PROVIDER` among configured providers; existing workspaces keep their settings. |
+| Costs | `ai_models` catalog with editable prices; cost estimated in SQL on every usage row and backfilled. OpenAI prices deliberately unseeded (unverified); unknown prices give no cost rather than a guess. |
+| Roster | The requested specializations map onto existing agents (names, handles and conversations kept). Three agents added: Vera, Nova and Kai. Atlas, Rio and Talia refocused only where the workspace had not customized them. Result: 15 specialists + Team Lead. |
+| Supabase | `deploy/supabase/docker-compose.yml` is the complete pinned upstream stack (`ff80bb1`) with marked changes; upstream config files vendored with checksums; deployable from Git as a Coolify resource; Traefik labels expose only browser API paths. |
+| n8n | Optional third resource with its own PostgreSQL. It reaches the app only through signed requests; one run per request id; callbacks only to `N8N_BASE_URL` as retried jobs. Sustainable Use License documented. |
+| Safety | `preflight.sh` (read-only) gates migrations: target host, mounts, services, ports, extensions, migration history, backup age. `restore.sh` refuses any target holding users, workspaces or files. |
+
+### Status
+
+Implemented and verified locally as recorded in `docs/DEPLOYMENT.md` and `docs/TESTING.md`. Pending until server access: image builds, Coolify deployment, PostgreSQL 17 test suites (`deploy/test/run.sh`), Auth email, Storage and Realtime through the proxy, backup and restore drill on real containers, live Anthropic and OpenAI calls, two-user acceptance on the deployed domains. See `docs/COOLIFY_SETUP.md` for the sequence.

@@ -3,6 +3,7 @@ import { log } from '../log.js';
 import { handleKnowledgeExtract } from '../knowledge/worker.js';
 import { handleDrivePurge, handleGcObject } from '../drive/gc.js';
 import { executeRun } from '../agents/engine.js';
+import { handleAutomationCallback, queueCallbackForRun } from '../integrations/n8n.js';
 import { PermanentJobError, type JobHandler, type JobRow } from './types.js';
 
 const LEASE_SECONDS = 120;
@@ -16,11 +17,17 @@ const handleAgentRun: JobHandler = async (job, ctx) => {
   if (outcome.status === 'running_elsewhere' || outcome.status === 'lost') {
     throw new Error(`Run ${runId} is held by another worker`);
   }
+  // Runs started by an external automation report back (idempotent; the
+  // callback job checks the run really finished).
+  await queueCallbackForRun(runId).catch((err) =>
+    log.warn('automation callback not queued', { run_id: runId, error: err instanceof Error ? err : String(err) }),
+  );
   return { status: outcome.status, error_code: outcome.error_code ?? null };
 };
 
 const handlers: Record<string, JobHandler> = {
   'agent.run': handleAgentRun,
+  'automation.callback': handleAutomationCallback,
   'knowledge.extract': handleKnowledgeExtract,
   'drive.purge': handleDrivePurge,
   'drive.gc_object': handleGcObject,

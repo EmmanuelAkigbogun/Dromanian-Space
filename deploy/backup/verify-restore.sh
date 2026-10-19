@@ -6,7 +6,7 @@
 #   AGE_IDENTITY_FILE=key.txt deploy/backup/verify-restore.sh dromanian-space-<stamp>.tar.age
 #
 # This proves data recoverability. A full sign-in and document-access check
-# needs the isolated stack described in docs/SELF_HOSTING.md.
+# is the drill in deploy/backup/restore-test.sh (docs/DISASTER_RECOVERY.md).
 set -euo pipefail
 umask 077
 

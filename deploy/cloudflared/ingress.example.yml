@@ -1,0 +1,30 @@
+# Cloudflare Tunnel ingress for servers without Coolify's Traefik proxy.
+# Merge these rules into /etc/cloudflared/config.yml ABOVE the final
+# catch-all (`- service: http_status:404`), then:
+#   cloudflared tunnel ingress validate --config /etc/cloudflared/config.yml
+#   systemctl restart cloudflared
+# DNS: the hostname is a proxied CNAME to <tunnel-id>.cfargotunnel.com in the
+# domain's Cloudflare zone.
+#
+# Single origin: Supabase's browser APIs and the app share one hostname. The
+# app's own routes never start with /auth/v1, /rest/v1, /realtime/v1,
+# /storage/v1 or /functions/v1. Then set VITE_SUPABASE_URL,
+# SUPABASE_PUBLIC_URL and SITE_URL to the same https://<host>.
+# Ports match API_GW_HTTP_PORT (Supabase resource) and WEB_HOST_PORT (app).
+
+  # Browser APIs only (Auth, REST, Realtime WebSockets, Storage, Functions).
+  - hostname: darkspace.purplehive.pro
+    path: ^/(auth|rest|realtime|storage|functions)/v1(/|$)
+    service: http://127.0.0.1:3009
+  # Everything else is the app (SPA and /api/*). Studio is never routed.
+  - hostname: darkspace.purplehive.pro
+    service: http://127.0.0.1:3008
+
+# Two hostnames instead (app and Supabase separate):
+#  - hostname: space.example.com
+#    service: http://127.0.0.1:3008
+#  - hostname: supabase.example.com
+#    path: ^/(auth|rest|realtime|storage|functions)/v1(/|$)
+#    service: http://127.0.0.1:3009
+#  - hostname: supabase.example.com
+#    service: http_status:404

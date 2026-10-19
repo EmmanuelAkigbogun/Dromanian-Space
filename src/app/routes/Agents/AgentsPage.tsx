@@ -12,8 +12,21 @@ import a from './Agents.module.css';
 type Agent = RpcRow<'agent_directory'>;
 type TimelineRow = RpcRow<'agent_conversation_timeline'>;
 
+interface ModelOption {
+  id: string;
+  provider: string | null;
+  label: string;
+  tier: string;
+  priced: boolean;
+  /** The server has a key for this model's provider. */
+  available: boolean;
+}
+
 interface Status {
   provider: { configured: boolean };
+  providers?: Array<{ name: string; label: string; configured: boolean }>;
+  models?: ModelOption[];
+  costs?: { month_usd: number; unpriced_rows: number; by_model: Array<{ provider: string; model: string; runs: number; cost_usd: number | null }> } | null;
   data_flow: { generation: string; embeddings: string; storage: string };
   embeddings: { configured: boolean };
   web_research: { enabled_by_admin: boolean; available: boolean };
@@ -73,12 +86,32 @@ const CONNECTED_ACTIONS: Record<string, string> = {
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'interrupted', 'awaiting_approval']);
 
+const PROVIDER_KEY: Record<string, string> = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY' };
+const PROVIDER_NAME: Record<string, string> = { anthropic: 'Anthropic', openai: 'OpenAI' };
+
+function modelLabel(id: string, status: Status | undefined): string {
+  const m = status?.models?.find((x) => x.id === id);
+  if (!m) return id;
+  const provider = m.provider ? PROVIDER_NAME[m.provider] ?? m.provider : 'unknown provider';
+  return `${m.label} · ${provider}${m.available ? '' : ' (not configured)'}`;
+}
+
+/** Why an agent's model cannot run on this server, if it cannot. */
+function modelBlocker(model: string, status: Status): string | null {
+  const m = status.models?.find((x) => x.id === model);
+  if (!m) return status.provider.configured ? null : 'No AI provider is configured on the server (an administrator sets ANTHROPIC_API_KEY or OPENAI_API_KEY).';
+  if (m.available) return null;
+  const key = m.provider ? PROVIDER_KEY[m.provider] : null;
+  return `Uses ${m.label}, but ${m.provider ? PROVIDER_NAME[m.provider] : 'its provider'} is not configured on the server${key ? ` (an administrator sets ${key}, or picks another model)` : ''}.`;
+}
+
 /** What stops an agent from working, and what only limits it. */
 function readiness(agent: Agent, status: Status | undefined) {
   const blocking: string[] = [];
   const notes: string[] = [];
   if (!status) return { blocking: ['Checking configuration…'], notes };
-  if (!status.provider.configured) blocking.push('The AI provider is not configured on the server (an administrator sets ANTHROPIC_API_KEY).');
+  const providerBlock = modelBlocker(agent.model, status);
+  if (providerBlock) blocking.push(providerBlock);
   if (!status.settings.enabled) blocking.push('AI is turned off for this workspace.');
   if (agent.status !== 'active') blocking.push('This agent is disabled.');
   if (agent.requires.includes('crm') && !status.crm.installed) blocking.push('Needs the CRM, which is not set up yet.');
@@ -185,7 +218,7 @@ function Agents({ ws, userId, admin }: { ws: string; userId: string; admin: bool
     <div className={s.notice}>
       <strong>Connect an AI provider to start conversations.</strong>
       <br />
-      An administrator sets ANTHROPIC_API_KEY on the server. Agents, files and earlier conversations stay available.
+      An administrator sets ANTHROPIC_API_KEY or OPENAI_API_KEY on the server. Agents, files and earlier conversations stay available.
     </div>
   ) : !status.data.settings.enabled ? (
     <div className={s.notice}>AI is turned off for this workspace.</div>
@@ -716,7 +749,7 @@ function AgentView(props: {
           <button className={s.primary} onClick={() => setPicker(false)}>Use selected sources</button>
         </div>
       </Dialog>
-      {agent && settings && <AgentSettings agent={agent} models={props.status?.settings.allowed_models ?? [agent.model]} onClose={() => setSettings(false)} onSaved={refresh} />}
+      {agent && settings && <AgentSettings agent={agent} status={props.status} models={props.status?.settings.allowed_models ?? [agent.model]} onClose={() => setSettings(false)} onSaved={refresh} />}
     </>
   );
 }
@@ -808,7 +841,7 @@ function Proposal({ proposal: p, onChange }: { proposal: Row<'agent_action_propo
   );
 }
 
-function AgentSettings({ agent, models, onClose, onSaved }: { agent: Agent; models: string[]; onClose: () => void; onSaved: () => Promise<unknown> }) {
+function AgentSettings({ agent, status, models, onClose, onSaved }: { agent: Agent; status: Status | undefined; models: string[]; onClose: () => void; onSaved: () => Promise<unknown> }) {
   const [error, setError] = useState('');
   const [instructions, setInstructions] = useState('');
   const [model, setModel] = useState(agent.model);
@@ -839,7 +872,7 @@ function AgentSettings({ agent, models, onClose, onSaved }: { agent: Agent; mode
           Model
           <select className={s.input} value={model} onChange={(e) => setModel(e.target.value)}>
             {[...new Set([agent.model, ...models])].map((m) => (
-              <option key={m} value={m}>{m}</option>
+              <option key={m} value={m}>{modelLabel(m, status)}</option>
             ))}
           </select>
         </label>
@@ -856,32 +889,60 @@ function AgentSettings({ agent, models, onClose, onSaved }: { agent: Agent; mode
 }
 
 function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Status; onClose: () => void; onSaved: () => void }) {
+  const qc = useQueryClient();
   const [form, setForm] = useState({
     enabled: status.settings.enabled,
     default_model: status.settings.default_model,
+    allowed_models: status.settings.allowed_models,
     web_research_enabled: status.settings.web_research_enabled,
     mention_reply_policy: status.settings.mention_reply_policy,
     site_url: status.site.url ?? '',
     brand_kit_folder_id: status.brand_kit.folder_id ?? '',
   });
+  const [applyToAgents, setApplyToAgents] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const folders = useQuery({
     queryKey: ['platform', ws, 'ai-settings-folders'],
     queryFn: async () => (await result(platform.rpc('drive_list', { p_workspace_id: ws, p_view: 'all', p_limit: 200 }))).filter((f) => f.kind === 'folder'),
   });
+  // Catalog models plus anything already allowed that the catalog does not list.
+  const catalog: ModelOption[] = [
+    ...(status.models ?? []),
+    ...status.settings.allowed_models
+      .filter((id) => !status.models?.some((m) => m.id === id))
+      .map((id) => ({ id, provider: null, label: id, tier: 'standard', priced: false, available: status.provider.configured })),
+  ];
+  const withCatalog: Status = { ...status, models: catalog };
+  const groups = [...new Set(catalog.map((m) => m.provider ?? 'other'))];
+  function toggleModel(id: string, on: boolean) {
+    setForm((f) => {
+      const allowed = on ? [...new Set([...f.allowed_models, id])] : f.allowed_models.filter((m) => m !== id);
+      return { ...f, allowed_models: allowed, default_model: allowed.includes(f.default_model) ? f.default_model : (allowed[0] ?? f.default_model) };
+    });
+  }
   function save(e: React.FormEvent) {
     e.preventDefault();
+    if (form.allowed_models.length === 0) {
+      setError('Allow at least one model.');
+      return;
+    }
     setBusy(true);
     setError('');
-    void result(platform.rpc('ai_update_settings', { p_workspace_id: ws, p_patch: { ...form, site_url: form.site_url.trim(), brand_kit_folder_id: form.brand_kit_folder_id || null } }))
-      .then(() => {
+    void result(platform.rpc('ai_update_settings', {
+      p_workspace_id: ws,
+      p_patch: { ...form, site_url: form.site_url.trim(), brand_kit_folder_id: form.brand_kit_folder_id || null },
+    }))
+      .then(async () => {
+        if (applyToAgents) await result(platform.rpc('ai_apply_model_to_agents', { p_workspace_id: ws, p_model: form.default_model }));
+        await qc.invalidateQueries({ queryKey: ['platform', ws] });
         onSaved();
         onClose();
       })
       .catch((err) => setError(errorText(err)))
       .finally(() => setBusy(false));
   }
+  const defaultModel = catalog.find((m) => m.id === form.default_model);
   return (
     <Dialog open onClose={onClose} title="AI settings">
       <form className={s.form} onSubmit={save}>
@@ -889,13 +950,45 @@ function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Stat
           <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
           AI is enabled for this workspace
         </label>
+        <div>
+          <div className={s.eyebrow}>Providers</div>
+          <ul className={a.picker} style={{ listStyle: 'none', padding: 0 }}>
+            {(status.providers ?? []).map((p) => (
+              <li key={p.name} className={a.state}>
+                <span className={`${a.dot} ${p.configured ? a.ready : a.limited}`} />
+                {p.label} · {p.configured ? 'configured on the server' : `not configured (set ${PROVIDER_KEY[p.name] ?? 'its API key'} on the api and worker)`}
+              </li>
+            ))}
+          </ul>
+          <p className={s.muted}>API keys are server settings and never reach the browser. Choose which models agents in this workspace may use.</p>
+        </div>
+        <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend className={s.eyebrow}>Allowed models</legend>
+          {groups.map((g) => (
+            <div key={g} className={a.picker}>
+              {catalog.filter((m) => (m.provider ?? 'other') === g).map((m) => (
+                <label key={m.id}>
+                  <input type="checkbox" checked={form.allowed_models.includes(m.id)} onChange={(e) => toggleModel(m.id, e.target.checked)} />
+                  {modelLabel(m.id, withCatalog)}
+                </label>
+              ))}
+            </div>
+          ))}
+        </fieldset>
         <label>
           Default model for new agents
           <select className={s.input} value={form.default_model} onChange={(e) => setForm({ ...form, default_model: e.target.value })}>
-            {status.settings.allowed_models.map((m) => (
-              <option key={m} value={m}>{m}</option>
+            {form.allowed_models.map((m) => (
+              <option key={m} value={m}>{modelLabel(m, withCatalog)}</option>
             ))}
           </select>
+        </label>
+        {defaultModel && !defaultModel.available && (
+          <p role="alert" className={s.error}>This model's provider is not configured on the server, so agents using it cannot run yet.</p>
+        )}
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input type="checkbox" checked={applyToAgents} onChange={(e) => setApplyToAgents(e.target.checked)} />
+          Also switch every shared agent to this model (creates new versions; private agents are unchanged)
         </label>
         <label>
           Brand kit folder (voice, tone and visual rules for writing agents)
@@ -921,6 +1014,25 @@ function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Stat
             <option value="auto">Post automatically when everyone in the conversation can open its sources</option>
           </select>
         </label>
+        {status.costs && (
+          <div>
+            <div className={s.eyebrow}>Estimated spend this month</div>
+            <p className={s.muted}>
+              ${status.costs.month_usd.toFixed(2)} across {status.costs.by_model.reduce((n, r) => n + Number(r.runs), 0)} runs.
+              {status.costs.unpriced_rows > 0 && ' Some usage has no price set for its model and is not included.'}
+              {' '}Estimates use the prices stored in the ai_models table; your provider invoice is authoritative.
+            </p>
+            {status.costs.by_model.length > 0 && (
+              <ul className={s.muted} style={{ margin: 0 }}>
+                {status.costs.by_model.map((r) => (
+                  <li key={`${r.provider}:${r.model}`}>
+                    {r.model}: {r.cost_usd === null ? 'no price set' : `$${Number(r.cost_usd).toFixed(2)}`} · {r.runs} runs
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
         <div>
           <div className={s.eyebrow}>Provider and data flow</div>
           <p className={s.muted}>{status.data_flow.generation}</p>
@@ -939,9 +1051,73 @@ function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Stat
             ))}
           </ul>
         </div>
+        <AutomationKeys ws={ws} />
         {error && <p role="alert" className={s.error}>{error}</p>}
         <button className={s.primary} disabled={busy}>Save settings</button>
       </form>
     </Dialog>
+  );
+}
+
+/** Signing keys that let an n8n workflow start agent runs (admins only). */
+function AutomationKeys({ ws }: { ws: string }) {
+  const [name, setName] = useState('');
+  const [created, setCreated] = useState<{ id: string; secret: string } | null>(null);
+  const [error, setError] = useState('');
+  const keys = useQuery({
+    queryKey: ['platform', ws, 'automation-keys'],
+    queryFn: () => result(platform.rpc('automation_keys_list', { p_workspace_id: ws })),
+    retry: false,
+  });
+  function create() {
+    setError('');
+    void result(platform.rpc('automation_key_create', { p_workspace_id: ws, p_name: name.trim() || 'n8n', p_agent_ids: [] }))
+      .then((r) => {
+        setCreated(r as { id: string; secret: string });
+        setName('');
+        void keys.refetch();
+      })
+      .catch((err) => setError(errorText(err)));
+  }
+  function revoke(id: string) {
+    setError('');
+    void result(platform.rpc('automation_key_revoke', { p_key_id: id }))
+      .then(() => keys.refetch())
+      .catch((err) => setError(errorText(err)));
+  }
+  // Not an admin, or the automation migration is not applied yet.
+  if (keys.error) return null;
+  return (
+    <div>
+      <div className={s.eyebrow}>Automation (n8n)</div>
+      <p className={s.muted}>
+        Optional. A key lets an external workflow start agent runs with your access. Requests are signed, and each request id runs once.
+      </p>
+      {created && (
+        <p role="status" className={s.notice}>
+          Key id <code>{created.id}</code>
+          <br />
+          Secret, shown once (store it in your n8n credentials now): <code style={{ wordBreak: 'break-all' }}>{created.secret}</code>
+        </p>
+      )}
+      <ul className={s.muted} style={{ margin: 0 }}>
+        {(keys.data ?? []).map((k) => (
+          <li key={k.id}>
+            {k.name} · runs as {k.principal_name} · {k.revoked_at ? 'revoked' : `${k.requests_24h} requests, ${k.failures_24h} failed (24h)`}
+            {!k.revoked_at && (
+              <>
+                {' '}
+                <button type="button" className={s.button} onClick={() => revoke(k.id)}>Revoke</button>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input className={s.input} placeholder="Key name, for example n8n production" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+        <button type="button" className={s.button} onClick={create}>Create key</button>
+      </div>
+      {error && <p role="alert" className={s.error}>{error}</p>}
+    </div>
   );
 }

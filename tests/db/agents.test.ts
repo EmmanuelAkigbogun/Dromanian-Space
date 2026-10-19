@@ -69,12 +69,13 @@ beforeAll(async () => {
 });
 
 describe('agent catalog', () => {
-  it('seeds the twelve specialists and the team coordinator once and shows them only to members', async () => {
+  it('seeds the specialists and the team coordinator once and shows them only to members', async () => {
     expect(await q<{ n: number }>(alice, 'SELECT ensure_workspace_agents($1) AS n', [wsA])).toEqual([{ n: 0 }]);
     const dir = await q<{ template_key: string; kind: string }>(bob, 'SELECT * FROM agent_directory($1)', [wsA]);
     expect(dir.filter((d) => d.kind === 'specialist').map((d) => d.template_key).sort()).toEqual([
-      'commerce_manager', 'copywriter', 'data_analyst', 'email_marketer', 'executive_assistant', 'growth_strategist',
-      'personal_coach', 'recruiter', 'sales_rep', 'seo_specialist', 'social_manager', 'support_specialist']);
+      'business_researcher', 'commerce_manager', 'copywriter', 'creative_director', 'data_analyst', 'email_marketer',
+      'executive_assistant', 'growth_strategist', 'personal_coach', 'recruiter', 'sales_rep', 'seo_specialist',
+      'social_manager', 'software_engineer', 'support_specialist']);
     expect(dir.filter((d) => d.kind === 'coordinator').map((d) => d.template_key)).toEqual(['team_coordinator']);
     expect(await q(mallory, 'SELECT * FROM agent_directory($1)', [wsA])).toHaveLength(0);
   });
