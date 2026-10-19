@@ -61,8 +61,9 @@ Earlier (2026-10-05, macOS): `nginx -t` and live requests through the Nginx conf
 authenticated agent run through Nginx to API and worker, `/api/ready`, and the migration runner
 against a fresh database.
 
-**Not yet verified** (needs the server): Docker image builds, Coolify deployment of the three
-resources, the Supabase stack on its pinned images, the existing database and server test suites on
-PostgreSQL 17 (`deploy/test/run.sh`), Auth email/OAuth, Storage, Realtime through the proxy, backups
+On the production server: `deploy/test/run.sh` passed all 167 tests on PostgreSQL 17, plus build, server bundle and lint.
+
+**Not yet verified**: Docker image builds of the deployed resources, Coolify deployment of the
+resources, the Supabase stack on its pinned images, Auth email/OAuth, Storage, Realtime through the proxy, backups
 and restore drills against real containers, live Anthropic and OpenAI requests, and two-user
 behaviour on the deployed site.

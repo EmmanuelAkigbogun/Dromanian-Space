@@ -29,10 +29,18 @@ two independent workspaces. It covers:
   no cross-workspace agents, admin-only execution log, revocation, and keys deactivated when their
   owner leaves.
 
-**Not yet run on PostgreSQL 17** (needs the local harness or `deploy/test/run.sh` on the server):
-that file and the earlier database and server suites. The SQL-only suites were also tried over
-PGlite's socket server. They are not valid there: PGlite multiplexes connections into one session,
-so concurrent test transactions interleave. Those results were discarded.
+On the production server (2026-10-19), `deploy/test/run.sh` (Node 24, PostgreSQL 17, pgvector and
+PostgREST in a throwaway container): **167 of 167 tests pass in 14 files**, and the production
+build, server bundle and lint pass. The first two runs found three defects, all fixed before
+deployment:
+
+- two definer helpers were callable by `anon`;
+- a test still expected the old roster count;
+- agents could be seeded with a different model than the workspace allowed if the platform default
+  changed in between. Seeding now uses the settings row.
+
+PGlite's socket server is not used for these suites: it multiplexes connections into one session,
+so concurrent test transactions interleave.
 
 ## Automated checks (2026-10-05)
 
