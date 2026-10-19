@@ -176,6 +176,9 @@ class DataQuery<T = any> implements PromiseLike<Result<T>> {
 
   private async execute(): Promise<Result<T>> {
     const query = this.params.toString();
+    if (this.body !== undefined && !this.headers.has('content-type')) {
+      this.headers.set('content-type', 'application/json');
+    }
     const response = await fetch(`/api/db/${this.path}${query ? `?${query}` : ''}`, {
       method: this.method,
       headers: this.headers,
