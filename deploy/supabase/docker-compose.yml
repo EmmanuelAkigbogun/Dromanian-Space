@@ -60,7 +60,10 @@ services:
 
   studio:
     container_name: supabase-studio
-    image: supabase/studio:2026.09.07-sha-7996410
+    image: dromanian-supabase-studio:2026.09.07-sha-7996410
+    build:
+      context: .
+      target: studio
     restart: unless-stopped
     logging: *logging
     healthcheck:
@@ -99,13 +102,12 @@ services:
       ENABLED_FEATURES_LOGS_ALL: "false"
       SNIPPETS_MANAGEMENT_FOLDER: /app/snippets
       EDGE_FUNCTIONS_MANAGEMENT_FOLDER: /app/edge-functions
-    volumes:
-      - ./volumes/snippets:/app/snippets:z
-      - ./volumes/functions:/app/edge-functions:ro,z
-
   api-gw:
     container_name: supabase-envoy
-    image: envoyproxy/envoy:v1.39.1
+    image: dromanian-supabase-api-gw:v1.39.1
+    build:
+      context: .
+      target: api-gw
     restart: unless-stopped
     logging: *logging
     networks:
@@ -130,11 +132,6 @@ services:
     # Dromanian: loopback only (Studio via SSH tunnel / Tailscale).
     ports:
       - "127.0.0.1:${API_GW_HTTP_PORT:-8000}:8000"
-    volumes:
-      - ./volumes/api/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
-      - ./volumes/api/envoy/cds.yaml:/etc/envoy/cds.yaml:ro
-      - ./volumes/api/envoy/lds.template.yaml:/etc/envoy/lds.template.yaml:ro
-      - ./volumes/api/envoy/docker-entrypoint.sh:/docker-entrypoint.sh:ro
     environment:
       ANON_KEY: ${ANON_KEY:?ANON_KEY}
       SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY:?SERVICE_ROLE_KEY}
@@ -392,11 +389,13 @@ services:
 
   functions:
     container_name: supabase-edge-functions
-    image: supabase/edge-runtime:v1.76.2
+    image: dromanian-supabase-functions:v1.76.2
+    build:
+      context: .
+      target: functions
     restart: unless-stopped
     logging: *logging
     volumes:
-      - ./volumes/functions:/home/deno/functions:z
       - deno-cache:/root/.cache/deno
     depends_on:
       api-gw:
@@ -423,7 +422,10 @@ services:
     container_name: supabase-db
     # Do not change this image tag without the upgrade procedure in
     # docs/DATABASE.md: PostgreSQL major versions are not interchangeable.
-    image: supabase/postgres:17.6.1.136
+    image: dromanian-supabase-db:17.6.1.136
+    build:
+      context: .
+      target: db
     restart: unless-stopped
     logging: *logging
     # Dromanian: let PostgreSQL finish a clean shutdown (checkpoint) on stop.
@@ -432,13 +434,6 @@ services:
       mount-guard:
         condition: service_completed_successfully
     volumes:
-      - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
-      - ./volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
-      - ./volumes/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:Z
-      - ./volumes/db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:Z
-      - ./volumes/db/_supabase.sql:/docker-entrypoint-initdb.d/migrations/97-_supabase.sql:Z
-      - ./volumes/db/logs.sql:/docker-entrypoint-initdb.d/migrations/99-logs.sql:Z
-      - ./volumes/db/pooler.sql:/docker-entrypoint-initdb.d/migrations/99-pooler.sql:Z
       # Dromanian: database files on the app-data disk.
       - type: bind
         source: /srv/app-data/dromanian-space/supabase/db/data
@@ -486,11 +481,12 @@ services:
   # Dromanian: no host ports; reachable only inside this stack.
   supavisor:
     container_name: supabase-pooler
-    image: supabase/supavisor:2.9.12
+    image: dromanian-supabase-pooler:2.9.12
+    build:
+      context: .
+      target: supavisor
     restart: unless-stopped
     logging: *logging
-    volumes:
-      - ./volumes/pooler/pooler.exs:/etc/pooler/pooler.exs:ro,z
     healthcheck:
       test: ["CMD", "curl", "-sSfL", "--head", "-o", "/dev/null", "http://127.0.0.1:4000/api/health"]
       interval: 10s

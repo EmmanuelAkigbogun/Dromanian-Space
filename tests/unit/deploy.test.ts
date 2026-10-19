@@ -46,6 +46,13 @@ describe('compose safety', () => {
     expect(supabase).toContain("datname = '_supabase'");
     expect(supabase).toContain("rolname = 'authenticator' AND rolpassword IS NOT NULL");
   });
+
+  it('bakes versioned Supabase files into images instead of Coolify-relative mounts', () => {
+    expect(supabase).not.toMatch(/^\s+- \.\/volumes\//m);
+    for (const target of ['studio', 'api-gw', 'functions', 'db', 'supavisor']) {
+      expect(supabase).toContain(`target: ${target}`);
+    }
+  });
   it('publishes no database or pooler ports and only a loopback gateway port', () => {
     const ports = [...supabase.matchAll(/^\s+- "?([^"\n]*:\d+(?::\d+)?)"?\s*$/gm)].map((m) => m[1]).filter((p) => /^\S*:\$?\{?[A-Z_:-]*\d*\}?:\d+$|^\d/.test(p));
     for (const p of ports) expect(p.startsWith('127.0.0.1:')).toBe(true);

@@ -8,6 +8,11 @@ Source: [supabase/supabase](https://github.com/supabase/supabase) at commit
 network alias, Traefik labels for the browser APIs only, bounded logs, asymmetric keys
 enabled, phone sign-up off). Images are unchanged:
 
+Coolify converts repository-relative bind mounts into persistent application paths. The local
+`Dockerfile` therefore creates thin image layers containing the vendored SQL, Envoy, Functions,
+Studio and Supavisor files. Their bases remain the exact pinned upstream images below; only
+version-controlled configuration is added.
+
 | Service | Image |
 | --- | --- |
 | db | `supabase/postgres:17.6.1.136` |
