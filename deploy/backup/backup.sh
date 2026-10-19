@@ -69,7 +69,8 @@ flock -n 9 || { step="waiting for lock"; echo "Another backup is running." >&2; 
 step="finding the database container"
 if [[ -z "${DB_CONTAINER:-}" ]]; then
   if docker inspect supabase-db >/dev/null 2>&1; then DB_CONTAINER=supabase-db
-  else DB_CONTAINER=$(docker ps --filter label=com.docker.compose.service=db --format '{{.Names}} {{.Image}}' | awk '$2 ~ /^supabase\/postgres:/ {print $1; exit}'); fi
+  else DB_CONTAINER=$(docker ps --filter label=com.docker.compose.service=db --format '{{.Names}} {{.Image}}' \
+    | awk '$2 ~ /^(supabase\/postgres:|dromanian-supabase-db:)/ {print $1; exit}'); fi
 fi
 [[ -n "${DB_CONTAINER:-}" ]] || { echo "Cannot find the Supabase database container; set DB_CONTAINER." >&2; exit 1; }
 

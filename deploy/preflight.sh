@@ -89,8 +89,22 @@ fi
 docker network inspect coolify >/dev/null 2>&1 && pass "coolify proxy network exists" || warn "coolify network not found (needed for the Supabase public route)"
 
 section "Supabase services"
+db_container=${DB_CONTAINER:-}
+if [[ -z "$db_container" ]]; then
+  db_container=$(docker ps --filter label=com.docker.compose.service=db --format '{{.Names}} {{.Image}}' \
+    | awk '$2 ~ /^(supabase\/postgres:|dromanian-supabase-db:)/ {print $1; exit}')
+fi
+stack_project=""
+if [[ -n "$db_container" ]]; then
+  stack_project=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' "$db_container" 2>/dev/null)
+  export DB_CONTAINER="$db_container"
+fi
 for svc in db auth rest realtime storage api-gw; do
-  name=$(docker ps --filter "label=com.docker.compose.service=$svc" --format '{{.Names}}' | grep -E 'supabase|realtime|envoy|db' | head -1)
+  name=""
+  if [[ -n "$stack_project" ]]; then
+    name=$(docker ps --filter "label=com.docker.compose.project=$stack_project" \
+      --filter "label=com.docker.compose.service=$svc" --format '{{.Names}}' | head -1)
+  fi
   if [[ -z "$name" ]]; then fail "$svc: no running container"; continue; fi
   health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}running{{end}}' "$name")
   [[ "$health" == "healthy" || "$health" == "running" ]] && pass "$svc ($name): $health" || fail "$svc ($name): $health"
@@ -122,7 +136,7 @@ else
   fail "migration history needs attention before apply"
 fi
 rm -f /tmp/dromanian-migrate-check.$$
-db=$(docker ps --filter label=com.docker.compose.service=db --format '{{.Names}} {{.Image}}' | awk '$2 ~ /^supabase\/postgres:/ {print $1; exit}')
+db=$db_container
 if [[ -n "$db" ]]; then
   ext=$(docker exec "$db" psql -h 127.0.0.1 -U postgres -At -c \
     "SELECT string_agg(name, ',') FROM pg_available_extensions WHERE name IN ('vector','pg_cron','pgcrypto','pg_trgm','uuid-ossp')" 2>/dev/null)

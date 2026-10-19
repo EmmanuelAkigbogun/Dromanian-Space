@@ -35,7 +35,8 @@ detect_container() {
   if docker inspect supabase-db >/dev/null 2>&1; then echo supabase-db; return; fi
   # Coolify may name containers after the resource; find the Supabase db service.
   local found
-  found=$(docker ps --filter label=com.docker.compose.service=db --format '{{.Names}} {{.Image}}' | awk '$2 ~ /^supabase\/postgres:/ {print $1}')
+  found=$(docker ps --filter label=com.docker.compose.service=db --format '{{.Names}} {{.Image}}' \
+    | awk '$2 ~ /^(supabase\/postgres:|dromanian-supabase-db:)/ {print $1}')
   if [[ $(wc -w <<<"$found") -eq 1 ]]; then echo "$found"; return; fi
   echo "Cannot identify the Supabase database container (found: ${found:-none}). Set DB_CONTAINER." >&2
   exit 1

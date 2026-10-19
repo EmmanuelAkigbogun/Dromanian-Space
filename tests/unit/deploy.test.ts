@@ -53,6 +53,12 @@ describe('compose safety', () => {
       expect(supabase).toContain(`target: ${target}`);
     }
   });
+
+  it('recognizes the layered database image in operational scripts', () => {
+    for (const file of ['deploy/migrate.sh', 'deploy/preflight.sh', 'deploy/backup/backup.sh']) {
+      expect(read(file).toString()).toContain('dromanian-supabase-db:');
+    }
+  });
   it('publishes no database or pooler ports and only a loopback gateway port', () => {
     const ports = [...supabase.matchAll(/^\s+- "?([^"\n]*:\d+(?::\d+)?)"?\s*$/gm)].map((m) => m[1]).filter((p) => /^\S*:\$?\{?[A-Z_:-]*\d*\}?:\d+$|^\d/.test(p));
     for (const p of ports) expect(p.startsWith('127.0.0.1:')).toBe(true);
