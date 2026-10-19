@@ -78,7 +78,8 @@ describe('roster', () => {
     await svc('SELECT agent_seed_workspace($1, NULL)', [ws]);
     const dir = await q<{ template_key: string }>(alice, 'SELECT * FROM agent_directory($1)', [ws]);
     expect(dir.map((d) => d.template_key)).not.toContain('writer');
-    expect(dir).toHaveLength(13);
+    // Fifteen specialists (20261019000200 added three) and the Team Lead.
+    expect(dir).toHaveLength(16);
     expect(await q(alice, 'SELECT * FROM agent_conversation_timeline($1)', [run.conversation_id])).toHaveLength(2);
 
     const msg = await postMessage(alice, team, 'Hey @writer and @team, help');

@@ -302,6 +302,10 @@ REVOKE ALL ON FUNCTION public.workspace_ai_settings_check_models() FROM PUBLIC, 
 REVOKE ALL ON FUNCTION public.ai_apply_model_to_agents(uuid, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.ai_apply_model_to_agents(uuid, text) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.ai_provider_of(text) TO anon, authenticated, service_role;
+-- Supabase grants new functions to anon by default; these definer helpers are
+-- for signed-in members and the server only.
+REVOKE ALL ON FUNCTION public.ai_platform_default_model() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.ai_platform_allowed_models() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.ai_platform_default_model() TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.ai_platform_allowed_models() TO authenticated, service_role;
 GRANT SELECT ON ai_models, ai_platform_state TO authenticated, service_role;

@@ -23,7 +23,9 @@ describe('vendored Supabase files', () => {
     expect(createHash('sha256').update(content).digest('hex')).toBe(hash);
   });
   it('ships the same link-preview function as supabase/functions', () => {
-    expect(sha('deploy/supabase/volumes/functions/fetch-link-preview/index.ts')).toBe(sha('supabase/functions/fetch-link-preview/index.ts'));
+    // Compared without line endings: checkouts may differ by platform.
+    const text = (rel: string) => read(rel).toString().replace(/\r\n/g, '\n');
+    expect(text('deploy/supabase/volumes/functions/fetch-link-preview/index.ts')).toBe(text('supabase/functions/fetch-link-preview/index.ts'));
   });
 });
 
