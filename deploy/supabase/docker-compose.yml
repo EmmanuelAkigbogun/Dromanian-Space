@@ -259,6 +259,8 @@ services:
     # This container name looks inconsistent but is correct: Realtime derives
     # its tenant id from the host name.
     container_name: realtime-dev.supabase-realtime
+    # Dromanian: Coolify renames containers; keep the host name Realtime parses.
+    hostname: realtime-dev.supabase-realtime
     image: supabase/realtime:v2.134.10
     restart: unless-stopped
     logging: *logging
@@ -452,6 +454,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+      # Dromanian: first start initializes the cluster and runs the init scripts.
+      start_period: 180s
     environment:
       POSTGRES_HOST: /var/run/postgresql
       PGPORT: ${POSTGRES_PORT:-5432}
