@@ -95,7 +95,7 @@ export async function signup(request: Request): Promise<Response> {
     const row = inserted.rows[0];
     await client.query(
       `INSERT INTO auth.identities (user_id, provider, identity_data)
-       VALUES ($1, 'email', jsonb_build_object('sub', $1::text, 'email', $2))`,
+       VALUES ($1::uuid, 'email', jsonb_build_object('sub', $1::uuid::text, 'email', $2::text))`,
       [row.id, row.email],
     );
     await client.query('COMMIT');
