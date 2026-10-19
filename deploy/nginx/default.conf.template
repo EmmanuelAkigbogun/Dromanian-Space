@@ -9,8 +9,8 @@ server {
     root /usr/share/nginx/html;
     server_tokens off;
 
-    # API request bodies are small JSON; file uploads go to Supabase Storage directly.
-    client_max_body_size 1m;
+    # JSON requests are small; authenticated file uploads use /api/storage.
+    client_max_body_size 55m;
 
     gzip on;
     gzip_min_length 1024;
