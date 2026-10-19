@@ -20,6 +20,10 @@
 --     read access via RLS only.
 -- ============================================================================
 
+-- Self-hosted PostgreSQL ships pg_trgm but does not install it by default.
+-- Keep the operator class in Supabase's conventional extensions schema.
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions;
+
 -- ---------------------------------------------------------------------------
 -- Tables
 -- ---------------------------------------------------------------------------
