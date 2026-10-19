@@ -146,15 +146,16 @@ $$;
 ALTER TABLE workspace_ai_settings ALTER COLUMN default_model SET DEFAULT ai_platform_default_model();
 ALTER TABLE workspace_ai_settings ALTER COLUMN allowed_models SET DEFAULT ai_platform_allowed_models();
 
--- Seeding helper (as in 20261004001300) except for the model fallback: new
--- workspaces are seeded before their settings row exists, so the platform
--- default (not a fixed Claude model) decides which model new agents use.
+-- Seeding helper (as in 20261004001300) except for the model: the workspace's
+-- settings row is created first (from the platform defaults at that moment)
+-- and new agents use its default model, so agents and allowed models always
+-- agree even if the server's providers change later.
 CREATE OR REPLACE FUNCTION public.agent_seed_workspace(p_workspace_id uuid, p_created_by uuid)
 RETURNS integer
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions, pg_temp AS $$
 DECLARE t agent_templates%ROWTYPE; v_agent uuid; v_version uuid; v_created integer := 0; v_model text;
 BEGIN
-  v_model := coalesce((SELECT default_model FROM workspace_ai_settings WHERE workspace_id = p_workspace_id), ai_platform_default_model());
+  v_model := (ai_settings_for(p_workspace_id)).default_model;
   -- Retired built-ins leave the roster; their conversations remain readable.
   UPDATE workspace_agents a SET archived_at = now(), status = 'disabled', updated_at = now()
   FROM agent_templates tpl

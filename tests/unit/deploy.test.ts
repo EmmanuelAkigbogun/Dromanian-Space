@@ -8,7 +8,6 @@ import { describe, expect, it } from 'vitest';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const read = (rel: string) => readFileSync(path.join(root, rel));
-const sha = (rel: string) => createHash('sha256').update(read(rel)).digest('hex');
 
 describe('vendored Supabase files', () => {
   const manifest = read('deploy/supabase/UPSTREAM.md').toString();

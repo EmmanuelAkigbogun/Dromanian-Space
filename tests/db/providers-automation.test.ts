@@ -35,23 +35,34 @@ describe('model catalog and platform state', () => {
   });
 
   it('starts new workspaces on the reported default and keeps existing settings', async () => {
-    const before = (await admin<{ default_model: string }>('SELECT default_model FROM workspace_ai_settings WHERE workspace_id = $1', [wsA]))[0];
-    await svc(`SELECT ai_report_platform('{"anthropic":false,"openai":true}', 'gpt-5.4')`);
+    // Platform state is global and other test files run in parallel: the whole
+    // OpenAI-only scenario runs in one transaction that is always rolled back.
+    const client = await pool.connect();
     try {
-      const fresh = await createWorkspace(other, 'Fresh');
-      // ai_settings_for is server-only (as the API calls it).
-      const s = (await svc<{ default_model: string; allowed_models: string[] }>('SELECT (ai_settings_for($1)).*', [fresh]))[0];
+      await client.query('BEGIN');
+      const as = async (role: string, claims: Record<string, unknown>, sql: string, params: unknown[] = []) => {
+        await client.query(`SET LOCAL ROLE ${role}`);
+        await client.query(`SELECT set_config('request.jwt.claims', $1, true)`, [JSON.stringify(claims)]);
+        return (await client.query(sql, params)).rows;
+      };
+      const service = (sql: string, params: unknown[] = []) => as('service_role', { role: 'service_role' }, sql, params);
+      const before = (await service('SELECT default_model FROM workspace_ai_settings WHERE workspace_id = $1', [wsA]))[0];
+      await service(`SELECT ai_report_platform('{"anthropic":false,"openai":true}', 'gpt-5.4')`);
+      const fresh = (await as('authenticated', { sub: other.id, role: 'authenticated', email: other.email },
+        'SELECT create_workspace_with_owner($1, $2, $3, NULL) AS ws', ['Fresh', `fresh-${randomUUID().slice(0, 8)}`, other.id]))[0].ws.id;
+      const s = (await service('SELECT (ai_settings_for($1)).*', [fresh]))[0];
       expect(s.default_model).toBe('gpt-5.4');
       expect(s.allowed_models).toContain('gpt-5.4');
-      expect(s.allowed_models.every((m) => m.startsWith('gpt-'))).toBe(true);
-      // Agents seeded with the workspace use the platform default, so they can run.
-      const seeded = await admin<{ model: string }>(
+      expect((s.allowed_models as string[]).every((m) => m.startsWith('gpt-'))).toBe(true);
+      // Agents are seeded from the same settings row, so they can run.
+      const seeded = await service(
         `SELECT DISTINCT v.model FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1`, [fresh]);
       expect(seeded.map((r) => r.model)).toEqual(['gpt-5.4']);
-      const unchanged = (await admin<{ default_model: string }>('SELECT default_model FROM workspace_ai_settings WHERE workspace_id = $1', [wsA]))[0];
+      const unchanged = (await service('SELECT default_model FROM workspace_ai_settings WHERE workspace_id = $1', [wsA]))[0];
       expect(unchanged?.default_model).toBe(before?.default_model);
     } finally {
-      await svc(`SELECT ai_report_platform('{"anthropic":true,"openai":false}', 'claude-opus-5-5')`);
+      await client.query('ROLLBACK');
+      client.release();
     }
   });
 
