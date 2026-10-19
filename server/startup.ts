@@ -5,7 +5,7 @@
 import { env } from './env.js';
 import { log } from './log.js';
 import { platformDefaultModel, providerNameFor, providerStates } from './ai/registry.js';
-import { rpc } from './database.js';
+import { databasePool, rpc } from './database.js';
 
 export interface EnvProblem {
   level: 'fatal' | 'warning';
@@ -54,6 +54,12 @@ export function enforceEnv(role: 'api' | 'worker'): void {
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Ensure PostgREST sees migrations and changed grants before browser traffic. */
+export async function reloadDatabaseApiSchema(): Promise<void> {
+  await databasePool().query("NOTIFY pgrst, 'reload schema'");
+  await sleep(500);
+}
 
 /** Retries until the database answers (exponential backoff, capped at 30 s). */
 export async function waitForDatabase(maxWaitMs = 10 * 60_000): Promise<boolean> {

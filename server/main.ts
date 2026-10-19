@@ -3,12 +3,18 @@
 import { createServer } from 'node:http';
 import { handleApi } from './node-http.js';
 import { log } from './log.js';
-import { enforceEnv, reportPlatform, waitForDatabase } from './startup.js';
+import { enforceEnv, reloadDatabaseApiSchema, reportPlatform, waitForDatabase } from './startup.js';
 
 enforceEnv('api');
 
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? '0.0.0.0';
+
+// PostgREST starts after migrations, but explicitly refresh its cache before
+// accepting browser traffic so freshly added columns/RPCs are immediately usable.
+await reloadDatabaseApiSchema().catch((error) =>
+  log.warn('could not reload database API schema', { error: error instanceof Error ? error : String(error) }),
+);
 
 const server = createServer((req, res) => {
   if (req.url?.startsWith('/api/')) {
