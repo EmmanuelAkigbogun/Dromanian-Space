@@ -40,6 +40,12 @@ describe('compose safety', () => {
     expect(supabase).not.toMatch(/\.\/volumes\/db\/data/);
     expect(supabase).not.toMatch(/\.\/volumes\/storage/);
   });
+
+  it('does not report Postgres healthy before first-run initialization completes', () => {
+    expect(supabase).toContain("to_regnamespace('_realtime') IS NOT NULL");
+    expect(supabase).toContain("datname = '_supabase'");
+    expect(supabase).toContain("rolname = 'authenticator' AND rolpassword IS NOT NULL");
+  });
   it('publishes no database or pooler ports and only a loopback gateway port', () => {
     const ports = [...supabase.matchAll(/^\s+- "?([^"\n]*:\d+(?::\d+)?)"?\s*$/gm)].map((m) => m[1]).filter((p) => /^\S*:\$?\{?[A-Z_:-]*\d*\}?:\d+$|^\d/.test(p));
     for (const p of ports) expect(p.startsWith('127.0.0.1:')).toBe(true);

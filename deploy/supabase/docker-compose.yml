@@ -450,7 +450,15 @@ services:
       # upstream relies on) whose storage is a directory on the app-data disk.
       - db-config:/etc/postgresql-custom
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      # Dromanian: pg_isready succeeds against the temporary server used by
+      # initdb, before the mounted initialization scripts have finished. Wait
+      # for objects created near the end of both migration phases so Coolify
+      # cannot start dependants or replace the container mid-initialization.
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U postgres -h localhost && test \"$$(psql -U postgres -d postgres -Atqc \"SELECT (to_regnamespace('_realtime') IS NOT NULL AND EXISTS (SELECT FROM pg_database WHERE datname = '_supabase') AND EXISTS (SELECT FROM pg_authid WHERE rolname = 'authenticator' AND rolpassword IS NOT NULL))\")\" = t"
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
