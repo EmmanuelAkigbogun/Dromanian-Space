@@ -1,7 +1,7 @@
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { CallSession, CallParticipant } from '@/types';
 
-const db = supabase as any;
+const db = platform as any;
 
 export async function createCallSession(
   workspaceId: string,

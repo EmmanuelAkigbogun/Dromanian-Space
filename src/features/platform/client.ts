@@ -1,18 +1,17 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
+import { platform as basePlatform } from '@/lib/platform';
 import type { PlatformDatabase } from '@/types/platform-database';
 
-// Reuse the authenticated client and its session; the additive schema is generated separately.
-export const platform = supabase as unknown as SupabaseClient<PlatformDatabase>;
+// Reuse the authenticated same-origin client; schema row types remain local.
+export const platform = basePlatform;
 export type Row<K extends keyof PlatformDatabase['public']['Tables']> = PlatformDatabase['public']['Tables'][K]['Row'];
 export type RpcRow<K extends keyof PlatformDatabase['public']['Functions']> = PlatformDatabase['public']['Functions'][K]['Returns'] extends (infer R)[] ? R : never;
-export async function result<T>(request: PromiseLike<{ data: T; error: { message: string } | null }>): Promise<NonNullable<T>> {
+export async function result(request: PromiseLike<{ data: any; error: { message: string } | null }>): Promise<any> {
   const { data, error } = await request;
   if (error) throw new Error(error.message);
-  return data as NonNullable<T>;
+  return data;
 }
 export async function api(path: string, body?: unknown): Promise<Response> {
-  const { data: { session } } = await supabase.auth.getSession();
+  const { data: { session } } = await platform.auth.getSession();
   if (!session) throw new Error('Please sign in again.');
   const response = await fetch(`/api/${path}`, {
     method: body === undefined ? 'GET' : 'POST',

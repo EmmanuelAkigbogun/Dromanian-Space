@@ -55,9 +55,8 @@ function DriveBrowser({ workspaceId: ws, userId, itemId, folderId }: {workspaceI
       if(!session) throw new Error('Please sign in again.');
       await new Promise<void>((resolve,reject)=>{
         const xhr = new XMLHttpRequest();abort.current=xhr;
-        xhr.open('POST',`${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/${ticket.bucket}/${ticket.path.split('/').map(encodeURIComponent).join('/')}`);
+        xhr.open('POST',`/api/storage/object/${encodeURIComponent(ticket.bucket)}/${ticket.path.split('/').map(encodeURIComponent).join('/')}`);
         xhr.setRequestHeader('Authorization',`Bearer ${session.access_token}`);
-        xhr.setRequestHeader('apikey',import.meta.env.VITE_SUPABASE_ANON_KEY);
         xhr.setRequestHeader('Content-Type',file.type || 'application/octet-stream');
         xhr.upload.onprogress=e=>{if(e.lengthComputable&&alive.current)setUploads(u=>u.map(x=>x.file===file?{...x,progress:Math.round(e.loaded/e.total*95)}:x));};
         xhr.onload=()=>xhr.status<300?resolve():reject(new Error('Upload failed. Retry when your connection is available.'));

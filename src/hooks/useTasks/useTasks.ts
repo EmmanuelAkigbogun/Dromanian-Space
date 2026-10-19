@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { createTypedNotification } from '@/features/notifications/service';
 import { resolveTaskStatusLabel } from '@/lib/tasks/status';
 import type { UUID } from '@/types';
@@ -83,7 +83,7 @@ interface UseTasksReturn {
 // useTasks instances share a single channel instead of one per mount.
 type TaskRealtimeListener = () => void;
 const taskRealtimeListeners = new Set<TaskRealtimeListener>();
-let taskRealtimeChannel: ReturnType<typeof supabase.channel> | null = null;
+let taskRealtimeChannel: ReturnType<typeof platform.channel> | null = null;
 let taskRealtimeWorkspaceId: string | null = null;
 let taskRealtimeCount = 0;
 
@@ -95,11 +95,11 @@ function acquireTaskRealtime(workspaceId: string) {
   taskRealtimeCount += 1;
   if (taskRealtimeChannel && taskRealtimeWorkspaceId === workspaceId) return;
   if (taskRealtimeChannel) {
-    supabase.removeChannel(taskRealtimeChannel);
+    platform.removeChannel(taskRealtimeChannel);
     taskRealtimeChannel = null;
   }
   taskRealtimeWorkspaceId = workspaceId;
-  taskRealtimeChannel = supabase
+  taskRealtimeChannel = platform
     .channel('tasks-realtime-global')
     .on(
       'postgres_changes',
@@ -112,7 +112,7 @@ function acquireTaskRealtime(workspaceId: string) {
 function releaseTaskRealtime() {
   taskRealtimeCount = Math.max(0, taskRealtimeCount - 1);
   if (taskRealtimeCount === 0 && taskRealtimeChannel) {
-    supabase.removeChannel(taskRealtimeChannel);
+    platform.removeChannel(taskRealtimeChannel);
     taskRealtimeChannel = null;
     taskRealtimeWorkspaceId = null;
   }
@@ -138,7 +138,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
     setError(null);
 
     try {
-      let query = supabase
+      let query = platform
         .from('tasks' as any)
         .select('*')
         .eq('workspace_id', currentWorkspace.id)
@@ -174,7 +174,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
         if (taskIds.length === 0) {
           result = [];
         } else {
-          const { data: assignments } = await supabase
+          const { data: assignments } = await platform
             .from('task_assignees' as any)
             .select('task_id')
             .in('task_id', taskIds)
@@ -191,7 +191,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
 
       let assignedToMeIds = new Set<string>();
       if (otherTaskIds.length > 0) {
-        const { data: myAssignments } = await supabase
+        const { data: myAssignments } = await platform
           .from('task_assignees' as any)
           .select('task_id')
           .eq('user_id', userId)
@@ -258,7 +258,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
           taskData.status = input.status;
         }
 
-        const { data, error: createError } = await supabase
+        const { data, error: createError } = await platform
           .from('tasks' as any)
           .insert(taskData)
           .select()
@@ -273,7 +273,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
             task_id: task.id,
             user_id: uid,
           }));
-          await supabase.from('task_assignees' as any).insert(assigneeRows);
+          await platform.from('task_assignees' as any).insert(assigneeRows);
 
           const taskWorkspaceId = currentWorkspace?.id || null;
           const link = `/tasks/${task.id}`;
@@ -298,10 +298,10 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
             task_id: task.id,
             label_id: labelId,
           }));
-          await supabase.from('task_label_assignments' as any).insert(labelRows);
+          await platform.from('task_label_assignments' as any).insert(labelRows);
         }
 
-        await supabase.from('task_activity' as any).insert({
+        await platform.from('task_activity' as any).insert({
           task_id: task.id,
           user_id: userId,
           action: 'created',
@@ -324,7 +324,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
       setError(null);
 
       try {
-        const { error: updateError } = await supabase
+        const { error: updateError } = await platform
           .rpc('update_task', {
             p_task_id: taskId,
             p_title: input.title ?? null,
@@ -343,7 +343,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
         );
 
         if (input.status) {
-          await supabase.from('task_activity' as any).insert({
+          await platform.from('task_activity' as any).insert({
             task_id: taskId,
             user_id: userId,
             action: 'status_changed',
@@ -353,7 +353,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
           notifyTaskStatusChanged(taskId, input.status, userId).catch(() => {});
         }
         if (input.priority) {
-          await supabase.from('task_activity' as any).insert({
+          await platform.from('task_activity' as any).insert({
             task_id: taskId,
             user_id: userId,
             action: 'priority_changed',
@@ -363,7 +363,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
           notifyTaskPriorityChanged(taskId, input.priority, userId).catch(() => {});
         }
         if (input.title || input.description) {
-          await supabase.from('task_activity' as any).insert({
+          await platform.from('task_activity' as any).insert({
             task_id: taskId,
             user_id: userId,
             action: 'edited',
@@ -387,7 +387,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
       setError(null);
 
       try {
-        const { error: updateError } = await supabase
+        const { error: updateError } = await platform
           .rpc('update_task_status', { p_task_id: taskId, p_status: status });
 
         if (updateError) throw updateError;
@@ -433,7 +433,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
           status_order: source.status_order ?? null,
         };
 
-        const { data, error: createError } = await supabase
+        const { data, error: createError } = await platform
           .from('tasks' as any)
           .insert(taskData)
           .select()
@@ -444,25 +444,25 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
         const task = data as unknown as Task;
 
         const [assigneesRes, labelsRes] = await Promise.all([
-          supabase.from('task_assignees' as any).select('user_id').eq('task_id', source.id),
-          supabase.from('task_label_assignments' as any).select('label_id').eq('task_id', source.id),
+          platform.from('task_assignees' as any).select('user_id').eq('task_id', source.id),
+          platform.from('task_label_assignments' as any).select('label_id').eq('task_id', source.id),
         ]);
 
         const assigneeIds = ((assigneesRes.data || []) as any[]).map((a: any) => a.user_id);
         const labelIds = ((labelsRes.data || []) as any[]).map((l: any) => l.label_id);
 
         if (assigneeIds.length > 0) {
-          await supabase.from('task_assignees' as any).insert(
+          await platform.from('task_assignees' as any).insert(
             assigneeIds.map((uid: string) => ({ task_id: task.id, user_id: uid })),
           );
         }
         if (labelIds.length > 0) {
-          await supabase.from('task_label_assignments' as any).insert(
+          await platform.from('task_label_assignments' as any).insert(
             labelIds.map((labelId: string) => ({ task_id: task.id, label_id: labelId })),
           );
         }
 
-        await supabase.from('task_activity' as any).insert({
+        await platform.from('task_activity' as any).insert({
           task_id: task.id,
           user_id: userId,
           action: 'created',
@@ -485,7 +485,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
       setError(null);
 
       try {
-        const { error: deleteError } = await supabase
+        const { error: deleteError } = await platform
           .rpc('delete_task', { p_task_id: taskId });
 
         if (deleteError) throw deleteError;
@@ -505,7 +505,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
       setError(null);
 
       try {
-        const { error: archiveError } = await supabase
+        const { error: archiveError } = await platform
           .rpc('archive_task', { p_task_id: taskId });
 
         if (archiveError) throw archiveError;
@@ -525,7 +525,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
       setError(null);
 
       try {
-        const { error } = await supabase
+        const { error } = await platform
           .rpc('restore_task', { p_task_id: taskId });
 
         if (error) throw error;
@@ -552,7 +552,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
   );
 
   const getTaskComments = useCallback(async (taskId: string): Promise<TaskComment[]> => {
-    const { data, error } = await supabase
+    const { data, error } = await platform
       .from('task_comments' as any)
       .select('*')
       .eq('task_id', taskId)
@@ -570,7 +570,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
     async (taskId: string, content: string, parentId?: string): Promise<TaskComment | null> => {
       if (!userId) return null;
 
-      const { data, error } = await supabase
+      const { data, error } = await platform
         .from('task_comments' as any)
         .insert({
           task_id: taskId,
@@ -586,7 +586,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
         return null;
       }
 
-      await supabase.from('task_activity' as any).insert({
+      await platform.from('task_activity' as any).insert({
         task_id: taskId,
         user_id: userId,
         action: 'commented',
@@ -600,7 +600,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
 
   const updateTaskComment = useCallback(
     async (commentId: string, content: string): Promise<boolean> => {
-      const { error } = await supabase
+      const { error } = await platform
         .from('task_comments' as any)
         .update({ content, updated_at: new Date().toISOString() })
         .eq('id', commentId);
@@ -612,7 +612,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
 
   const deleteTaskComment = useCallback(
     async (commentId: string): Promise<boolean> => {
-      const { error } = await supabase
+      const { error } = await platform
         .from('task_comments' as any)
         .delete()
         .eq('id', commentId);
@@ -623,7 +623,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
   );
 
   const getTaskActivity = useCallback(async (taskId: string): Promise<TaskActivity[]> => {
-    const { data, error } = await supabase
+    const { data, error } = await platform
       .from('task_activity' as any)
       .select('*')
       .eq('task_id', taskId)
@@ -641,14 +641,14 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
     async (taskId: string, userIdToAssign: UUID): Promise<boolean> => {
       if (!userId) return false;
 
-      const { error } = await supabase.from('task_assignees' as any).insert({
+      const { error } = await platform.from('task_assignees' as any).insert({
         task_id: taskId,
         user_id: userIdToAssign,
       });
 
       if (error) return false;
 
-      await supabase.from('task_activity' as any).insert({
+      await platform.from('task_activity' as any).insert({
         task_id: taskId,
         user_id: userId,
         action: 'assigned',
@@ -657,8 +657,8 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
       });
 
       const [taskRes, assignerRes] = await Promise.all([
-        supabase.from('tasks' as any).select('title, workspace_id').eq('id', taskId).single(),
-        supabase.from('profiles' as any).select('display_name, username').eq('id', userId).single(),
+        platform.from('tasks' as any).select('title, workspace_id').eq('id', taskId).single(),
+        platform.from('profiles' as any).select('display_name, username').eq('id', userId).single(),
       ]);
 
       const taskRow = taskRes.data as any;
@@ -689,7 +689,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
     async (taskId: string, userIdToUnassign: UUID): Promise<boolean> => {
       if (!userId) return false;
 
-      const { error } = await supabase
+      const { error } = await platform
         .from('task_assignees' as any)
         .delete()
         .eq('task_id', taskId)
@@ -697,7 +697,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
 
       if (error) return false;
 
-      await supabase.from('task_activity' as any).insert({
+      await platform.from('task_activity' as any).insert({
         task_id: taskId,
         user_id: userId,
         action: 'unassigned',
@@ -711,7 +711,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
   );
 
   const getTaskAssignees = useCallback(async (taskId: string): Promise<TaskAssignee[]> => {
-    const { data, error } = await supabase
+    const { data, error } = await platform
       .from('task_assignees' as any)
       .select('*')
       .eq('task_id', taskId);
@@ -721,7 +721,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
   }, []);
 
   const getLabels = useCallback(async (): Promise<TaskLabel[]> => {
-    const { data, error } = await supabase
+    const { data, error } = await platform
       .from('task_labels' as any)
       .select('*')
       .order('name', { ascending: true });
@@ -733,7 +733,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
   const createLabel = useCallback(
     async (name: string, color: string): Promise<TaskLabel | null> => {
       if (!currentWorkspace?.id) return null;
-      const { data, error } = await supabase
+      const { data, error } = await platform
         .from('task_labels' as any)
         .insert({ name, color, workspace_id: currentWorkspace.id })
         .select()
@@ -747,7 +747,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
 
   const assignLabel = useCallback(
     async (taskId: string, labelId: string): Promise<boolean> => {
-      const { error } = await supabase.from('task_label_assignments' as any).insert({
+      const { error } = await platform.from('task_label_assignments' as any).insert({
         task_id: taskId,
         label_id: labelId,
       });
@@ -758,7 +758,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
 
   const unassignLabel = useCallback(
     async (taskId: string, labelId: string): Promise<boolean> => {
-      const { error } = await supabase
+      const { error } = await platform
         .from('task_label_assignments' as any)
         .delete()
         .eq('task_id', taskId)
@@ -769,7 +769,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
   );
 
   const getTaskLabels = useCallback(async (taskId: string): Promise<TaskLabelAssignment[]> => {
-    const { data, error } = await supabase
+    const { data, error } = await platform
       .from('task_label_assignments' as any)
       .select('*')
       .eq('task_id', taskId);
@@ -788,9 +788,9 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
     actorId: string,
   ) {
     const [taskRes, assigneesRes, actorRes, statusLabel] = await Promise.all([
-      supabase.from('tasks' as any).select('title, workspace_id, created_by').eq('id', taskId).single(),
-      supabase.from('task_assignees' as any).select('user_id').eq('task_id', taskId),
-      supabase.from('profiles' as any).select('display_name, username').eq('id', actorId).single(),
+      platform.from('tasks' as any).select('title, workspace_id, created_by').eq('id', taskId).single(),
+      platform.from('task_assignees' as any).select('user_id').eq('task_id', taskId),
+      platform.from('profiles' as any).select('display_name, username').eq('id', actorId).single(),
       resolveTaskStatusLabel(newStatus),
     ]);
 
@@ -832,9 +832,9 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
     actorId: string,
   ) {
     const [taskRes, assigneesRes, actorRes] = await Promise.all([
-      supabase.from('tasks' as any).select('title, workspace_id').eq('id', taskId).single(),
-      supabase.from('task_assignees' as any).select('user_id').eq('task_id', taskId),
-      supabase.from('profiles' as any).select('display_name, username').eq('id', actorId).single(),
+      platform.from('tasks' as any).select('title, workspace_id').eq('id', taskId).single(),
+      platform.from('task_assignees' as any).select('user_id').eq('task_id', taskId),
+      platform.from('profiles' as any).select('display_name, username').eq('id', actorId).single(),
     ]);
 
     const taskRow = taskRes.data as any;
@@ -875,9 +875,9 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
     changes: UpdateTaskInput,
   ) {
     const [taskRes, assigneesRes, actorRes] = await Promise.all([
-      supabase.from('tasks' as any).select('title, workspace_id').eq('id', taskId).single(),
-      supabase.from('task_assignees' as any).select('user_id').eq('task_id', taskId),
-      supabase.from('profiles' as any).select('display_name, username').eq('id', actorId).single(),
+      platform.from('tasks' as any).select('title, workspace_id').eq('id', taskId).single(),
+      platform.from('task_assignees' as any).select('user_id').eq('task_id', taskId),
+      platform.from('profiles' as any).select('display_name, username').eq('id', actorId).single(),
     ]);
 
     const taskRow = taskRes.data as any;

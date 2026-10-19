@@ -1,4 +1,4 @@
-import { rpc, serviceClient } from '../supabase.js';
+import { rpc, serviceClient } from '../database.js';
 import { PermanentJobError, type JobRow } from '../jobs/types.js';
 
 /** Permanent deletion requested by an item's owner (rows first, objects via GC jobs). */

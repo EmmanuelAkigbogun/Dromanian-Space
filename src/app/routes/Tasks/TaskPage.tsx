@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useTasks } from '@/hooks/useTasks';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { TaskList } from '@/components/tasks/TaskList';
 import { TaskBoard } from '@/components/tasks/TaskBoard';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
@@ -51,7 +51,7 @@ export function TaskPage() {
     }
     let cancelled = false;
     const taskIds = tasks.map((t) => t.id);
-    supabase
+    platform
       .from('task_custom_statuses' as any)
       .select('id, name')
       .in('task_id', taskIds)

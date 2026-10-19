@@ -21,7 +21,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Spinner } from '@/components/ui/Spinner';
 import { getDisplayName, shouldGroupWithPrevious, needsDateSeparator } from '@/lib/message';
 import { getPresenceLabel, presenceToAvatarStatus } from '@/lib/presence';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useThreadCountsSafe, useThread } from '@/app/providers/ThreadProvider';
 import { usePrefetchAttachments } from '@/hooks/useMessageAttachments';
 import { useBulkMessageActions } from '@/hooks/useBulkMessageActions';
@@ -170,7 +170,7 @@ export function DmConversationView() {
 
     setConnectionStatus('connecting');
 
-    const ch = supabase
+    const ch = platform
       .channel(`dm-realtime:${channelId}`)
       .on(
         'postgres_changes',
@@ -236,7 +236,7 @@ export function DmConversationView() {
         else if (status === 'TIMED_OUT') setConnectionStatus('reconnecting');
       });
 
-    return () => { supabase.removeChannel(ch); };
+    return () => { platform.removeChannel(ch); };
   }, [channelId]);
 
   useEffect(() => {

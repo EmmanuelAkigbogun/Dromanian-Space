@@ -1,14 +1,14 @@
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 
 export async function markChannelRead(channelId: string, userId: string): Promise<void> {
-  await supabase.rpc('mark_channel_read' as any, {
+  await platform.rpc('mark_channel_read' as any, {
     p_channel_id: channelId,
     p_user_id: userId,
   });
 }
 
 export async function getUnreadCount(channelId: string, userId: string): Promise<number> {
-  const { data } = await supabase.rpc('get_unread_count' as any, {
+  const { data } = await platform.rpc('get_unread_count' as any, {
     p_channel_id: channelId,
     p_user_id: userId,
   });
@@ -21,7 +21,7 @@ export async function getUnreadCounts(
 ): Promise<Map<string, number>> {
   if (channelIds.length === 0) return new Map();
 
-  const { data } = await supabase.rpc('get_unread_counts' as any, {
+  const { data } = await platform.rpc('get_unread_counts' as any, {
     p_user_id: userId,
     p_channel_ids: channelIds,
   });
@@ -36,7 +36,7 @@ export async function getUnreadCounts(
 }
 
 export async function markConversationRead(conversationId: string, userId: string): Promise<void> {
-  await supabase.rpc('mark_conversation_read' as any, {
+  await platform.rpc('mark_conversation_read' as any, {
     p_conversation_id: conversationId,
     p_user_id: userId,
   });

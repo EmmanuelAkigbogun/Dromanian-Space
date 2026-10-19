@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { generateId } from '@/utils';
@@ -50,7 +50,7 @@ export function useCalendar(): UseCalendarReturn {
   const fetchEvents = useCallback(async () => {
     if (!currentWorkspace?.id) { setIsLoading(false); return; }
     setIsLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await platform
       .from('calendar_events' as never)
       .select('*')
       .eq('workspace_id', currentWorkspace.id)
@@ -63,14 +63,14 @@ export function useCalendar(): UseCalendarReturn {
     if (!currentWorkspace?.id) return;
     const eventIds = events.map((e) => e.id);
     if (eventIds.length === 0) { setParticipants([]); return; }
-    const { data, error } = await supabase
+    const { data, error } = await platform
       .rpc('get_events_participants', { p_event_ids: eventIds });
     if (!error && data) setParticipants(data as unknown as EventParticipant[]);
   }, [events, currentWorkspace?.id]);
 
   const fetchReminders = useCallback(async () => {
     if (!userId) return;
-    const { data, error } = await supabase
+    const { data, error } = await platform
       .from('reminders' as never)
       .select('*')
       .or(`user_id.eq.${userId},recipients.cs.{${userId}}`)
@@ -93,16 +93,16 @@ export function useCalendar(): UseCalendarReturn {
       return;
     }
     const [msgRes, chRes, convRes] = await Promise.all([
-      supabase
+      platform
         .from('scheduled_messages' as never)
         .select('*')
         .eq('user_id', userId)
         .order('scheduled_at', { ascending: true }),
-      supabase
+      platform
         .from('channels' as never)
         .select('id')
         .eq('workspace_id', currentWorkspace.id),
-      supabase
+      platform
         .from('direct_conversations' as never)
         .select('id')
         .eq('workspace_id', currentWorkspace.id),
@@ -120,7 +120,7 @@ export function useCalendar(): UseCalendarReturn {
     const msgIds = messages.map((m) => m.id);
     const attachmentsByMsg = new Map<string, ScheduledMessageAttachment[]>();
     if (msgIds.length > 0) {
-      const { data: attData } = await supabase
+      const { data: attData } = await platform
         .from('scheduled_message_attachments' as never)
         .select('*')
         .in('scheduled_message_id', msgIds);
@@ -160,7 +160,7 @@ export function useCalendar(): UseCalendarReturn {
         created_at: now,
         updated_at: now,
       };
-      const { data, error } = await supabase
+      const { data, error } = await platform
         .from('calendar_events' as never)
         .insert(payload as never)
         .select()
@@ -174,10 +174,10 @@ export function useCalendar(): UseCalendarReturn {
         const dateStr = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         const timeStr = eventData.all_day ? 'All day' : startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 
-        const creatorProfile = await supabase.from('profiles').select('display_name, username').eq('id', userId).single();
+        const creatorProfile = await platform.from('profiles').select('display_name, username').eq('id', userId).single();
         const creatorName = creatorProfile.data?.display_name || creatorProfile.data?.username || 'Someone';
 
-        const participants = await supabase.from('event_participants' as never).select('user_id').eq('event_id', id);
+        const participants = await platform.from('event_participants' as never).select('user_id').eq('event_id', id);
         const participantIds = ((participants.data || []) as any[]).map((p: any) => p.user_id).filter((pid: string) => pid !== userId);
 
         const allRecipients = [...new Set(participantIds)];
@@ -207,7 +207,7 @@ export function useCalendar(): UseCalendarReturn {
   );
 
   const updateEvent = useCallback(async (id: string, updates: Partial<CalendarEvent>) => {
-    const { error } = await supabase
+    const { error } = await platform
       .from('calendar_events' as never)
       .update({ ...updates, updated_at: new Date().toISOString() } as never)
       .eq('id', id);
@@ -219,9 +219,9 @@ export function useCalendar(): UseCalendarReturn {
   }, []);
 
   const deleteEvent = useCallback(async (id: string) => {
-    const { error } = await supabase.from('calendar_events' as never).delete().eq('id', id);
+    const { error } = await platform.from('calendar_events' as never).delete().eq('id', id);
     if (error) return false;
-    await supabase.from('reminders' as never).delete().eq('entity_type', 'event').eq('entity_id', id);
+    await platform.from('reminders' as never).delete().eq('entity_type', 'event').eq('entity_id', id);
     setEvents((prev) => prev.filter((e) => e.id !== id));
     setReminders((prev) => prev.filter((r) => !(r.entity_type === 'event' && r.entity_id === id)));
     return true;
@@ -229,7 +229,7 @@ export function useCalendar(): UseCalendarReturn {
 
   const getEventsForRange = useCallback(async (start: string, end: string) => {
     if (!currentWorkspace?.id) return [];
-    const { data, error } = await supabase
+    const { data, error } = await platform
       .from('calendar_events' as never)
       .select('*')
       .eq('workspace_id', currentWorkspace.id)
@@ -241,7 +241,7 @@ export function useCalendar(): UseCalendarReturn {
   }, [currentWorkspace?.id]);
 
   const addParticipant = useCallback(async (eventId: string, userId: string) => {
-    const { data, error } = await supabase
+    const { data, error } = await platform
       .rpc('add_event_participant', { p_event_id: eventId, p_user_id: userId });
     if (error || !data) return null;
     const participant = { id: data as string, event_id: eventId, user_id: userId, status: 'pending', created_at: new Date().toISOString() } as EventParticipant;
@@ -250,7 +250,7 @@ export function useCalendar(): UseCalendarReturn {
   }, []);
 
   const removeParticipant = useCallback(async (participantId: string) => {
-    const { error } = await supabase.rpc('remove_event_participant_by_id', { p_participant_id: participantId });
+    const { error } = await platform.rpc('remove_event_participant_by_id', { p_participant_id: participantId });
     if (error) return false;
     setParticipants((prev) => prev.filter((p) => p.id !== participantId));
     return true;
@@ -266,7 +266,7 @@ export function useCalendar(): UseCalendarReturn {
         ...reminderData,
         created_at: new Date().toISOString(),
       };
-      const { data, error } = await supabase
+      const { data, error } = await platform
         .from('reminders' as never)
         .insert(payload as never)
         .select()
@@ -297,7 +297,7 @@ export function useCalendar(): UseCalendarReturn {
         status: hasAttachments ? 'draft' : 'pending',
         created_at: new Date().toISOString(),
       };
-      const { data, error } = await supabase
+      const { data, error } = await platform
         .from('scheduled_messages' as never)
         .insert(payload as never)
         .select()
@@ -308,7 +308,7 @@ export function useCalendar(): UseCalendarReturn {
       if (hasAttachments) {
         const uploaded = await attachScheduledFiles(msg.id, userId, files, attachments, onFileProgress);
         if (uploaded) {
-          const { error: queueError } = await supabase.rpc('queue_scheduled_message' as never, { p_id: msg.id } as never);
+          const { error: queueError } = await platform.rpc('queue_scheduled_message' as never, { p_id: msg.id } as never);
           if (!queueError) msg = { ...msg, status: 'pending' };
         }
       }
@@ -321,7 +321,7 @@ export function useCalendar(): UseCalendarReturn {
   );
 
   const updateScheduledMessage = useCallback(async (id: string, updates: Partial<Pick<ScheduledMessage, 'content' | 'scheduled_at' | 'channel_id' | 'conversation_id'>>) => {
-    const { error } = await supabase
+    const { error } = await platform
       .from('scheduled_messages' as never)
       .update(updates as never)
       .eq('id', id);
@@ -335,9 +335,9 @@ export function useCalendar(): UseCalendarReturn {
   // Resending queues a copy due now and delivers it through the same
   // transactional server path as scheduled delivery (no client-side send).
   const resendScheduledMessage = useCallback(async (id: string) => {
-    const { data, error } = await supabase.rpc('resend_scheduled_message' as never, { p_id: id } as never);
+    const { data, error } = await platform.rpc('resend_scheduled_message' as never, { p_id: id } as never);
     if (error || !data) return false;
-    const { data: copy } = await supabase
+    const { data: copy } = await platform
       .from('scheduled_messages' as never)
       .select('*')
       .eq('id', data as unknown as string)
@@ -355,7 +355,7 @@ export function useCalendar(): UseCalendarReturn {
   // A failed message is re-queued by setting it back to pending (the server
   // resets its attempts); delivery itself only happens server-side.
   const retryScheduledMessage = useCallback(async (id: string) => {
-    const { error } = await supabase
+    const { error } = await platform
       .from('scheduled_messages' as never)
       .update({ status: 'pending' } as never)
       .eq('id', id);
@@ -365,7 +365,7 @@ export function useCalendar(): UseCalendarReturn {
   }, []);
 
   const cancelScheduledMessage = useCallback(async (id: string) => {
-    const { error } = await supabase.from('scheduled_messages' as never).delete().eq('id', id);
+    const { error } = await platform.from('scheduled_messages' as never).delete().eq('id', id);
     if (error) return false;
     setScheduledMessages((prev) => prev.filter((m) => m.id !== id));
     return true;

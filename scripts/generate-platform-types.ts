@@ -2,7 +2,7 @@
 // No credentials or row data are read. Run: node --import tsx scripts/generate-platform-types.ts
 import { writeFileSync } from 'node:fs';
 import pg from 'pg';
-import { DATABASE_URL } from '../tools/local-supabase/lib.ts';
+import { DATABASE_URL } from '../tools/local-database/lib.ts';
 
 const db = new pg.Client({ connectionString: DATABASE_URL });
 await db.connect();

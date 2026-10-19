@@ -8,7 +8,7 @@ import { clientAddress, limitFor, RateLimiter } from '../../server/rate-limit.js
 import { checkCallbackUrl, sign } from '../../server/integrations/n8n.js';
 
 const VARS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'AI_DEFAULT_PROVIDER', 'AI_DEFAULT_ANTHROPIC_MODEL', 'AI_DEFAULT_OPENAI_MODEL',
-  'SUPABASE_URL', 'SUPABASE_SECRET_KEY', 'N8N_BASE_URL', 'VITE_OPENAI_API_KEY'];
+  'DATABASE_URL', 'DATABASE_REST_URL', 'APP_JWT_SECRET', 'N8N_BASE_URL', 'VITE_OPENAI_API_KEY'];
 const saved = Object.fromEntries(VARS.map((v) => [v, process.env[v]]));
 function setEnv(vars: Record<string, string | undefined>) {
   for (const v of VARS) delete process.env[v];
@@ -42,7 +42,7 @@ describe('provider routing', () => {
 });
 
 describe('startup configuration', () => {
-  const base = { SUPABASE_URL: 'http://supabase-gateway:8000', SUPABASE_SECRET_KEY: 'secret' };
+  const base = { DATABASE_URL: 'postgresql://postgres:secret@db:5432/postgres', DATABASE_REST_URL: 'http://rest:3000', APP_JWT_SECRET: 'x'.repeat(32) };
   it('accepts a minimal valid configuration and warns without AI keys', () => {
     setEnv(base);
     const problems = checkEnv();
@@ -52,8 +52,8 @@ describe('startup configuration', () => {
   it('rejects missing database settings, bad provider names and browser-exposed secrets', () => {
     setEnv({ AI_DEFAULT_PROVIDER: 'ollama', AI_DEFAULT_OPENAI_MODEL: 'claude-opus-5-5', VITE_OPENAI_API_KEY: 'sk' });
     const fatal = checkEnv().filter((p) => p.level === 'fatal').map((p) => p.message).join('\n');
-    expect(fatal).toContain('SUPABASE_URL');
-    expect(fatal).toContain('SUPABASE_SECRET_KEY');
+    expect(fatal).toContain('DATABASE_URL');
+    expect(fatal).toContain('APP_JWT_SECRET');
     expect(fatal).toContain('AI_DEFAULT_PROVIDER');
     expect(fatal).toContain('AI_DEFAULT_OPENAI_MODEL');
     expect(fatal).toContain('VITE_OPENAI_API_KEY');

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { getUserInvitationsByEmail } from '@/lib/workspace';
 import { InvitationCard } from '@/components/workspace/members/InvitationCard';
 import { Button } from '@/components/ui/Button';
@@ -37,7 +37,7 @@ export function EmptyWorkspace({ onSkip }: EmptyWorkspaceProps) {
     if (!user?.email) return;
 
     const normalizedEmail = user.email.toLowerCase().trim();
-    const channel = supabase
+    const channel = platform
       .channel(`empty-invitations:${Math.random().toString(36).slice(2, 9)}`)
       .on(
         'postgres_changes',
@@ -54,7 +54,7 @@ export function EmptyWorkspace({ onSkip }: EmptyWorkspaceProps) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [user?.email, fetchInvitations]);
 

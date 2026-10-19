@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { Reaction } from '@/types';
 
 const REACTION_CACHE_TTL_MS = 30_000;
@@ -63,7 +63,7 @@ export async function addReaction(
   userId: string,
   emoji: string,
 ): Promise<Reaction | null> {
-  const { data: existing } = await supabase
+  const { data: existing } = await platform
     .from('reactions')
     .select('id')
     .eq('message_id', messageId)
@@ -76,7 +76,7 @@ export async function addReaction(
     return null;
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('reactions')
     .insert({
       message_id: messageId,
@@ -99,7 +99,7 @@ export async function removeReaction(
   userId: string,
   emoji: string,
 ): Promise<boolean> {
-  const { error } = await supabase
+  const { error } = await platform
     .from('reactions')
     .delete()
     .eq('message_id', messageId)
@@ -129,7 +129,7 @@ export async function getReactionsByMessageIds(
 ): Promise<Map<string, Reaction[]>> {
   if (messageIds.length === 0) return new Map();
 
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('reactions')
     .select('*')
     .in('message_id', messageIds)

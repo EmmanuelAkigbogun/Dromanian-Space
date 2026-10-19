@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { rpc } from '../../supabase.js';
+import { rpc } from '../../database.js';
 import { defineTool, quoteData } from './types.js';
 const record = z.object({kind:z.enum(['contacts','companies','deals']),record_id:z.string().uuid()});
 export const readCrmRecord=defineTool({

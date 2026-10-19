@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { TaskCard } from '@/components/tasks/TaskCard';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { Task, TaskStatus } from '@/types/task';
 import styles from './TaskBoard.module.css';
 
@@ -23,7 +23,7 @@ export function TaskBoard({ tasks, onTaskClick, onStatusChange, onEdit, onRestor
     if (tasks.length === 0) return;
     const loadCustomStatuses = async () => {
       const taskIds = tasks.map((t) => t.id);
-      const { data: customStatuses } = await supabase
+      const { data: customStatuses } = await platform
         .from('task_custom_statuses' as any)
         .select('task_id, id, name')
         .in('task_id', taskIds)

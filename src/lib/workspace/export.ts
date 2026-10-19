@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { Workspace } from '@/types';
 
 export interface WorkspaceExport {
@@ -57,24 +57,24 @@ function filterByIds<T>(query: T, column: string, ids: string[]): T | null {
 
 export async function collectWorkspaceExport(workspaceId: string): Promise<WorkspaceExport> {
   const [workspaceResult, membersResult] = await Promise.all([
-    supabase.from('workspaces').select('*').eq('id', workspaceId).single(),
-    supabase.from('workspace_members').select('*').eq('workspace_id', workspaceId),
+    platform.from('workspaces').select('*').eq('id', workspaceId).single(),
+    platform.from('workspace_members').select('*').eq('workspace_id', workspaceId),
   ]);
 
   const memberIds = ((membersResult.data ?? []) as Array<{ user_id: string | null }>)
     .map((m) => m.user_id)
     .filter((id): id is string => !!id);
 
-  const channelsResult = await supabase.from('channels').select('*').eq('workspace_id', workspaceId);
+  const channelsResult = await platform.from('channels').select('*').eq('workspace_id', workspaceId);
   const channelIds = ((channelsResult.data ?? []) as Array<{ id: string }>).map((c) => c.id);
 
-  const tasksResult = await supabase
+  const tasksResult = await platform
     .from('tasks')
     .select('id, title, description, status, priority, due_date, start_date, created_by, project_id, channel_id, milestone_id, archived_at, deleted_at, created_at, updated_at')
     .eq('workspace_id', workspaceId);
   const taskIds = ((tasksResult.data ?? []) as Array<{ id: string }>).map((t) => t.id);
 
-  const projectsResult = await supabase
+  const projectsResult = await platform
     .from('projects')
     .select('id, name, description, icon, color, status, visibility, due_date, owner_id, archived_at, created_at, updated_at')
     .eq('workspace_id', workspaceId);
@@ -89,32 +89,32 @@ export async function collectWorkspaceExport(workspaceId: string): Promise<Works
     milestonesResult,
     invitationsResult,
   ] = await Promise.all([
-    filterByIds(supabase.from('profiles').select('*'), 'id', memberIds) ?? Promise.resolve({ data: [] }),
-    filterByIds(supabase.from('channel_members').select('*'), 'channel_id', channelIds) ??
+    filterByIds(platform.from('profiles').select('*'), 'id', memberIds) ?? Promise.resolve({ data: [] }),
+    filterByIds(platform.from('channel_members').select('*'), 'channel_id', channelIds) ??
       Promise.resolve({ data: [] }),
     filterByIds(
-      supabase
+      platform
         .from('messages')
         .select('id, channel_id, user_id, content, parent_id, edited_at, deleted_at, created_at'),
       'channel_id',
       channelIds,
     ) ?? Promise.resolve({ data: [] }),
-    supabase
+    platform
       .from('file_attachments')
       .select('id, message_id, user_id, file_name, file_size, file_type, file_url, created_at'),
     filterByIds(
-      supabase
+      platform
         .from('task_comments')
         .select('id, task_id, user_id, content, parent_id, deleted_at, created_at'),
       'task_id',
       taskIds,
     ) ?? Promise.resolve({ data: [] }),
     filterByIds(
-      supabase.from('project_milestones').select('id, project_id, title, description, due_date, status, created_at'),
+      platform.from('project_milestones').select('id, project_id, title, description, due_date, status, created_at'),
       'project_id',
       projectIds,
     ) ?? Promise.resolve({ data: [] }),
-    supabase
+    platform
       .from('invitations')
       .select('id, workspace_id, invited_by, email, user_id, role, status, expires_at, created_at, updated_at')
       .eq('workspace_id', workspaceId),
@@ -141,7 +141,7 @@ export async function collectTasksExport(
   workspaceId: string,
   projectId: string | null = null,
 ): Promise<TasksExport> {
-  let tasksQuery = supabase
+  let tasksQuery = platform
     .from('tasks')
     .select('id, title, description, status, priority, due_date, start_date, created_by, project_id, channel_id, milestone_id, archived_at, deleted_at, created_at, updated_at')
     .eq('workspace_id', workspaceId);
@@ -154,14 +154,14 @@ export async function collectTasksExport(
 
   const [taskCommentsResult, taskAssigneesResult] = await Promise.all([
     filterByIds(
-      supabase
+      platform
         .from('task_comments')
         .select('id, task_id, user_id, content, parent_id, deleted_at, created_at'),
       'task_id',
       taskIds,
     ) ?? Promise.resolve({ data: [] }),
     filterByIds(
-      supabase.from('task_assignees').select('id, task_id, user_id, assigned_at'),
+      platform.from('task_assignees').select('id, task_id, user_id, assigned_at'),
       'task_id',
       taskIds,
     ) ?? Promise.resolve({ data: [] }),
@@ -180,26 +180,26 @@ export async function collectTasksExport(
 
 export async function collectProjectsExport(workspaceId: string): Promise<ProjectsExport> {
   const [projectsResult, projectMembersResult, milestonesResult] = await Promise.all([
-    supabase
+    platform
       .from('projects')
       .select('id, name, description, icon, color, status, visibility, due_date, owner_id, archived_at, created_at, updated_at')
       .eq('workspace_id', workspaceId),
-    supabase
+    platform
       .from('project_members')
       .select('id, project_id, user_id, role, created_at')
       .in(
         'project_id',
         (
-          await supabase.from('projects').select('id').eq('workspace_id', workspaceId)
+          await platform.from('projects').select('id').eq('workspace_id', workspaceId)
         ).data?.map((p) => p.id) ?? [],
       ),
-    supabase
+    platform
       .from('project_milestones')
       .select('id, project_id, title, description, due_date, status, created_at')
       .in(
         'project_id',
         (
-          await supabase.from('projects').select('id').eq('workspace_id', workspaceId)
+          await platform.from('projects').select('id').eq('workspace_id', workspaceId)
         ).data?.map((p) => p.id) ?? [],
       ),
   ]);
@@ -215,15 +215,15 @@ export async function collectProjectsExport(workspaceId: string): Promise<Projec
 
 export async function collectEventsExport(workspaceId: string): Promise<EventsExport> {
   const [eventsResult, participantsResult] = await Promise.all([
-    (supabase.from('calendar_events') as any)
+    (platform.from('calendar_events') as any)
       .select('id, workspace_id, user_id, title, description, start_at, end_at, all_day, location, color, project_id, task_id, created_at, updated_at, deleted_at')
       .eq('workspace_id', workspaceId),
-    (supabase.from('event_participants') as any)
+    (platform.from('event_participants') as any)
       .select('id, event_id, user_id, status, created_at')
       .in(
         'event_id',
         (
-          await (supabase.from('calendar_events') as any).select('id').eq('workspace_id', workspaceId)
+          await (platform.from('calendar_events') as any).select('id').eq('workspace_id', workspaceId)
         ).data?.map((e: any) => e.id) ?? [],
       ),
   ]);
@@ -312,7 +312,7 @@ export async function logDataExport(
   scope = 'workspace',
   entityId: string | null = null,
 ): Promise<void> {
-  await supabase.rpc('write_audit_log' as any, {
+  await platform.rpc('write_audit_log' as any, {
     p_workspace_id: workspaceId,
     p_action: 'data_exported',
     p_entity_type: scope,

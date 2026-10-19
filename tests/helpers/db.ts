@@ -7,7 +7,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
-import { DATABASE_URL } from '../../tools/local-supabase/lib.ts';
+import { DATABASE_URL } from '../../tools/local-database/lib.ts';
 
 export const pool = new pg.Pool({ connectionString: DATABASE_URL, max: 8 });
 

@@ -5,7 +5,7 @@
 import { writeFile } from 'node:fs/promises';
 import { env } from './env.js';
 import { log } from './log.js';
-import { rpc } from './supabase.js';
+import { rpc } from './database.js';
 import { JOB_KINDS, runJob, runMaintenance } from './jobs/runner.js';
 import type { JobRow } from './jobs/types.js';
 

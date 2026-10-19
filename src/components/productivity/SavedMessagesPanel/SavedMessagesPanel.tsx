@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useAuth } from '@/hooks/useAuth';
 import { useChannel } from '@/hooks/useChannel';
 import { Avatar } from '@/components/ui/Avatar';
@@ -38,7 +38,7 @@ export function SavedMessagesPanel({ onClose }: SavedMessagesPanelProps) {
     setIsLoading(true);
 
     try {
-      const { data: saved, error } = await supabase
+      const { data: saved, error } = await platform
         .from('saved_messages' as any)
         .select('*')
         .eq('user_id', userId)
@@ -52,7 +52,7 @@ export function SavedMessagesPanel({ onClose }: SavedMessagesPanelProps) {
 
       const wsChannelIds = channels.map((c) => c.id);
       const messageIds = saved.map((s: any) => s.message_id);
-      const { data: messages } = await supabase
+      const { data: messages } = await platform
         .from('messages')
         .select('*')
         .in('id', messageIds)
@@ -64,7 +64,7 @@ export function SavedMessagesPanel({ onClose }: SavedMessagesPanelProps) {
 
       let profiles: Profile[] = [];
       if (senderIds.length > 0) {
-        const { data: profileData } = await supabase
+        const { data: profileData } = await platform
           .from('profiles')
           .select('*')
           .in('id', senderIds);
@@ -73,7 +73,7 @@ export function SavedMessagesPanel({ onClose }: SavedMessagesPanelProps) {
 
       let channelNames: Record<string, string> = {};
       if (channelIds.length > 0) {
-        const { data: channels } = await supabase
+        const { data: channels } = await platform
           .from('channels')
           .select('id, name, slug')
           .in('id', channelIds);
@@ -114,7 +114,7 @@ export function SavedMessagesPanel({ onClose }: SavedMessagesPanelProps) {
   const handleUnsave = useCallback(
     async (savedId: string, e: React.MouseEvent) => {
       e.stopPropagation();
-      const { error } = await supabase
+      const { error } = await platform
         .from('saved_messages' as any)
         .delete()
         .eq('id', savedId);

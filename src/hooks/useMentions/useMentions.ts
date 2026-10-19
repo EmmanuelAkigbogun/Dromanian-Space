@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { UUID } from '@/types';
 
 export interface UserMention {
@@ -48,7 +48,7 @@ export function useMentions(): UseMentionsReturn {
         const from = pageNum * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
 
-        const { data, error: fetchError, count } = await supabase
+        const { data, error: fetchError, count } = await platform
           .from('user_mentions' as any)
           .select('*', { count: 'exact' })
           .eq('user_id', userId)
@@ -79,7 +79,7 @@ export function useMentions(): UseMentionsReturn {
     if (!userId) return;
 
     try {
-      const { count, error: countError } = await supabase
+      const { count, error: countError } = await platform
         .from('user_mentions' as any)
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
@@ -100,7 +100,7 @@ export function useMentions(): UseMentionsReturn {
   const markAsRead = useCallback(
     async (mentionId: UUID): Promise<void> => {
       try {
-        const { error: updateError } = await supabase
+        const { error: updateError } = await platform
           .from('user_mentions' as any)
           .update({ read: true })
           .eq('id', mentionId);
@@ -121,7 +121,7 @@ export function useMentions(): UseMentionsReturn {
     if (!userId) return;
 
     try {
-      const { error: updateError } = await supabase
+      const { error: updateError } = await platform
         .from('user_mentions' as any)
         .update({ read: true })
         .eq('user_id', userId)

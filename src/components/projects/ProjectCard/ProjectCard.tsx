@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Progress } from '@/components/ui/Progress';
 import { Avatar } from '@/components/ui/Avatar';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { calculateTaskProgress, calculateCompletedTaskCount } from '@/lib/tasks/progress';
 import { truncate } from '@/utils';
 import type { Project } from '@/types';
@@ -30,12 +30,12 @@ export function ProjectCard({ project, onClick, onSettings, onRestore, isArchive
 
     async function loadStats() {
       const [tasksRes, membersRes] = await Promise.all([
-        supabase
+        platform
           .from('tasks')
           .select('id, status, status_order')
           .eq('project_id', project.id)
           .is('archived_at', null),
-        supabase
+        platform
           .rpc('get_project_members', { p_project_id: project.id })
           .limit(5),
       ]);

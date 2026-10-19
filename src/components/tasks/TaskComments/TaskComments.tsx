@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useTasks } from '@/hooks/useTasks';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { formatRelativeTime } from '@/utils';
 import { Avatar } from '@/components/ui/Avatar';
 import { Spinner } from '@/components/ui/Spinner';
@@ -41,7 +41,7 @@ export function TaskComments({ taskId }: TaskCommentsProps) {
     let profilesMap: Record<string, Profile> = {};
 
     if (userIds.length > 0) {
-      const { data } = await supabase
+      const { data } = await platform
         .from('profiles' as any)
         .select('*')
         .in('id', userIds);

@@ -13,7 +13,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { env } from '../env.js';
 import { HttpError } from '../http.js';
 import { log } from '../log.js';
-import { rpc, serviceClient } from '../supabase.js';
+import { rpc, serviceClient } from '../database.js';
 import { PermanentJobError, type JobHandler } from '../jobs/types.js';
 
 export const MAX_SKEW_SECONDS = 300;

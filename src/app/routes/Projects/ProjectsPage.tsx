@@ -29,8 +29,8 @@ export function ProjectsPage() {
   const fetchArchived = useCallback(async () => {
     if (!currentWorkspace?.id) return;
     setIsLoadingArchived(true);
-    const { supabase } = await import('@/lib/supabase');
-    const { data } = await supabase
+    const { platform } = await import('@/lib/platform');
+    const { data } = await platform
       .from('projects')
       .select('*')
       .eq('workspace_id', currentWorkspace.id)
@@ -72,8 +72,8 @@ export function ProjectsPage() {
   }, [navigate]);
 
   const handleRestoreProject = useCallback(async (projectId: string) => {
-    const { supabase } = await import('@/lib/supabase');
-    const { error } = await supabase
+    const { platform } = await import('@/lib/platform');
+    const { error } = await platform
       .from('projects')
       .update({ archived_at: null, updated_at: new Date().toISOString() })
       .eq('id', projectId);

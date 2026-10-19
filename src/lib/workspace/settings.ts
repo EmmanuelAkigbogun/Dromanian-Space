@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 
 export interface TypographyPrefs {
   fontFamily: string;
@@ -34,7 +34,7 @@ function toIdArray(value: unknown): string[] {
 }
 
 export async function getWorkspaceSettings(workspaceId: string): Promise<WorkspaceSettings | null> {
-  const { data, error } = await supabase.rpc('get_workspace_settings' as any, {
+  const { data, error } = await platform.rpc('get_workspace_settings' as any, {
     p_workspace_id: workspaceId,
   });
 
@@ -88,7 +88,7 @@ export async function saveWorkspaceSettings(
     clearColors?: boolean;
   },
 ): Promise<{ success: boolean; error?: string }> {
-  const { data, error } = await supabase.rpc('upsert_workspace_settings' as any, {
+  const { data, error } = await platform.rpc('upsert_workspace_settings' as any, {
     p_workspace_id: workspaceId,
     p_default_channel_ids: settings.default_channel_ids ?? null,
     p_retention_days: settings.retention_days ?? null,
@@ -134,7 +134,7 @@ export function describeAuditAction(action: string): string {
 }
 
 export async function getAuditLog(workspaceId: string, limit = 100): Promise<AuditLogEntry[]> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('audit_log')
     .select('*')
     .eq('workspace_id', workspaceId)
@@ -148,7 +148,7 @@ export async function getAuditLog(workspaceId: string, limit = 100): Promise<Aud
 
   const profileMap = new Map<string, { display_name: string | null; avatar_url: string | null }>();
   if (actorIds.length > 0) {
-    const { data: profiles } = await supabase
+    const { data: profiles } = await platform
       .from('profiles')
       .select('id, display_name, avatar_url')
       .in('id', actorIds);

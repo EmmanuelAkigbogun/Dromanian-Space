@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTasks } from '@/hooks/useTasks';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { formatRelativeTime } from '@/utils';
 import type { TaskActivity as TaskActivityType, TaskAction } from '@/types/task';
 import type { Profile } from '@/types';
@@ -65,7 +65,7 @@ export function TaskActivity({ taskId }: TaskActivityProps) {
         ),
       ];
       if (userIds.length > 0) {
-        const { data: profileData } = await supabase
+        const { data: profileData } = await platform
           .from('profiles' as any)
           .select('*')
           .in('id', userIds);

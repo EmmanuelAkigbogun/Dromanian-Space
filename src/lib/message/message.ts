@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { isTempId } from './formatting';
 import { deleteAttachmentsByMessageId, getCurrentForwardedAttachmentPolicy, type ForwardedAttachmentPolicy } from './attachment';
 import { extractMentionUsernames } from './mention';
@@ -17,7 +17,7 @@ export async function getChannelMessages(
   options?: { limit?: number; before?: string },
 ): Promise<MessagesPage> {
   const limit = options?.limit ?? PAGE_SIZE;
-  const query = supabase
+  const query = platform
     .from('messages')
     .select('*')
     .eq('channel_id', channelId)
@@ -47,7 +47,7 @@ export async function sendMessage(
   content: string,
   options?: { parentId?: string; forwardedFromMessageId?: string; attachmentsLayout?: string | null; linkMode?: LinkDisplayMode | null },
 ): Promise<Message | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('messages')
     .insert({
       channel_id: channelId,
@@ -76,9 +76,9 @@ async function createMessageNotifications(
   parentId?: string,
 ): Promise<void> {
   const [memberIds, senderProfile, channel] = await Promise.all([
-    supabase.from('channel_members').select('user_id').eq('channel_id', channelId),
-    supabase.from('profiles').select('display_name, username').eq('id', senderId).single(),
-    supabase.from('channels').select('name, workspace_id').eq('id', channelId).single(),
+    platform.from('channel_members').select('user_id').eq('channel_id', channelId),
+    platform.from('profiles').select('display_name, username').eq('id', senderId).single(),
+    platform.from('channels').select('name, workspace_id').eq('id', channelId).single(),
   ]);
 
   if (memberIds.error || !memberIds.data) return;
@@ -99,7 +99,7 @@ async function createMessageNotifications(
 
   let profiles: Array<{ id: string; username: string | null; display_name: string | null }> = [];
   if (mentionedLower.size > 0) {
-    const { data } = await supabase
+    const { data } = await platform
       .from('profiles')
       .select('id, username, display_name')
       .in('id', recipientIds);
@@ -157,21 +157,21 @@ export async function updateMessage(
   content: string,
   options?: { linkMode?: LinkDisplayMode | null },
 ): Promise<Message | null> {
-  const { data: existing } = await supabase
+  const { data: existing } = await platform
     .from('messages')
     .select('user_id, content')
     .eq('id', messageId)
     .single();
 
   if (existing) {
-    await supabase.rpc('record_message_version' as any, {
+    await platform.rpc('record_message_version' as any, {
       p_message_id: messageId,
       p_user_id: existing.user_id,
       p_content: existing.content,
     });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('messages')
     .update({
       content: content.trim(),
@@ -190,7 +190,7 @@ export async function deleteMessage(
   messageId: string,
   options?: { userId?: string; policy?: ForwardedAttachmentPolicy },
 ): Promise<boolean> {
-  // Fetch the policy at most once per call, never via supabase.auth.getUser()
+  // Fetch the policy at most once per call, never via platform.auth.getUser()
   // (see getCurrentForwardedAttachmentPolicy). Bulk deletes should fetch it
   // once up front and pass it down to avoid a burst of parallel auth calls.
   const policy = options?.policy ?? (await getCurrentForwardedAttachmentPolicy(options?.userId));
@@ -206,7 +206,7 @@ export async function deleteMessage(
     });
   }
 
-  const { error } = await supabase
+  const { error } = await platform
     .from('messages')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', messageId);
@@ -215,7 +215,7 @@ export async function deleteMessage(
 }
 
 export async function getMessageById(messageId: string): Promise<Message | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('messages')
     .select('*')
     .eq('id', messageId)
@@ -227,7 +227,7 @@ export async function getMessageById(messageId: string): Promise<Message | null>
 
 export async function getMessagesByIds(messageIds: string[]): Promise<Message[]> {
   if (messageIds.length === 0) return [];
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('messages')
     .select('*')
     .in('id', messageIds);
@@ -239,7 +239,7 @@ export async function getMessagesByIds(messageIds: string[]): Promise<Message[]>
 export async function getThreadMessages(
   parentId: string,
 ): Promise<Message[]> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('messages')
     .select('*')
     .eq('parent_id', parentId)
@@ -255,7 +255,7 @@ export async function pinMessage(
   messageId: string,
   pinnedBy: string,
 ): Promise<PinnedMessage | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('pinned_messages')
     .insert({
       channel_id: channelId,
@@ -273,7 +273,7 @@ export async function unpinMessage(
   channelId: string,
   messageId: string,
 ): Promise<boolean> {
-  const { error } = await supabase
+  const { error } = await platform
     .from('pinned_messages')
     .delete()
     .eq('channel_id', channelId)
@@ -286,7 +286,7 @@ export async function isMessagePinned(
   channelId: string,
   messageId: string,
 ): Promise<boolean> {
-  const { count } = await supabase
+  const { count } = await platform
     .from('pinned_messages')
     .select('*', { count: 'exact', head: true })
     .eq('channel_id', channelId)
@@ -299,7 +299,7 @@ export async function saveMessage(
   userId: string,
   messageId: string,
 ): Promise<SavedMessage | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('saved_messages')
     .insert({
       user_id: userId,
@@ -316,7 +316,7 @@ export async function unsaveMessage(
   userId: string,
   messageId: string,
 ): Promise<boolean> {
-  const { error } = await supabase
+  const { error } = await platform
     .from('saved_messages')
     .delete()
     .eq('user_id', userId)
@@ -329,7 +329,7 @@ export async function isMessageSaved(
   userId: string,
   messageId: string,
 ): Promise<boolean> {
-  const { count } = await supabase
+  const { count } = await platform
     .from('saved_messages')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
@@ -341,7 +341,7 @@ export async function isMessageSaved(
 export async function getThreadMessageCount(
   parentId: string,
 ): Promise<number> {
-  const { count } = await supabase
+  const { count } = await platform
     .from('messages')
     .select('*', { count: 'exact', head: true })
     .eq('parent_id', parentId);
@@ -355,7 +355,7 @@ export async function getThreadMessageCounts(
   const realIds = parentIds.filter((id) => !isTempId(id));
   if (realIds.length === 0) return new Map();
 
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('messages')
     .select('parent_id')
     .in('parent_id', realIds)
@@ -377,7 +377,7 @@ export async function getReplyAuthors(
   parentId: string,
   limit = 3,
 ): Promise<string[]> {
-  const { data } = await supabase
+  const { data } = await platform
     .from('messages')
     .select('user_id')
     .eq('parent_id', parentId)
@@ -385,5 +385,5 @@ export async function getReplyAuthors(
     .limit(limit);
 
   if (!data) return [];
-  return [...new Set(data.map((m) => m.user_id))];
+  return [...new Set((data as Array<{ user_id: string }>).map((m) => m.user_id))];
 }

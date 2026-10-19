@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useAuth } from '@/hooks/useAuth';
 import { useCallContext } from '@/app/providers/CallProvider/CallProvider';
 import { useSpeakingIndicator } from '@/hooks/useCallEngine';
@@ -186,7 +186,7 @@ export function ActiveCall() {
   useEffect(() => {
     if (!participantIdsKey) return;
     const ids = participantIdsKey.split(',');
-    supabase
+    platform
       .from('profiles')
       .select('id, display_name, username')
       .in('id', ids)
@@ -210,7 +210,7 @@ export function ActiveCall() {
   useEffect(() => {
     if (!currentCall?.id || !userId) return;
 
-    const ch = supabase.channel(`meeting:${currentCall.id}`);
+    const ch = platform.channel(`meeting:${currentCall.id}`);
 
     ch.on('broadcast', { event: 'reaction' }, (payload) => {
       const data = payload.payload as { emoji: string; userId: string };
@@ -251,7 +251,7 @@ export function ActiveCall() {
     channelRef.current = ch;
 
     return () => {
-      supabase.removeChannel(ch);
+      platform.removeChannel(ch);
     };
   }, [currentCall?.id, userId]);
 

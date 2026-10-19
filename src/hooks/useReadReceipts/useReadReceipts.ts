@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useAuth } from '@/hooks/useAuth';
 import type { UUID } from '@/types';
 
@@ -30,7 +30,7 @@ export function useReadReceipts(channelId?: UUID): UseReadReceiptsReturn {
 
     const fetchReceipts = async () => {
       try {
-        const { data, error } = await supabase
+        const { data, error } = await platform
           .from('message_read_receipts')
           .select('message_id, user_id, read_at')
           .eq('channel_id', channelId);
@@ -51,7 +51,7 @@ export function useReadReceipts(channelId?: UUID): UseReadReceiptsReturn {
 
     fetchReceipts();
 
-    const channel = supabase
+    const channel = platform
       .channel(`channel:${channelId}:receipts`)
       .on(
         'postgres_changes',
@@ -107,7 +107,7 @@ export function useReadReceipts(channelId?: UUID): UseReadReceiptsReturn {
       processedRef.current.add(messageId);
 
       try {
-        await supabase.from('message_read_receipts').upsert(
+        await platform.from('message_read_receipts').upsert(
           {
             message_id: messageId,
             user_id: userId,
@@ -127,7 +127,7 @@ export function useReadReceipts(channelId?: UUID): UseReadReceiptsReturn {
       if (!userId) return;
 
       try {
-        await supabase.rpc('mark_channel_read_up_to' as any, {
+        await platform.rpc('mark_channel_read_up_to' as any, {
           p_channel_id: targetChannelId,
           p_message_id: upToMessageId,
         });

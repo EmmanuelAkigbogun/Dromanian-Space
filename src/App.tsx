@@ -40,7 +40,6 @@ import { SignUp } from '@/app/routes/auth/SignUp';
 import { ForgotPassword } from '@/app/routes/auth/ForgotPassword';
 import { ResetPassword } from '@/app/routes/auth/ResetPassword';
 import { EmailVerification } from '@/app/routes/auth/EmailVerification';
-import { AuthCallback } from '@/app/routes/auth/AuthCallback';
 import { Unauthorized } from '@/app/routes/auth/Unauthorized';
 import { AcceptInvite } from '@/app/routes/auth/AcceptInvite';
 import { JoinWorkspace } from '@/app/routes/JoinWorkspace';
@@ -53,7 +52,7 @@ import { CallsPage } from '@/app/routes/Calls';
 import { HomeIcon, MessageIcon, UsersIcon, BellIcon, SettingsIcon, UserIcon, FolderIcon, MailIcon, TaskIcon, ProjectIcon, CalendarIcon, AutomationIcon, AiIcon, BookmarkIcon, PhoneIcon } from '@/components/shared/Icons';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 
 const CRMPage = lazy(() => import('@/app/routes/CRM/CRMPage'));
 const ThreadsPage = lazy(() => import('@/app/routes/Threads/ThreadsPage'));
@@ -182,7 +181,6 @@ function App() {
               <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
               <Route path="/auth/reset-password" element={<ResetPassword />} />
               <Route path="/auth/verify-email" element={<EmailVerification />} />
-              <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/unauthorized" element={<Unauthorized />} />
               <Route path="/invite/:token" element={<AcceptInvite />} />
               <Route path="/join/:token" element={<JoinWorkspace />} />

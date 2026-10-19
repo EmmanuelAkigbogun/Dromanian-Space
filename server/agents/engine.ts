@@ -6,7 +6,7 @@
 
 import { env } from '../env.js';
 import { log } from '../log.js';
-import { rpc, serviceClient } from '../supabase.js';
+import { rpc, serviceClient } from '../database.js';
 import { HttpError } from '../http.js';
 import { PROVIDER_KEYS, PROVIDER_LABELS, providerFor, providerNameFor } from '../ai/registry.js';
 import { addUsage, emptyUsage, ProviderError, type Effort, type ModelProvider, type TurnUsage } from '../ai/provider.js';
@@ -408,7 +408,7 @@ export async function executeRun(
           break;
         }
         steps++;
-        const results = [];
+        const results: Array<{ id: string; content: string; isError?: boolean }> = [];
         for (const call of result.toolCalls) {
           if (controller.signal.aborted) break;
           results.push(await runTool(call));
@@ -512,7 +512,8 @@ async function delegate(a: DelegateArgs): Promise<ToolOutput> {
     .eq('workspace_id', a.workspaceId)
     .in('handle', handles);
   if (error) throw new Error(error.message);
-  const byHandle = new Map((agents ?? []).map((x) => [x.handle as string, x as { id: string; handle: string; name: string }]));
+  const agentRows = (agents ?? []) as Array<{ id: string; handle: string; name: string }>;
+  const byHandle = new Map<string, { id: string; handle: string; name: string }>(agentRows.map((x) => [x.handle, x]));
   const missing = handles.filter((h) => !byHandle.has(h));
   if (missing.length) {
     return { content: `Unknown specialist handle(s): ${missing.join(', ')}. Use the handles listed in your context.`, summary: { error: 'unknown_agent' }, isError: true };
@@ -528,7 +529,7 @@ async function delegate(a: DelegateArgs): Promise<ToolOutput> {
     if (err instanceof HttpError && err.status < 500) return { content: err.message, summary: { error: err.code }, isError: true };
     throw err;
   }
-  const info = new Map((agents ?? []).map((x) => [x.id as string, { name: x.name as string, handle: x.handle as string }]));
+  const info = new Map<string, { name: string; handle: string }>(agentRows.map((x) => [x.id, { name: x.name, handle: x.handle }]));
   a.emit('team', { tasks: created.map((c) => ({ task_id: c.task_id, agent: info.get(c.agent_id)?.name, status: 'queued' })) });
 
   const results: SpecialistResult[] = new Array(created.length);

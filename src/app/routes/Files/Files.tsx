@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { FilesGrid } from './FilesGrid';
 import type { FileAttachment } from '@/types';
 import styles from './Files.module.css';
@@ -22,7 +22,7 @@ export function Files() {
       setIsLoading(reset);
       setIsLoadingMore(!reset);
 
-      const query = supabase
+      const query = platform
         .from('file_attachments')
         .select('*')
         .eq('user_id', userId)

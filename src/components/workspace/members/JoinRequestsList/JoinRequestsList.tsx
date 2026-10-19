@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { getWorkspaceJoinRequests, decideWorkspaceJoinRequest } from '@/lib/workspace';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
@@ -48,7 +48,7 @@ export function JoinRequestsList() {
 
   useEffect(() => {
     if (!currentWorkspace) return;
-    const channel = supabase
+    const channel = platform
       .channel(`join-requests:${currentWorkspace.id}:${Math.random().toString(36).slice(2, 9)}`)
       .on(
         'postgres_changes',
@@ -77,7 +77,7 @@ export function JoinRequestsList() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [currentWorkspace, fetchRequests]);
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import styles from './MeetingChat.module.css';
@@ -30,7 +30,7 @@ export function MeetingChat({ callId, channelId }: MeetingChatProps) {
     if (!isOpen || !channelId) return;
 
     const fetchMessages = async () => {
-      const { data } = await supabase
+      const { data } = await platform
         .from('messages')
         .select('id, content, user_id, created_at')
         .eq('channel_id', channelId)
@@ -40,7 +40,7 @@ export function MeetingChat({ callId, channelId }: MeetingChatProps) {
     };
     fetchMessages();
 
-    const ch = supabase
+    const ch = platform
       .channel(`meeting-chat:${callId}`)
       .on(
         'postgres_changes',
@@ -54,7 +54,7 @@ export function MeetingChat({ callId, channelId }: MeetingChatProps) {
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(ch); };
+    return () => { platform.removeChannel(ch); };
   }, [isOpen, channelId, callId]);
 
   useEffect(() => {
@@ -67,7 +67,7 @@ export function MeetingChat({ callId, channelId }: MeetingChatProps) {
     const content = input.trim();
     setInput('');
 
-    await supabase.from('messages').insert({
+    await platform.from('messages').insert({
       channel_id: channelId,
       user_id: userId,
       content,

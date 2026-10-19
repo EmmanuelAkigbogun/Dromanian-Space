@@ -2,7 +2,7 @@
 // and team task state; this relays them as server-sent events. A viewer can
 // disconnect and reattach at any time (GET /api/agents/run?run_id=…).
 import type { SseChannel } from '../http.js';
-import { rpc, serviceClient } from '../supabase.js';
+import { rpc, serviceClient } from '../database.js';
 
 const POLL_MS = 400;
 const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'interrupted', 'awaiting_approval']);

@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { env } from '../../server/env.js';
 import { errorResponse, HttpError, json, readJson } from '../../server/http.js';
 import { drainQueue, JOB_KINDS, runMaintenance } from '../../server/jobs/runner.js';
-import { authenticate, requireMember } from '../../server/supabase.js';
+import { authenticate, requireMember } from '../../server/database.js';
 
 const BUDGET_MS = Number(process.env.JOBS_BUDGET_MS ?? 50_000);
 

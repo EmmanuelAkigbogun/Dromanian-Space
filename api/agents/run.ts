@@ -5,7 +5,7 @@
 import { RunRequest, startRun } from '../../server/agents/start.js';
 import { enqueueRun, tailRun } from '../../server/agents/tail.js';
 import { errorResponse, HttpError, readJson, sseResponse } from '../../server/http.js';
-import { authenticate } from '../../server/supabase.js';
+import { authenticate } from '../../server/database.js';
 
 export async function POST(request: Request): Promise<Response> {
   try {

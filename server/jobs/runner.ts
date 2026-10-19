@@ -1,4 +1,4 @@
-import { rpc } from '../supabase.js';
+import { rpc } from '../database.js';
 import { log } from '../log.js';
 import { handleKnowledgeExtract } from '../knowledge/worker.js';
 import { handleDrivePurge, handleGcObject } from '../drive/gc.js';

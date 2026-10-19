@@ -5,7 +5,7 @@ import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { EmojiPicker } from '@/components/ui/EmojiPicker';
 import { Dialog } from '@/components/ui/Dialog';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useToast } from '@/components/ui/Toast';
 import type { Project, ProjectVisibility } from '@/types';
 import styles from './ProjectSettings.module.css';
@@ -52,7 +52,7 @@ export function ProjectSettings({ project, onUpdate, onArchive, onDelete, canMan
 
     setIsSaving(true);
     try {
-      const { error } = await supabase
+      const { error } = await platform
         .from('projects')
         .update({
           name: name.trim(),

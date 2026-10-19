@@ -1,7 +1,7 @@
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { TASK_STATUS_OPTIONS } from '@/types/task';
 
-const db = supabase as any;
+const db = platform as any;
 
 export async function resolveTaskStatusLabel(
   status: string | null | undefined,

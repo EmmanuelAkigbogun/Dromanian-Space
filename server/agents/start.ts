@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { rpc } from '../supabase.js';
+import { rpc } from '../database.js';
 
 const uuid = z.string().uuid();
 

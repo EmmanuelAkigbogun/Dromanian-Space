@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { AutomationRule, AutomationTrigger, AutomationCondition, AutomationAction, UUID } from '@/types';
 
 export const AUTOMATION_EXPORT_FORMAT = 'automation-export';
@@ -109,7 +109,7 @@ export async function buildAutomationsExport(
   }
 
   if (memberIds.size > 0) {
-    const { data } = await supabase
+    const { data } = await platform
       .from('profiles' as never)
       .select('id, email')
       .in('id', [...memberIds]);

@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { createTypedNotification } from '@/features/notifications/service';
 import type { Channel, ChannelMember, ChannelRole, Profile } from '@/types';
 
@@ -13,7 +13,7 @@ export interface WorkspaceMemberWithProfile {
 export async function getWorkspaceMembersWithProfiles(
   workspaceId: string,
 ): Promise<WorkspaceMemberWithProfile[]> {
-  const { data: members, error: membersError } = await supabase
+  const { data: members, error: membersError } = await platform
     .from('workspace_members')
     .select('user_id, role')
     .eq('workspace_id', workspaceId);
@@ -22,7 +22,7 @@ export async function getWorkspaceMembersWithProfiles(
 
   const userIds = members.map((m) => m.user_id);
 
-  const { data: profiles } = await supabase
+  const { data: profiles } = await platform
     .from('profiles')
     .select('id, email, display_name, username, avatar_url, status')
     .in('id', userIds);
@@ -37,7 +37,7 @@ export async function getWorkspaceMembersWithProfiles(
 }
 
 export async function getChannelMemberIds(channelId: string): Promise<string[]> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('channel_members')
     .select('user_id')
     .eq('channel_id', channelId);
@@ -47,7 +47,7 @@ export async function getChannelMemberIds(channelId: string): Promise<string[]> 
 }
 
 export async function getWorkspaceChannels(workspaceId: string): Promise<Channel[]> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('channels')
     .select('*')
     .eq('workspace_id', workspaceId)
@@ -65,7 +65,7 @@ export async function getWorkspaceChannels(workspaceId: string): Promise<Channel
 }
 
 export async function getArchivedChannels(workspaceId: string): Promise<Channel[]> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('channels')
     .select('*')
     .eq('workspace_id', workspaceId)
@@ -81,7 +81,7 @@ export async function getArchivedChannels(workspaceId: string): Promise<Channel[
 }
 
 export async function getChannelById(channelId: string): Promise<Channel | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('channels')
     .select('*')
     .eq('id', channelId)
@@ -95,7 +95,7 @@ export async function getChannelBySlug(
   workspaceId: string,
   slug: string,
 ): Promise<Channel | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('channels')
     .select('*')
     .eq('workspace_id', workspaceId)
@@ -114,7 +114,7 @@ export async function getChannelBySlug(
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
   if (!isUuid) return null;
 
-  const { data: byId, error: byIdError } = await supabase
+  const { data: byId, error: byIdError } = await platform
     .from('channels')
     .select('*')
     .eq('workspace_id', workspaceId)
@@ -141,7 +141,7 @@ export async function createChannel(
     isPrivate?: boolean;
   },
 ): Promise<Channel | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('channels')
     .insert({
       workspace_id: workspaceId,
@@ -158,7 +158,7 @@ export async function createChannel(
 
   if (error || !data) return null;
 
-  const { error: memberError } = await supabase.from('channel_members').insert({
+  const { error: memberError } = await platform.from('channel_members').insert({
     channel_id: data.id,
     user_id: createdBy,
     role: 'owner',
@@ -180,8 +180,8 @@ async function notifyWorkspaceMembersChannelCreated(
   channelName: string,
 ): Promise<void> {
   const [members, creatorProfile] = await Promise.all([
-    supabase.from('workspace_members').select('user_id').eq('workspace_id', workspaceId),
-    supabase.from('profiles').select('display_name, username').eq('id', creatorId).single(),
+    platform.from('workspace_members').select('user_id').eq('workspace_id', workspaceId),
+    platform.from('profiles').select('display_name, username').eq('id', creatorId).single(),
   ]);
 
   if (members.error || !members.data) return;
@@ -217,7 +217,7 @@ export async function updateChannel(
   channelId: string,
   updates: Partial<Pick<Channel, 'name' | 'description' | 'topic' | 'type' | 'is_private'>>,
 ): Promise<Channel | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('channels')
     .update(updates)
     .eq('id', channelId)
@@ -229,7 +229,7 @@ export async function updateChannel(
 }
 
 export async function archiveChannel(channelId: string): Promise<Channel | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('channels')
     .update({ archived_at: new Date().toISOString() })
     .eq('id', channelId)
@@ -241,7 +241,7 @@ export async function archiveChannel(channelId: string): Promise<Channel | null>
 }
 
 export async function restoreChannel(channelId: string): Promise<Channel | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('channels')
     .update({ archived_at: null })
     .eq('id', channelId)
@@ -253,16 +253,16 @@ export async function restoreChannel(channelId: string): Promise<Channel | null>
 }
 
 export async function deleteChannel(channelId: string): Promise<boolean> {
-  const { data: files } = await supabase.storage
+  const { data: files } = await platform.storage
     .from(ATTACHMENTS_BUCKET)
     .list(channelId);
 
   if (files && files.length > 0) {
     const paths = files.map((f) => `${channelId}/${f.name}`);
-    await supabase.storage.from(ATTACHMENTS_BUCKET).remove(paths);
+    await platform.storage.from(ATTACHMENTS_BUCKET).remove(paths);
   }
 
-  const { error } = await supabase
+  const { error } = await platform
     .from('channels')
     .delete()
     .eq('id', channelId);
@@ -271,7 +271,7 @@ export async function deleteChannel(channelId: string): Promise<boolean> {
 }
 
 export async function getChannelMembers(channelId: string): Promise<ChannelMember[]> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('channel_members')
     .select('*')
     .eq('channel_id', channelId);
@@ -285,7 +285,7 @@ export async function addChannelMember(
   userId: string,
   role: ChannelRole = 'member',
 ): Promise<ChannelMember | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('channel_members')
     .upsert({
       channel_id: channelId,
@@ -298,9 +298,9 @@ export async function addChannelMember(
   if (error || !data) return null;
 
   const [channel, existingMembers, joinerProfile] = await Promise.all([
-    supabase.from('channels').select('name, workspace_id').eq('id', channelId).single(),
-    supabase.from('channel_members').select('user_id').eq('channel_id', channelId),
-    supabase.from('profiles').select('display_name, username').eq('id', userId).single(),
+    platform.from('channels').select('name, workspace_id').eq('id', channelId).single(),
+    platform.from('channel_members').select('user_id').eq('channel_id', channelId),
+    platform.from('profiles').select('display_name, username').eq('id', userId).single(),
   ]);
 
   if (channel.data) {
@@ -357,7 +357,7 @@ export async function removeChannelMember(
   channelId: string,
   userId: string,
 ): Promise<boolean> {
-  const { error } = await supabase
+  const { error } = await platform
     .from('channel_members')
     .delete()
     .eq('channel_id', channelId)
@@ -370,7 +370,7 @@ export async function getUserChannelRole(
   channelId: string,
   userId: string,
 ): Promise<ChannelRole | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('channel_members')
     .select('role')
     .eq('channel_id', channelId)
@@ -385,7 +385,7 @@ export async function isChannelMember(
   channelId: string,
   userId: string,
 ): Promise<boolean> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('channel_members')
     .select('id')
     .eq('channel_id', channelId)
@@ -424,7 +424,7 @@ export async function getChannelMemberCounts(
 ): Promise<Record<string, number>> {
   if (channelIds.length === 0) return {};
 
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('channel_members')
     .select('channel_id')
     .in('channel_id', channelIds);

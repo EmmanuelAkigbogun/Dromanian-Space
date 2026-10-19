@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useAuth } from '@/hooks/useAuth';
 import { uploadFile, getSignedUrlsBatch } from '@/lib/message/attachment';
 import { getDisplayName } from '@/lib/message';
@@ -66,7 +66,7 @@ export function ProjectResources({ projectId, canManage = false }: ProjectResour
   const [commentSendingId, setCommentSendingId] = useState<string | null>(null);
 
   const fetchResources = useCallback(async () => {
-    const { data, error } = await supabase
+    const { data, error } = await platform
       .from('project_resources' as any)
       .select('*')
       .eq('project_id', projectId)
@@ -85,7 +85,7 @@ export function ProjectResources({ projectId, canManage = false }: ProjectResour
 
     const commentIds = rows.map((r) => r.id);
     if (commentIds.length > 0) {
-      const { data: commentRows } = await supabase
+      const { data: commentRows } = await platform
         .from('project_resource_comments' as any)
         .select('resource_id')
         .in('resource_id', commentIds);
@@ -114,7 +114,7 @@ export function ProjectResources({ projectId, canManage = false }: ProjectResour
   }, [projectId]);
 
   const fetchComments = useCallback(async (resourceId: string) => {
-    const { data, error } = await supabase
+    const { data, error } = await platform
       .from('project_resource_comments' as any)
       .select('*, profile:profiles(display_name, avatar_url, email)')
       .eq('resource_id', resourceId)
@@ -129,7 +129,7 @@ export function ProjectResources({ projectId, canManage = false }: ProjectResour
   }, [fetchResources]);
 
   useEffect(() => {
-    const channel = supabase
+    const channel = platform
       .channel(`project-resources-${projectId}`)
       .on(
         'postgres_changes',
@@ -139,12 +139,12 @@ export function ProjectResources({ projectId, canManage = false }: ProjectResour
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [projectId, fetchResources]);
 
   useEffect(() => {
-    const channel = supabase
+    const channel = platform
       .channel(`project-resource-comments-${projectId}`)
       .on(
         'postgres_changes',
@@ -159,7 +159,7 @@ export function ProjectResources({ projectId, canManage = false }: ProjectResour
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [projectId, fetchResources, fetchComments]);
 
@@ -169,7 +169,7 @@ export function ProjectResources({ projectId, canManage = false }: ProjectResour
 
     const normalized = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`;
     setIsAddingLink(true);
-    const { error } = await supabase
+    const { error } = await platform
       .from('project_resources' as any)
       .insert({
         project_id: projectId,
@@ -212,7 +212,7 @@ export function ProjectResources({ projectId, canManage = false }: ProjectResour
           continue;
         }
 
-        const { error } = await supabase
+        const { error } = await platform
           .from('project_resources' as any)
           .insert({
             project_id: projectId,
@@ -248,7 +248,7 @@ export function ProjectResources({ projectId, canManage = false }: ProjectResour
   const handleDelete = useCallback(async () => {
     if (!deleteResource) return;
     setIsDeleting(true);
-    const { error } = await supabase
+    const { error } = await platform
       .from('project_resources' as any)
       .delete()
       .eq('id', deleteResource.id);
@@ -269,7 +269,7 @@ export function ProjectResources({ projectId, canManage = false }: ProjectResour
       if (!content || !userId || commentSendingId) return;
 
       setCommentSendingId(resourceId);
-      const { data, error } = await supabase
+      const { data, error } = await platform
         .from('project_resource_comments' as any)
         .insert({ resource_id: resourceId, user_id: userId, content })
         .select()
@@ -289,7 +289,7 @@ export function ProjectResources({ projectId, canManage = false }: ProjectResour
 
   const handleDeleteComment = useCallback(
     async (resourceId: string, commentId: string) => {
-      const { error } = await supabase
+      const { error } = await platform
         .from('project_resource_comments' as any)
         .delete()
         .eq('id', commentId);

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useCallContextSafe } from '@/app/providers/CallProvider/CallProvider';
@@ -29,13 +29,13 @@ export function NewCallPage() {
   useEffect(() => {
     if (!currentWorkspace?.id) return;
     const fetchUsers = async () => {
-      const { data: members } = await supabase
+      const { data: members } = await platform
         .from('workspace_members')
         .select('user_id')
         .eq('workspace_id', currentWorkspace.id);
       if (!members || members.length === 0) return;
       const memberIds = members.map((m: any) => m.user_id);
-      const { data: profiles } = await supabase
+      const { data: profiles } = await platform
         .from('profiles')
         .select('id, display_name, email, avatar_url')
         .in('id', memberIds)

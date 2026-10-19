@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { FileAttachment } from '@/types';
 import type { ForwardedAttachmentPolicy } from '@/types/profile';
 
@@ -18,7 +18,7 @@ export function isLinkFile(fileType: string): boolean {
 }
 
 export async function getLinkAttachmentUrls(messageId: string): Promise<string[]> {
-  const { data } = await supabase
+  const { data } = await platform
     .from('file_attachments')
     .select('file_url')
     .eq('message_id', messageId)
@@ -28,7 +28,7 @@ export async function getLinkAttachmentUrls(messageId: string): Promise<string[]
 }
 
 export async function deleteLinkAttachments(messageId: string): Promise<void> {
-  await supabase
+  await platform
     .from('file_attachments')
     .delete()
     .eq('message_id', messageId)
@@ -147,14 +147,12 @@ export async function uploadFile(
 
   if (onProgress && typeof XMLHttpRequest !== 'undefined') {
     try {
-      const sc = supabase as unknown as { supabaseUrl: string; supabaseKey: string };
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? sc.supabaseKey;
+      const { data: { session } } = await platform.auth.getSession();
       const headers: Record<string, string> = {
-        apikey: sc.supabaseKey,
-        Authorization: `Bearer ${token}`,
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        'Content-Type': uploadTarget.type || 'application/octet-stream',
       };
-      const url = `${sc.supabaseUrl}/storage/v1/object/${BUCKET_NAME}/${path}`;
+      const url = `/api/storage/object/${encodeURIComponent(BUCKET_NAME)}/${path.split('/').map(encodeURIComponent).join('/')}`;
       const ok = await uploadWithProgress(url, headers, uploadTarget, onProgress);
       return ok ? path : null;
     } catch {
@@ -162,7 +160,7 @@ export async function uploadFile(
     }
   }
 
-  const { error } = await supabase.storage
+  const { error } = await platform.storage
     .from(BUCKET_NAME)
     .upload(path, uploadTarget, {
       contentType: uploadTarget.type,
@@ -197,7 +195,7 @@ export async function getSignedUrl(fileUrl: string): Promise<string | null> {
   const cached = getCachedSignedUrl(fileUrl);
   if (cached) return cached;
   const path = fileUrl.replace(`${BUCKET_NAME}/`, '');
-  const { data } = await supabase.storage.from(BUCKET_NAME).createSignedUrl(path, 3600);
+  const { data } = await platform.storage.from(BUCKET_NAME).createSignedUrl(path, 3600);
   if (data?.signedUrl) {
     cacheSignedUrl(fileUrl, data.signedUrl);
     return data.signedUrl;
@@ -227,7 +225,7 @@ export async function getSignedUrlsBatch(fileUrls: string[]): Promise<Map<string
   const paths = uncached.map((url) => url.replace(`${BUCKET_NAME}/`, ''));
 
   for (let attempt = 0; attempt < 3; attempt++) {
-    const { data: batch } = await supabase.storage.from(BUCKET_NAME).createSignedUrls(paths, 3600);
+    const { data: batch } = await platform.storage.from(BUCKET_NAME).createSignedUrls(paths, 3600);
 
     // A batch response is definitive: rows carry signedUrl or null for every
     // path, including files that no longer exist. Treating it as final avoids
@@ -254,7 +252,7 @@ export async function getSignedUrlsBatch(fileUrls: string[]): Promise<Map<string
   const settled = await Promise.all(
     paths.map(async (path) => {
       try {
-        const { data: signed } = await supabase.storage.from(BUCKET_NAME).createSignedUrl(path, 3600);
+        const { data: signed } = await platform.storage.from(BUCKET_NAME).createSignedUrl(path, 3600);
         return { path, url: signed?.signedUrl ?? null };
       } catch {
         return { path, url: null };
@@ -276,7 +274,7 @@ export async function createFileAttachment(
   file: File,
   fileUrl: string,
 ): Promise<FileAttachment | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('file_attachments')
     .insert({
       message_id: messageId,
@@ -298,7 +296,7 @@ export async function createLinkAttachment(
   userId: string,
   url: string,
 ): Promise<FileAttachment | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('file_attachments')
     .insert({
       message_id: messageId,
@@ -319,7 +317,7 @@ let sortOrderSupported: boolean | null = null;
 
 async function supportsSortOrder(): Promise<boolean> {
   if (sortOrderSupported !== null) return sortOrderSupported;
-  const { error } = await supabase.from('file_attachments').select('id, sort_order').limit(1);
+  const { error } = await platform.from('file_attachments').select('id, sort_order').limit(1);
   sortOrderSupported = !error;
   return sortOrderSupported;
 }
@@ -328,7 +326,7 @@ export async function getMessageAttachments(
   messageId: string,
 ): Promise<FileAttachment[]> {
   const orderCol = (await supportsSortOrder()) ? 'sort_order' : 'created_at';
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('file_attachments')
     .select('*')
     .eq('message_id', messageId)
@@ -344,7 +342,7 @@ export async function getAttachmentsByMessageIds(
   if (messageIds.length === 0) return new Map();
 
   const orderCol = (await supportsSortOrder()) ? 'sort_order' : 'created_at';
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('file_attachments')
     .select('*')
     .in('message_id', messageIds)
@@ -381,14 +379,14 @@ export async function copyAttachmentsForForward(
     sort_order: a.sort_order ?? 0,
   }));
 
-  await supabase.from('file_attachments').insert(rows);
+  await platform.from('file_attachments').insert(rows);
 }
 
 export async function reorderAttachments(orderedIds: string[]): Promise<boolean> {
   if (orderedIds.length === 0) return true;
   if (!(await supportsSortOrder())) return false;
   const updates = orderedIds.map((id, index) =>
-    supabase.from('file_attachments').update({ sort_order: index }).eq('id', id),
+    platform.from('file_attachments').update({ sort_order: index }).eq('id', id),
   );
   const results = await Promise.all(updates);
   return results.every((r) => !r.error);
@@ -397,7 +395,7 @@ export async function reorderAttachments(orderedIds: string[]): Promise<boolean>
 export async function removeAttachmentFromStorage(fileUrl: string): Promise<void> {
   if (!fileUrl.includes(`${BUCKET_NAME}/`)) return;
   const path = fileUrl.replace(`${BUCKET_NAME}/`, '');
-  await supabase.storage.from(BUCKET_NAME).remove([path]);
+  await platform.storage.from(BUCKET_NAME).remove([path]);
 }
 
 // Remove the storage objects behind automation attachment file_urls. Called
@@ -409,24 +407,24 @@ export async function deleteAutomationAttachmentFiles(fileUrls: string[]): Promi
     .map((url) => url.replace(`${BUCKET_NAME}/`, ''))
     .filter((path) => isAutomationStoragePath(path));
   if (paths.length === 0) return;
-  await supabase.storage.from(BUCKET_NAME).remove(paths);
+  await platform.storage.from(BUCKET_NAME).remove(paths);
 }
 
 export async function removeStoragePath(path: string): Promise<void> {
   if (!path) return;
-  await supabase.storage.from(BUCKET_NAME).remove([path]);
+  await platform.storage.from(BUCKET_NAME).remove([path]);
 }
 
 export async function deleteFileAttachment(
   attachmentId: string,
 ): Promise<boolean> {
-  const { data } = await supabase
+  const { data } = await platform
     .from('file_attachments')
     .select('file_url')
     .eq('id', attachmentId)
     .single();
 
-  const { error } = await supabase
+  const { error } = await platform
     .from('file_attachments')
     .delete()
     .eq('id', attachmentId);
@@ -441,18 +439,18 @@ export async function deleteFileAttachment(
 export type { ForwardedAttachmentPolicy };
 
 export async function getCurrentForwardedAttachmentPolicy(userId?: string): Promise<ForwardedAttachmentPolicy> {
-  // Avoid supabase.auth.getUser() here: it is a network call that validates and
+  // Avoid platform.auth.getUser() here: it is a network call that validates and
   // can refresh the access token, and deleteMessage() runs it once per message.
   // A bulk delete fires dozens of these concurrently, which races the token
   // auto-refresh (near the 1h expiry) and can force a SIGNED_OUT event. Callers
   // already know the user id, so read the profile preference directly instead.
   let resolvedUserId = userId;
   if (!resolvedUserId) {
-    const { data: userData } = await supabase.auth.getSession();
+    const { data: userData } = await platform.auth.getSession();
     resolvedUserId = userData.session?.user?.id;
   }
   if (!resolvedUserId) return 'keep';
-  const { data } = await supabase
+  const { data } = await platform
     .from('profiles')
     .select('forwarded_attachment_policy')
     .eq('id', resolvedUserId)
@@ -465,7 +463,7 @@ export async function deleteAttachmentsByMessageId(
   messageId: string,
   policy: ForwardedAttachmentPolicy = 'keep',
 ): Promise<string[]> {
-  const { data } = await supabase
+  const { data } = await platform
     .from('file_attachments')
     .select('file_url')
     .eq('message_id', messageId);
@@ -475,13 +473,13 @@ export async function deleteAttachmentsByMessageId(
   const fileUrls = [...new Set(data.map((a) => a.file_url))];
 
   const affected = new Set<string>([messageId]);
-  await supabase.from('file_attachments').delete().eq('message_id', messageId);
+  await platform.from('file_attachments').delete().eq('message_id', messageId);
 
   if (policy === 'delete') {
     // Fully delete the storage files, but leave the forwarded copies'
     // attachment rows in place so they still render the empty file grids
     // (one per attachment) until the user actually deletes those copies.
-    const { data: forwarded } = await supabase
+    const { data: forwarded } = await platform
       .from('file_attachments')
       .select('message_id')
       .in('file_url', fileUrls);
@@ -490,11 +488,11 @@ export async function deleteAttachmentsByMessageId(
     }
     // Never remove automation-owned files: they are still referenced by the
     // automation rule config and would break future triggers.
-    const paths = fileUrls
+    const paths = (fileUrls as string[])
       .map((u) => u.replace(`${BUCKET_NAME}/`, ''))
       .filter((p) => !isAutomationStoragePath(p))
       .filter((p) => !isExternalUrl(p));
-    if (paths.length > 0) await supabase.storage.from(BUCKET_NAME).remove(paths);
+    if (paths.length > 0) await platform.storage.from(BUCKET_NAME).remove(paths);
     return [...affected];
   }
 
@@ -502,17 +500,17 @@ export async function deleteAttachmentsByMessageId(
   // longer referenced by any remaining attachment (e.g. a forward of this
   // message), otherwise the forwards keep the files. Automation-owned files
   // are exempt for the same reason as above.
-  const { data: referenced } = await supabase
+  const { data: referenced } = await platform
     .from('file_attachments')
     .select('file_url')
     .in('file_url', fileUrls);
 
   const stillReferenced = new Set((referenced ?? []).map((a) => a.file_url));
-  const paths = fileUrls
+  const paths = (fileUrls as string[])
     .filter((u) => !stillReferenced.has(u))
     .map((u) => u.replace(`${BUCKET_NAME}/`, ''))
     .filter((p) => !isAutomationStoragePath(p))
     .filter((p) => !isExternalUrl(p));
-  if (paths.length > 0) await supabase.storage.from(BUCKET_NAME).remove(paths);
+  if (paths.length > 0) await platform.storage.from(BUCKET_NAME).remove(paths);
   return [...affected];
 }

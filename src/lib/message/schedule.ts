@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { uploadFile } from '@/lib/message/attachment';
 import { generateId } from '@/utils';
 import type { LinkDisplayMode, ScheduledMessage } from '@/types';
@@ -46,7 +46,7 @@ export async function createScheduledMessage(input: ScheduleMessageInput): Promi
     created_at: new Date().toISOString(),
   };
 
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('scheduled_messages' as never)
     .insert(payload as never)
     .select()
@@ -63,7 +63,7 @@ export async function createScheduledMessage(input: ScheduleMessageInput): Promi
     // Leave it as a draft so the sender can see the upload did not finish.
     return { ...(data as unknown as ScheduledMessage), status: 'draft' };
   }
-  const { error: queueError } = await supabase.rpc('queue_scheduled_message' as never, { p_id: id } as never);
+  const { error: queueError } = await platform.rpc('queue_scheduled_message' as never, { p_id: id } as never);
   if (queueError) return { ...(data as unknown as ScheduledMessage), status: 'draft' };
   return { ...(data as unknown as ScheduledMessage), status: 'pending' };
 }
@@ -76,7 +76,7 @@ export async function attachScheduledFiles(
   attachments?: ScheduleAttachmentMeta[],
   onFileProgress?: (file: File, percent: number) => void,
 ): Promise<boolean> {
-  const db = supabase as any;
+  const db = platform as any;
   let ok = true;
 
   for (const file of files ?? []) {

@@ -10,7 +10,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { clearSignedUrlCache } from '@/lib/message/attachment';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import {
   getUserWorkspaces,
   getWorkspaceBySlug,
@@ -143,7 +143,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
   useEffect(() => {
     if (!userId) return;
 
-    const channel = supabase
+    const channel = platform
       .channel('workspace-members-realtime')
       .on(
         'postgres_changes',
@@ -175,7 +175,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [userId, fetchWorkspaces]);
 

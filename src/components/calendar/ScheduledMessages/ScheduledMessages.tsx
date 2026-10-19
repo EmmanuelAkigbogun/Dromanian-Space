@@ -3,7 +3,7 @@ import { ScrollArea } from '@/components/ui/ScrollArea/ScrollArea';
 import { Badge } from '@/components/ui/Badge/Badge';
 import { UploadProgress } from '@/components/message/UploadProgress';
 import { formatRelativeTime, truncate } from '@/utils';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/hooks/useAuth';
 import { formatFileSize, isImageFile } from '@/lib/message';
@@ -140,14 +140,14 @@ export function ScheduledMessages({ messages, onCancel, onSchedule, onResend, on
   useEffect(() => {
     if (!showForm || !currentWorkspace?.id) return;
     const fetchTargets = async () => {
-      const { data: channelData } = await supabase
+      const { data: channelData } = await platform
         .from('channels' as never)
         .select('id, name')
         .eq('workspace_id', currentWorkspace.id)
         .is('archived_at', null)
         .order('name');
 
-      const { data: convData } = await supabase
+      const { data: convData } = await platform
         .from('direct_conversations' as never)
         .select('id, channel_id')
         .eq('workspace_id', currentWorkspace.id);
@@ -167,7 +167,7 @@ export function ScheduledMessages({ messages, onCancel, onSchedule, onResend, on
 
       const convList: ChannelOption[] = [];
       for (const conv of (convData || []) as { id: string; channel_id?: string | null }[]) {
-        const { data: participants } = await supabase
+        const { data: participants } = await platform
           .from('direct_conversation_participants' as never)
           .select('user_id')
           .eq('conversation_id', conv.id);
@@ -176,7 +176,7 @@ export function ScheduledMessages({ messages, onCancel, onSchedule, onResend, on
         // Show only the other participants, not the current user.
         const otherUserIds = userIds.filter((id) => id !== userId);
         const targetUserIds = otherUserIds.length > 0 ? otherUserIds : userIds;
-        const { data: profiles } = await supabase
+        const { data: profiles } = await platform
           .from('profiles' as never)
           .select('id, display_name, username')
           .in('id', targetUserIds);
@@ -204,7 +204,7 @@ export function ScheduledMessages({ messages, onCancel, onSchedule, onResend, on
       const map: Record<string, string> = {};
 
       if (channelIds.length > 0) {
-        const { data: channelData } = await supabase
+        const { data: channelData } = await platform
           .from('channels' as never)
           .select('id, name')
           .in('id', [...new Set(channelIds)]);
@@ -214,12 +214,12 @@ export function ScheduledMessages({ messages, onCancel, onSchedule, onResend, on
       }
 
       if (conversationIds.length > 0) {
-        const { data: convData } = await supabase
+        const { data: convData } = await platform
           .from('direct_conversations' as never)
           .select('id')
           .in('id', [...new Set(conversationIds)]);
         for (const conv of (convData || []) as { id: string }[]) {
-          const { data: participants } = await supabase
+          const { data: participants } = await platform
             .from('direct_conversation_participants' as never)
             .select('user_id')
             .eq('conversation_id', conv.id);
@@ -231,7 +231,7 @@ export function ScheduledMessages({ messages, onCancel, onSchedule, onResend, on
           // Show only the other participants, not the current user.
           const otherUserIds = userIds.filter((id) => id !== userId);
           const targetUserIds = otherUserIds.length > 0 ? otherUserIds : userIds;
-          const { data: profiles } = await supabase
+          const { data: profiles } = await platform
             .from('profiles' as never)
             .select('id, display_name, username')
             .in('id', targetUserIds);

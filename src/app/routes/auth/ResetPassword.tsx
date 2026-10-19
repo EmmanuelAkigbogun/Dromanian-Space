@@ -1,6 +1,6 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { AuthLayout, AuthHeader, AuthError, AuthSuccess } from '@/components/auth/AuthLayout';
 import { PasswordInput } from '@/components/ui/PasswordInput';
 import { Button } from '@/components/ui/Button';
@@ -32,7 +32,7 @@ export function ResetPassword() {
         return;
       }
 
-      const { error: sessionError } = await supabase.auth.setSession({
+      const { error: sessionError } = await platform.auth.setSession({
         access_token: accessToken,
         refresh_token: refreshToken,
       });
@@ -74,7 +74,7 @@ export function ResetPassword() {
     if (!validate()) return;
 
     setIsSubmitting(true);
-    const { error: updateError } = await supabase.auth.updateUser({ password });
+    const { error: updateError } = await platform.auth.updateUser({ password });
     setIsSubmitting(false);
 
     if (updateError) {

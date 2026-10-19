@@ -9,13 +9,12 @@ import {
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { clearSignedUrlCache } from '@/lib/message/attachment';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { AuthState, AuthError, SignUpCredentials, SignInCredentials, AuthResponse } from '@/types/auth';
 
 interface AuthContextValue extends AuthState {
   signUp: (credentials: SignUpCredentials) => Promise<AuthResponse>;
   signIn: (credentials: SignInCredentials) => Promise<AuthResponse>;
-  signInWithOAuth: (provider: 'google' | 'github', options?: { redirectTo?: string }) => Promise<AuthResponse>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<AuthResponse>;
   updateProfile: (data: Record<string, unknown>) => Promise<AuthResponse>;
@@ -47,7 +46,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     let mounted = true;
 
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session }, error: sessionError }) => {
+    platform.auth.getSession().then(({ data: { session }, error: sessionError }) => {
       if (!mounted) return;
 
       if (sessionError) {
@@ -72,9 +71,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    } = platform.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
-      if (event === 'SIGNED_OUT') { queryClient.clear(); clearSignedUrlCache(); localStorage.removeItem('dark-space-thread'); void supabase.removeAllChannels(); }
+      if (event === 'SIGNED_OUT') { queryClient.clear(); clearSignedUrlCache(); localStorage.removeItem('dark-space-thread'); void platform.removeAllChannels(); }
 
       setState((prev) => ({
         ...prev,
@@ -101,7 +100,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signUp = useCallback(async (credentials: SignUpCredentials): Promise<AuthResponse> => {
     try {
       setError(null);
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { error: signUpError } = await platform.auth.signUp({
         email: credentials.email,
         password: credentials.password,
         options: credentials.options,
@@ -125,7 +124,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signIn = useCallback(async (credentials: SignInCredentials): Promise<AuthResponse> => {
     try {
       setError(null);
-      const { error: signInError } = await supabase.auth.signInWithPassword({
+      const { error: signInError } = await platform.auth.signInWithPassword({
         email: credentials.email,
         password: credentials.password,
       });
@@ -144,35 +143,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, []);
 
-  const signInWithOAuth = useCallback(async (provider: 'google' | 'github', options?: { redirectTo?: string }): Promise<AuthResponse> => {
-    try {
-      setError(null);
-      const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: options?.redirectTo ?? `${window.location.origin}/auth/callback`,
-        },
-      });
-
-      if (oauthError) {
-        const authError = { message: oauthError.message, code: oauthError.code };
-        setError(authError);
-        return { error: authError };
-      }
-
-      return { error: null };
-    } catch (err) {
-      const authError = { message: 'An unexpected error occurred during OAuth sign in' };
-      setError(authError);
-      return { error: authError };
-    }
-  }, []);
-
   const signOut = useCallback(async () => {
     try {
       setError(null);
       localStorage.setItem(PROFILE_SETUP_FLAG, '1');
-      await supabase.auth.signOut();
+      await platform.auth.signOut();
     } catch (err) {
       setError({ message: 'An unexpected error occurred during sign out' });
     }
@@ -181,7 +156,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const resetPassword = useCallback(async (email: string): Promise<AuthResponse> => {
     try {
       setError(null);
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+      const { error: resetError } = await platform.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/auth/reset-password`,
       });
 
@@ -202,7 +177,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const updateProfile = useCallback(async (data: Record<string, unknown>): Promise<AuthResponse> => {
     try {
       setError(null);
-      const { error: updateError } = await supabase.auth.updateUser({ data });
+      const { error: updateError } = await platform.auth.updateUser({ data });
 
       if (updateError) {
         const authError = { message: updateError.message, code: updateError.code };
@@ -223,14 +198,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
       ...state,
       signUp,
       signIn,
-      signInWithOAuth,
       signOut,
       resetPassword,
       updateProfile,
       error,
       clearError,
     }),
-    [state, signUp, signIn, signInWithOAuth, signOut, resetPassword, updateProfile, error, clearError]
+    [state, signUp, signIn, signOut, resetPassword, updateProfile, error, clearError]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

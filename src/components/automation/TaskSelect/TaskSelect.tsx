@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { getStatusLabel } from '@/types/task';
 import styles from './TaskSelect.module.css';
 
@@ -34,7 +34,7 @@ export function TaskSelect({ label, value, onChange, placeholder = 'Search tasks
   useEffect(() => {
     if (!currentWorkspace) return;
     (async () => {
-      let q = supabase
+      let q = platform
         .from('tasks' as never)
         .select('id, title, status')
         .eq('workspace_id', currentWorkspace.id)
@@ -50,7 +50,7 @@ export function TaskSelect({ label, value, onChange, placeholder = 'Search tasks
 
       const taskIds = rows.map((t) => t.id);
       if (taskIds.length === 0) return;
-      const { data: customs } = await supabase
+      const { data: customs } = await platform
         .from('task_custom_statuses' as never)
         .select('id, name, task_id')
         .in('task_id', taskIds);
@@ -69,7 +69,7 @@ export function TaskSelect({ label, value, onChange, placeholder = 'Search tasks
     }
     if (selected?.id === value) return;
     (async () => {
-      const { data } = await supabase
+      const { data } = await platform
         .from('tasks' as never)
         .select('id, title, status')
         .eq('id', value)

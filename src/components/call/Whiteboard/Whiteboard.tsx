@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useAuth } from '@/hooks/useAuth';
 import styles from './Whiteboard.module.css';
 
@@ -109,7 +109,7 @@ export function Whiteboard({ callId }: WhiteboardProps) {
   useEffect(() => {
     if (!isOpen || !callId) return;
 
-    channelRef.current = supabase.channel(`whiteboard:${callId}`);
+    channelRef.current = platform.channel(`whiteboard:${callId}`);
     channelRef.current
       .on('broadcast', { event: 'draw-event' }, (payload: any) => {
         const canvas = canvasRef.current;
@@ -122,7 +122,7 @@ export function Whiteboard({ callId }: WhiteboardProps) {
 
     return () => {
       if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
+        platform.removeChannel(channelRef.current);
       }
     };
   }, [isOpen, callId, handleEvent]);

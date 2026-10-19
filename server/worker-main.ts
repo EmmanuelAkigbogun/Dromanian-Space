@@ -7,7 +7,7 @@ enforceEnv('worker');
 
 void (async () => {
   // The loop itself survives database outages; waiting first keeps the logs
-  // readable while Supabase is still starting after a host reboot.
+  // readable while PostgreSQL is still starting after a host reboot.
   await waitForDatabase();
   await reportPlatform();
   const worker = startWorker();

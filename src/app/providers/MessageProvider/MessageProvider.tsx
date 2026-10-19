@@ -11,7 +11,7 @@ import {
 import { useChannel } from '@/hooks/useChannel';
 import { useAuth } from '@/hooks/useAuth';
 import { useThreadCountsSafe } from '@/app/providers/ThreadProvider';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import {
   getChannelMessages,
   sendMessage as sendMessageService,
@@ -107,7 +107,7 @@ export function MessageProvider({ children }: MessageProviderProps) {
 
     setConnectionStatus('connecting');
 
-    const channel = supabase
+    const channel = platform
       .channel(`messages-realtime:${channelId}:${instanceId}`)
       .on(
         'postgres_changes',
@@ -217,7 +217,7 @@ export function MessageProvider({ children }: MessageProviderProps) {
       });
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channelId, reconnectCount.current]);

@@ -7,7 +7,7 @@
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { DATABASE_URL } from '../../tools/local-supabase/lib.ts';
+import { DATABASE_URL } from '../../tools/local-database/lib.ts';
 import {
   addMember,
   admin,

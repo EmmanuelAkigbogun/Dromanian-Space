@@ -1,10 +1,7 @@
-# Dromanian Space application on Coolify (Docker Compose build pack).
-#
-# Self-hosted Supabase is a separate, independently maintained resource
-# (deploy/supabase/). This stack is stateless: web (Nginx: SPA + /api proxy),
-# api (Node) and worker (jobs and agent runs). Redeploying it never touches
-# database or file data. Assign the app domain to the "web" service, port 8080.
-# See docs/SELF_HOSTING.md.
+# Dromanian Space: one self-contained stack on the user's server.
+# PostgreSQL and file bytes are persisted on the dedicated host disks. Only
+# the Nginx web service publishes a loopback port; the database and its private
+# REST translator are never exposed outside this Compose network.
 
 x-logging: &logging
   driver: json-file
@@ -12,7 +9,7 @@ x-logging: &logging
     max-size: "10m"
     max-file: "5"
 
-x-hardening: &hardening
+x-app-hardening: &app-hardening
   restart: unless-stopped
   logging: *logging
   security_opt:
@@ -21,10 +18,13 @@ x-hardening: &hardening
     - ALL
 
 x-server-env: &server-env
-  # Reach Supabase over the private network (gateway alias), never via Docker service names in the browser.
-  SUPABASE_URL: ${SUPABASE_URL:-http://supabase-gateway:8000}
-  SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?Supabase secret (service role) key}
-  # Model providers: set one or both. Without a key, agents show a setup state.
+  DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD}@db:5432/postgres
+  DATABASE_REST_URL: http://rest:3000
+  DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-10}
+  APP_JWT_SECRET: ${APP_JWT_SECRET:?APP_JWT_SECRET}
+  SESSION_DAYS: ${SESSION_DAYS:-30}
+  STORAGE_ROOT: /data/storage
+  STORAGE_MAX_FILE_BYTES: ${STORAGE_MAX_FILE_BYTES:-52428800}
   AI_DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-anthropic}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   ANTHROPIC_REFUSAL_FALLBACK: ${ANTHROPIC_REFUSAL_FALLBACK:-on}
@@ -38,48 +38,101 @@ x-server-env: &server-env
   EMBEDDING_MODEL: ${EMBEDDING_MODEL:-voyage-3.5}
   CRON_SECRET: ${CRON_SECRET:-}
   AGENT_RUN_BUDGET_MS: ${AGENT_RUN_BUDGET_MS:-600000}
-  # Optional n8n integration: callbacks are only sent to this host.
   N8N_BASE_URL: ${N8N_BASE_URL:-}
   NODE_OPTIONS: --max-old-space-size=384
 
 services:
-  web:
-    <<: *hardening
-    build:
-      context: .
-      target: web
-      args:
-        # Browser-safe values only; they are compiled into the bundle at build time.
-        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?public HTTPS URL of the Supabase gateway}
-        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?Supabase anon or publishable key}
-        VITE_APP_NAME: ${VITE_APP_NAME:-Dromanian Space}
-        VITE_APP_URL: ${VITE_APP_URL:-}
-    environment:
-      API_UPSTREAM: api:3000
-    expose:
-      - "8080"
-    # Loopback only: for servers whose ingress is a Cloudflare Tunnel or a host
-    # reverse proxy instead of Coolify's Traefik. Harmless otherwise.
-    ports:
-      - "127.0.0.1:${WEB_HOST_PORT:-3008}:8080"
+  mount-guard:
+    image: busybox:1.37.0
+    restart: "no"
+    logging: *logging
+    command:
+      - sh
+      - -c
+      - |
+        for d in /check/app /check/cloud; do
+          test -f "$$d/.dromanian-space-mount" || { echo "Required data mount missing: $$d"; exit 1; }
+        done
+        mkdir -p /check/app/postgres /check/cloud/storage
+    volumes:
+      - /srv/app-data/dromanian-space:/check/app
+      - /srv/cloud-data/dromanian-space:/check/cloud
+
+  db:
+    image: pgvector/pgvector:0.8.1-pg17-bookworm
+    restart: unless-stopped
+    logging: *logging
+    stop_grace_period: 2m
     depends_on:
-      api:
-        condition: service_healthy
-    tmpfs:
-      - /tmp
+      mount-guard:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - type: bind
+        source: /srv/app-data/dromanian-space/postgres
+        target: /var/lib/postgresql/data
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
     deploy:
       resources:
         limits:
-          cpus: "0.50"
-          memory: 128M
+          cpus: "2.00"
+          memory: 2G
+
+  migrate:
+    build:
+      context: .
+      target: migrations
+    restart: "no"
+    logging: *logging
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGDATABASE: postgres
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD}
+      DATABASE_API_PASSWORD: ${DATABASE_API_PASSWORD:?DATABASE_API_PASSWORD}
+
+  rest:
+    image: postgrest/postgrest:v14.17
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      PGRST_DB_URI: postgresql://authenticator:${DATABASE_API_PASSWORD:?DATABASE_API_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_EXTRA_SEARCH_PATH: public,extensions
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${APP_JWT_SECRET:?APP_JWT_SECRET}
+      PGRST_DB_POOL: ${DATABASE_REST_POOL_SIZE:-10}
+      PGRST_DB_MAX_ROWS: ${DATABASE_MAX_ROWS:-1000}
+      PGRST_SERVER_PORT: "3000"
+      PGRST_ADMIN_SERVER_PORT: "3001"
+    expose:
+      - "3000"
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/"]
-      interval: 30s
+      test: ["CMD", "postgrest", "--ready"]
+      interval: 5s
       timeout: 5s
-      retries: 3
+      retries: 20
 
   api:
-    <<: *hardening
+    <<: *app-hardening
     build:
       context: .
       target: server
@@ -91,29 +144,33 @@ services:
       API_AGENT_RATE_LIMIT_PER_MINUTE: ${API_AGENT_RATE_LIMIT_PER_MINUTE:-30}
     expose:
       - "3000"
-    networks:
-      - default
-      - supabase
+    depends_on:
+      rest:
+        condition: service_healthy
     read_only: true
     tmpfs:
       - /tmp
+    volumes:
+      - type: bind
+        source: /srv/cloud-data/dromanian-space/storage
+        target: /data/storage
+        bind:
+          create_host_path: false
     deploy:
       resources:
         limits:
           cpus: "1.00"
           memory: 512M
-    # Let open event streams and in-flight requests finish.
     stop_grace_period: 15s
     healthcheck:
-      # Liveness. Readiness (worker heartbeat, queue lag) is at /api/ready.
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 20s
 
   worker:
-    <<: *hardening
+    <<: *app-hardening
     build:
       context: .
       target: server
@@ -122,32 +179,45 @@ services:
       <<: *server-env
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
       NODE_OPTIONS: --max-old-space-size=768
-    networks:
-      - default
-      - supabase
+    depends_on:
+      rest:
+        condition: service_healthy
     read_only: true
     tmpfs:
       - /tmp
-    # Give in-flight jobs time to finish; anything unfinished resumes on the
-    # next worker after its lease expires (agent runs restart cleanly).
+    volumes:
+      - type: bind
+        source: /srv/cloud-data/dromanian-space/storage
+        target: /data/storage
+        bind:
+          create_host_path: false
     stop_grace_period: 30s
-    deploy:
-      resources:
-        limits:
-          cpus: "2.00"
-          memory: 1G
     healthcheck:
-      # The loop touches this file each pass; job progress is reported to the
-      # database and checked by /api/ready.
       test: ["CMD", "node", "-e", "const t=+require('fs').readFileSync('/tmp/worker-alive','utf8');process.exit(Date.now()-t<120000?0:1)"]
       interval: 60s
       timeout: 5s
       retries: 3
       start_period: 30s
 
-networks:
-  # Private network shared with the Supabase resource (created once on the
-  # server: docker network create dromanian-supabase).
-  supabase:
-    name: ${SUPABASE_NETWORK:-dromanian-supabase}
-    external: true
+  web:
+    <<: *app-hardening
+    build:
+      context: .
+      target: web
+      args:
+        VITE_APP_NAME: ${VITE_APP_NAME:-Dromanian Space}
+        VITE_APP_URL: ${VITE_APP_URL:-}
+    environment:
+      API_UPSTREAM: api:3000
+    ports:
+      - "127.0.0.1:${WEB_HOST_PORT:-3008}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

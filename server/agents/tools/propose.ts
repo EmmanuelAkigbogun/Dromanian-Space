@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { rpc } from '../../supabase.js';
+import { rpc } from '../../database.js';
 import { channelLabel, resolveChannel, resolveProject } from './read.js';
 import { defineTool, type RunContext, type ToolOutput } from './types.js';
 

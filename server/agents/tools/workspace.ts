@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { rpc } from '../../supabase.js';
+import { rpc } from '../../database.js';
 import { describeLocation } from '../citations.js';
 import { proposeAction } from './propose.js';
 import { defineTool, quoteData } from './types.js';

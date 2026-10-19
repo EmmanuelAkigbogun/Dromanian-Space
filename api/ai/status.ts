@@ -7,7 +7,7 @@ import { errorResponse, HttpError, json } from '../../server/http.js';
 import { crmInstalled } from '../../server/capabilities.js';
 import { embeddingsConfigured } from '../../server/knowledge/embed.js';
 import { KNOWN_TOOLS, toolAvailability } from '../../server/agents/tools/index.js';
-import { authenticate, requireMember, rpc, serviceClient } from '../../server/supabase.js';
+import { authenticate, requireMember, rpc, serviceClient } from '../../server/database.js';
 
 interface Settings {
   enabled: boolean;
@@ -100,7 +100,9 @@ export async function GET(request: Request): Promise<Response> {
     const providers = providerStates();
     const configured = new Set<string>(providers.filter((p) => p.configured).map((p) => p.name));
     const providerConfigured = anyProviderConfigured();
-    const connected = new Map((connectorRows.data ?? []).map((c) => [c.kind as string, c]));
+    const connected = new Map<string, { kind: string; status?: string }>(
+      ((connectorRows.data ?? []) as Array<{ kind: string; status?: string }>).map((c) => [c.kind, c]),
+    );
     const models = catalogModels(catalog.error ? null : (catalog.data as CatalogRow[] | null), settings.allowed_models, configured);
     const costs = isAdmin ? await costSummary(workspaceId) : null;
     const usedProviders = [...new Set(settings.allowed_models.map(providerNameFor))].filter(

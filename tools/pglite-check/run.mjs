@@ -23,14 +23,14 @@ const db = await PGlite.create({ extensions: { vector, pgcrypto, pg_trgm, uuid_o
 console.log((await db.query('SELECT version()')).rows[0].version.split(' on ')[0]);
 
 // The bootstrap emulates Supabase's roles, auth and storage schemas (psql meta-commands removed).
-await db.exec(readFileSync(path.join(repo, 'tools/local-supabase/bootstrap.sql'), 'utf8').replace(/^\\set .*$/gm, ''));
+await db.exec(readFileSync(path.join(repo, 'tools/local-database/bootstrap.sql'), 'utf8').replace(/^\\set .*$/gm, ''));
 
-const dir = path.join(repo, 'supabase/migrations');
+const dir = path.join(repo, 'database/migrations');
 let legacy = null;
 for (const f of readdirSync(dir).filter((x) => /^\d{14}_.+\.sql$/.test(x)).sort()) {
   // An installation created before the provider/roster/automation migrations.
   if (!legacy && f.slice(0, 14) >= '20261019000000') legacy = await pre(db);
-  // As in tools/local-supabase: pg_cron is stubbed by the bootstrap.
+  // As in tools/local-database: pg_cron is stubbed by the bootstrap.
   const sql = readFileSync(path.join(dir, f), 'utf8').replace(/CREATE EXTENSION IF NOT EXISTS pg_cron;/g, '-- pg_cron stub');
   try {
     await db.exec(`BEGIN;\n${sql}\nCOMMIT;`);

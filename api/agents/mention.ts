@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { startMentionRuns } from '../../server/agents/start.js';
 import { enqueueRun } from '../../server/agents/tail.js';
 import { errorResponse, json, readJson } from '../../server/http.js';
-import { authenticate } from '../../server/supabase.js';
+import { authenticate } from '../../server/database.js';
 
 const Body = z.object({ message_id: z.string().uuid() });
 

@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { applyMigrations, MIGRATIONS_DIR, PG_PORT, REPO_ROOT, applySqlFile } from '../../tools/local-supabase/lib.ts';
+import { applyMigrations, MIGRATIONS_DIR, PG_PORT, REPO_ROOT, applySqlFile } from '../../tools/local-database/lib.ts';
 import { pool as mainPool } from '../helpers/db.ts';
 
 const created: string[] = [];
@@ -46,8 +46,8 @@ async function as<T>(dbPool: pg.Pool, userId: string, sql: string, params: unkno
 }
 
 describe('legacy baseline', () => {
-  it('is a byte-identical copy of supabase/SQL/all/all.sql below its guard', () => {
-    const legacy = readFileSync(path.join(REPO_ROOT, 'supabase', 'SQL', 'all', 'all.sql'), 'utf8');
+  it('is a byte-identical copy of database/SQL/all/all.sql below its guard', () => {
+    const legacy = readFileSync(path.join(REPO_ROOT, 'database', 'SQL', 'all', 'all.sql'), 'utf8');
     const baseline = readFileSync(path.join(MIGRATIONS_DIR, '20261004000000_legacy_baseline.sql'), 'utf8');
     expect(baseline.endsWith(legacy)).toBe(true);
     expect(baseline.length - legacy.length).toBeLessThan(3000);

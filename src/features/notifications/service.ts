@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { Notification, NotificationType } from '@/types';
 
 export type NotificationCategory = 'messaging' | 'workspace' | 'channels' | 'projects' | 'tasks' | 'calendar';
@@ -13,7 +13,7 @@ export interface TypedNotification extends Notification {
 }
 
 export async function getNotifications(userId: string): Promise<Notification[]> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('notifications')
     .select('*')
     .eq('user_id', userId)
@@ -25,7 +25,7 @@ export async function getNotifications(userId: string): Promise<Notification[]> 
 }
 
 export async function getUnreadCount(userId: string): Promise<number> {
-  const { count, error } = await supabase
+  const { count, error } = await platform
     .from('notifications')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
@@ -36,7 +36,7 @@ export async function getUnreadCount(userId: string): Promise<number> {
 }
 
 export async function markAsRead(notificationId: string): Promise<boolean> {
-  const { error } = await supabase
+  const { error } = await platform
     .from('notifications')
     .update({ read: true })
     .eq('id', notificationId);
@@ -45,7 +45,7 @@ export async function markAsRead(notificationId: string): Promise<boolean> {
 }
 
 export async function markAllAsRead(userId: string): Promise<boolean> {
-  const { error } = await supabase
+  const { error } = await platform
     .from('notifications')
     .update({ read: true })
     .eq('user_id', userId)
@@ -55,7 +55,7 @@ export async function markAllAsRead(userId: string): Promise<boolean> {
 }
 
 export async function deleteNotification(notificationId: string): Promise<boolean> {
-  const { error } = await supabase
+  const { error } = await platform
     .from('notifications')
     .delete()
     .eq('id', notificationId);
@@ -70,7 +70,7 @@ export async function createInvitationNotification(
   role: string,
   options?: { workspaceId?: string; actorId?: string },
 ): Promise<boolean> {
-  const { error } = await supabase
+  const { error } = await platform
     .from('notifications')
     .insert({
       user_id: invitedUserId,
@@ -94,7 +94,7 @@ export async function getNotificationsPaginated(
   const limit = options?.limit ?? 20;
   const offset = options?.offset ?? 0;
 
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('notifications')
     .select('*')
     .eq('user_id', userId)
@@ -117,7 +117,7 @@ export async function createTypedNotification(
   actorId: string | null,
   workspaceId: string | null,
 ): Promise<boolean> {
-  const { error } = await supabase.rpc('create_notification' as never, {
+  const { error } = await platform.rpc('create_notification' as never, {
     p_user_id: userId,
     p_type: type,
     p_title: title,
@@ -131,7 +131,7 @@ export async function createTypedNotification(
   } as never);
 
   if (error) {
-    const { error: fallbackError } = await supabase.from('notifications').insert({
+    const { error: fallbackError } = await platform.from('notifications').insert({
       user_id: userId,
       type,
       title,
@@ -144,7 +144,7 @@ export async function createTypedNotification(
 }
 
 export async function getNotificationUnreadCount(_userId: string): Promise<number> {
-  const { data, error } = await supabase.rpc('get_notification_unread_count' as never);
+  const { data, error } = await platform.rpc('get_notification_unread_count' as never);
 
   if (error) {
     return getUnreadCount(_userId);
@@ -153,7 +153,7 @@ export async function getNotificationUnreadCount(_userId: string): Promise<numbe
 }
 
 export async function markNotificationRead(notificationId: string): Promise<boolean> {
-  const { error } = await supabase.rpc('mark_notification_read' as never, {
+  const { error } = await platform.rpc('mark_notification_read' as never, {
     p_notification_id: notificationId,
   } as never);
 
@@ -164,7 +164,7 @@ export async function markNotificationRead(notificationId: string): Promise<bool
 }
 
 export async function markAllNotificationsRead(userId: string): Promise<boolean> {
-  const { error } = await supabase.rpc('mark_all_notifications_read' as never);
+  const { error } = await platform.rpc('mark_all_notifications_read' as never);
 
   if (error) {
     return markAllAsRead(userId);
@@ -177,7 +177,7 @@ export function subscribeToNotifications(
   callback: (notification: TypedNotification) => void,
 ) {
   const instanceId = Math.random().toString(36).slice(2, 9);
-  const channel = supabase
+  const channel = platform
     .channel(`notifications-realtime:${instanceId}`)
     .on(
       'postgres_changes',
@@ -194,6 +194,6 @@ export function subscribeToNotifications(
     .subscribe();
 
   return () => {
-    supabase.removeChannel(channel);
+    platform.removeChannel(channel);
   };
 }

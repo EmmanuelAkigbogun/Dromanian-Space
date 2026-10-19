@@ -1,4 +1,4 @@
-import { serviceClient } from './supabase.js';
+import { serviceClient } from './database.js';
 
 let crmCache: { value: boolean; at: number } | null = null;
 

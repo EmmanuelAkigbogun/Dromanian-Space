@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { UUID } from '@/types';
 
 export type RecentActivityEntityType = 'channel' | 'conversation' | 'thread' | 'file';
@@ -42,7 +42,7 @@ export function useRecentActivity(): UseRecentActivityReturn {
     setError(null);
 
     try {
-      const { data, error: fetchError } = await supabase
+      const { data, error: fetchError } = await platform
         .from('recent_activity' as any)
         .select('*')
         .eq('user_id', userId)
@@ -76,7 +76,7 @@ export function useRecentActivity(): UseRecentActivityReturn {
         const now = new Date().toISOString();
 
         // Check if an entry already exists for this entity
-        const { data: existing } = await supabase
+        const { data: existing } = await platform
           .from('recent_activity' as any)
           .select('id')
           .eq('user_id', userId)
@@ -85,13 +85,13 @@ export function useRecentActivity(): UseRecentActivityReturn {
           .maybeSingle();
 
         if (existing) {
-          const { error: updateError } = await supabase
+          const { error: updateError } = await platform
             .from('recent_activity' as any)
             .update({ accessed_at: now, entity_name: name, entity_url: url })
             .eq('id', (existing as any).id);
           if (updateError) throw updateError;
         } else {
-          const { error: insertError } = await supabase
+          const { error: insertError } = await platform
             .from('recent_activity' as any)
             .insert({
               user_id: userId,

@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type {
   WorkspaceInviteLink,
   WorkspaceInviteLinkInfo,
@@ -9,7 +9,7 @@ import type {
 export async function getWorkspaceInviteLinkInfo(
   token: string,
 ): Promise<WorkspaceInviteLinkInfo | null> {
-  const { data, error } = await supabase.rpc('get_workspace_invite_link_info' as never, {
+  const { data, error } = await platform.rpc('get_workspace_invite_link_info' as never, {
     p_token: token,
   } as never);
 
@@ -20,7 +20,7 @@ export async function getWorkspaceInviteLinkInfo(
 export async function createWorkspaceInviteLink(
   workspaceId: string,
 ): Promise<{ success: boolean; link?: WorkspaceInviteLink; error?: string }> {
-  const { data, error } = await supabase.rpc('create_workspace_invite_link' as never, {
+  const { data, error } = await platform.rpc('create_workspace_invite_link' as never, {
     p_workspace_id: workspaceId,
   } as never);
 
@@ -34,7 +34,7 @@ export async function createWorkspaceInviteLink(
 export async function getWorkspaceInviteLinks(
   workspaceId: string,
 ): Promise<WorkspaceInviteLink[]> {
-  const { data, error } = await supabase.rpc('get_workspace_invite_links' as never, {
+  const { data, error } = await platform.rpc('get_workspace_invite_links' as never, {
     p_workspace_id: workspaceId,
   } as never);
 
@@ -45,7 +45,7 @@ export async function getWorkspaceInviteLinks(
 export async function revokeWorkspaceInviteLink(
   linkId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const { data, error } = await supabase.rpc('revoke_workspace_invite_link' as never, {
+  const { data, error } = await platform.rpc('revoke_workspace_invite_link' as never, {
     p_link_id: linkId,
   } as never);
 
@@ -58,7 +58,7 @@ export async function revokeWorkspaceInviteLink(
 export async function submitWorkspaceJoinRequest(
   token: string,
 ): Promise<{ success: boolean; error?: string; workspaceName?: string }> {
-  const { data, error } = await supabase.rpc('submit_workspace_join_request' as never, {
+  const { data, error } = await platform.rpc('submit_workspace_join_request' as never, {
     p_token: token,
   } as never);
 
@@ -71,7 +71,7 @@ export async function submitWorkspaceJoinRequest(
 export async function getWorkspaceJoinRequests(
   workspaceId: string,
 ): Promise<WorkspaceJoinRequest[]> {
-  const { data, error } = await supabase.rpc('get_workspace_join_requests' as never, {
+  const { data, error } = await platform.rpc('get_workspace_join_requests' as never, {
     p_workspace_id: workspaceId,
   } as never);
 
@@ -83,7 +83,7 @@ export async function decideWorkspaceJoinRequest(
   requestId: string,
   accept: boolean,
 ): Promise<{ success: boolean; error?: string }> {
-  const { data, error } = await supabase.rpc('decide_workspace_join_request' as never, {
+  const { data, error } = await platform.rpc('decide_workspace_join_request' as never, {
     p_request_id: requestId,
     p_accept: accept,
   } as never);

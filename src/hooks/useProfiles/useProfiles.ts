@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { Profile } from '@/types';
 
 const MAX_CACHE_SIZE = 500;
@@ -24,7 +24,7 @@ function notifyProfileChange(userId: string) {
 // Subscribe to profiles table changes via a module-level singleton, held only
 // while at least one useProfiles consumer is mounted. Profiles are global
 // (not workspace-scoped), so events are filtered client-side by tracked ids.
-let realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
+let realtimeChannel: ReturnType<typeof platform.channel> | null = null;
 let realtimeSubscriberCount = 0;
 
 function handleProfilePayload(payload: { new: Record<string, unknown> }) {
@@ -37,7 +37,7 @@ function handleProfilePayload(payload: { new: Record<string, unknown> }) {
 function ensureRealtimeSubscription() {
   realtimeSubscriberCount += 1;
   if (realtimeChannel) return;
-  realtimeChannel = supabase
+  realtimeChannel = platform
     .channel('profiles-realtime')
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, handleProfilePayload)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'profiles' }, handleProfilePayload)
@@ -47,7 +47,7 @@ function ensureRealtimeSubscription() {
 function releaseRealtimeSubscription() {
   realtimeSubscriberCount = Math.max(0, realtimeSubscriberCount - 1);
   if (realtimeSubscriberCount === 0 && realtimeChannel) {
-    supabase.removeChannel(realtimeChannel);
+    platform.removeChannel(realtimeChannel);
     realtimeChannel = null;
   }
 }
@@ -106,7 +106,7 @@ export function useProfiles(userIds: string[], options?: { forceRefresh?: boolea
     }
 
     setIsLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await platform
       .from('profiles')
       .select('*')
       .in('id', uncachedIds);

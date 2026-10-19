@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/Button';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAutomation } from '@/hooks/useAutomation';
 import { useToast } from '@/components/ui/Toast';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import {
   collectWorkspaceExport,
   collectTasksExport,
@@ -66,7 +66,7 @@ export function WorkspaceDataExport() {
 
   useEffect(() => {
     if (!currentWorkspace) return;
-    supabase
+    platform
       .from('projects')
       .select('id, name')
       .eq('workspace_id', currentWorkspace.id)

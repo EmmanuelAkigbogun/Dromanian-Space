@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { UUID } from '@/types';
 
 export interface Draft {
@@ -51,7 +51,7 @@ export function useDrafts(): UseDraftsReturn {
       if (cached) return cached;
 
       try {
-        let query = supabase
+        let query = platform
           .from('user_drafts' as any)
           .select('*')
           .eq('user_id', userId);
@@ -103,14 +103,14 @@ export function useDrafts(): UseDraftsReturn {
 
       try {
         if (existing) {
-          const { error } = await supabase
+          const { error } = await platform
             .from('user_drafts' as any)
             .update(draftData)
             .eq('id', existing.id);
           if (error) throw error;
           setDraftCache((prev) => new Map(prev).set(key, { ...existing, ...draftData }));
         } else {
-          const { data, error } = await supabase
+          const { data, error } = await platform
             .from('user_drafts' as any)
             .insert({ ...draftData })
             .select()
@@ -136,7 +136,7 @@ export function useDrafts(): UseDraftsReturn {
       if (!existing) return;
 
       try {
-        const { error } = await supabase
+        const { error } = await platform
           .from('user_drafts' as any)
           .delete()
           .eq('id', existing.id);

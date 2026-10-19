@@ -4,7 +4,7 @@ import { PersonalPlanner } from '@/components/calendar/PersonalPlanner/PersonalP
 import { ScheduledMessages } from '@/components/calendar/ScheduledMessages/ScheduledMessages';
 import { ReminderBell } from '@/components/calendar/ReminderBell/ReminderBell';
 import { useCalendar } from '@/hooks/useCalendar';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { CalendarEvent } from '@/types';
 import styles from './CalendarPage.module.css';
 
@@ -34,12 +34,12 @@ export function CalendarPage() {
   };
 
   const handleDismissReminder = async (id: string) => {
-    await supabase.from('reminders' as never).update({ dismissed: true } as never).eq('id', id);
+    await platform.from('reminders' as never).update({ dismissed: true } as never).eq('id', id);
     await refetch();
   };
 
   const handleSnoozeReminder = async (id: string, minutes: number) => {
-    await supabase
+    await platform
       .from('reminders' as never)
       .update({ remind_at: new Date(Date.now() + minutes * 60000).toISOString(), notified: false } as never)
       .eq('id', id);
@@ -47,7 +47,7 @@ export function CalendarPage() {
   };
 
   const handleCompleteReminder = async (id: string) => {
-    await supabase
+    await platform
       .from('reminders' as never)
       .update({ completed: true, notified: true, dismissed: true } as never)
       .eq('id', id);

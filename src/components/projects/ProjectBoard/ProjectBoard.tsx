@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/ui/Toast';
 import { TaskCard } from '@/components/tasks/TaskCard';
@@ -48,7 +48,7 @@ export function ProjectBoard({ projectId, workspaceId, onTaskClick, onTaskUpdate
   const [projectNames, setProjectNames] = useState<Record<string, string>>({});
 
   const fetchTasks = useCallback(async () => {
-    const { data: taskData, error } = await supabase
+    const { data: taskData, error } = await platform
       .from('tasks')
       .select('*')
       .eq('project_id', projectId)
@@ -64,7 +64,7 @@ export function ProjectBoard({ projectId, workspaceId, onTaskClick, onTaskUpdate
     let assigneeMap: Record<string, Array<{ user_id: string; display_name: string | null; avatar_url: string | null; email?: string | null }>> = {};
 
     if (taskIds.length > 0) {
-      const { data: assigneeData } = await supabase
+      const { data: assigneeData } = await platform
         .from('task_assignees' as any)
         .select('task_id, user_id, profiles(display_name, avatar_url, email)')
         .in('task_id', taskIds);
@@ -95,7 +95,7 @@ export function ProjectBoard({ projectId, workspaceId, onTaskClick, onTaskUpdate
   }, [fetchTasks]);
 
   useEffect(() => {
-    const channel = supabase
+    const channel = platform
       .channel(`project-board-tasks-${projectId}`)
       .on(
         'postgres_changes',
@@ -105,7 +105,7 @@ export function ProjectBoard({ projectId, workspaceId, onTaskClick, onTaskUpdate
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [projectId, fetchTasks]);
 
@@ -113,7 +113,7 @@ export function ProjectBoard({ projectId, workspaceId, onTaskClick, onTaskUpdate
     if (tasks.length === 0) return;
     const loadCustomStatuses = async () => {
       const taskIds = tasks.map((t) => t.id);
-      const { data: customStatuses } = await supabase
+      const { data: customStatuses } = await platform
         .from('task_custom_statuses' as any)
         .select('task_id, id, name')
         .in('task_id', taskIds)
@@ -151,7 +151,7 @@ export function ProjectBoard({ projectId, workspaceId, onTaskClick, onTaskUpdate
   }, []);
 
   const handleStatusChange = useCallback(async (taskId: string, status: TaskStatus) => {
-    const { error } = await supabase
+    const { error } = await platform
       .from('tasks')
       .update({ status, updated_at: new Date().toISOString() })
       .eq('id', taskId);
@@ -168,13 +168,13 @@ export function ProjectBoard({ projectId, workspaceId, onTaskClick, onTaskUpdate
   const openPicker = useCallback(async () => {
     setIsPickerOpen(true);
     const [tasksRes, projectsRes] = await Promise.all([
-      supabase
+      platform
         .from('tasks')
         .select('id, title, project_id')
         .eq('workspace_id', workspaceId)
         .is('archived_at', null)
         .order('created_at'),
-      supabase.from('projects').select('id, name').eq('workspace_id', workspaceId),
+      platform.from('projects').select('id, name').eq('workspace_id', workspaceId),
     ]);
 
     const taskRows = (tasksRes.data ?? []) as PickerTask[];
@@ -205,14 +205,14 @@ export function ProjectBoard({ projectId, workspaceId, onTaskClick, onTaskUpdate
 
     try {
       if (toAssign.length > 0) {
-        const { error } = await supabase
+        const { error } = await platform
           .from('tasks')
           .update({ project_id: projectId, updated_at: new Date().toISOString() })
           .in('id', toAssign);
         if (error) throw error;
       }
       if (toRemove.length > 0) {
-        const { error } = await supabase
+        const { error } = await platform
           .from('tasks')
           .update({ project_id: null, updated_at: new Date().toISOString() })
           .in('id', toRemove);

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { calculateTaskProgress, calculateCompletedTaskCount } from '@/lib/tasks/progress';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -34,8 +34,8 @@ export function useProjects(): UseProjectsReturn {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const membersChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const channelRef = useRef<ReturnType<typeof platform.channel> | null>(null);
+  const membersChannelRef = useRef<ReturnType<typeof platform.channel> | null>(null);
 
   const fetchProjects = useCallback(async () => {
     if (!currentWorkspace?.id) {
@@ -48,7 +48,7 @@ export function useProjects(): UseProjectsReturn {
       setIsLoading(true);
       setError(null);
 
-      const { data, error: fetchError } = await supabase
+      const { data, error: fetchError } = await platform
         .from('projects')
         .select('*')
         .eq('workspace_id', currentWorkspace.id)
@@ -65,7 +65,7 @@ export function useProjects(): UseProjectsReturn {
 
       let memberOfProjectIds = new Set<string>();
       if (memberProjectIds.length > 0) {
-        const { data: memberships } = await supabase
+        const { data: memberships } = await platform
           .from('project_members')
           .select('project_id')
           .eq('user_id', userId!)
@@ -96,7 +96,7 @@ export function useProjects(): UseProjectsReturn {
   useEffect(() => {
     if (!currentWorkspace?.id) return;
 
-    channelRef.current = supabase
+    channelRef.current = platform
       .channel(`projects:${currentWorkspace.id}`)
       .on(
         'postgres_changes',
@@ -114,7 +114,7 @@ export function useProjects(): UseProjectsReturn {
 
     return () => {
       if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
+        platform.removeChannel(channelRef.current);
         channelRef.current = null;
       }
     };
@@ -123,7 +123,7 @@ export function useProjects(): UseProjectsReturn {
   useEffect(() => {
     if (!currentWorkspace?.id || !userId) return;
 
-    membersChannelRef.current = supabase
+    membersChannelRef.current = platform
       .channel(`project-members:${currentWorkspace.id}:${userId}`)
       .on(
         'postgres_changes',
@@ -141,7 +141,7 @@ export function useProjects(): UseProjectsReturn {
 
     return () => {
       if (membersChannelRef.current) {
-        supabase.removeChannel(membersChannelRef.current);
+        platform.removeChannel(membersChannelRef.current);
         membersChannelRef.current = null;
       }
     };
@@ -156,7 +156,7 @@ export function useProjects(): UseProjectsReturn {
     try {
       setError(null);
 
-      const { data: projectData, error: createError } = await supabase
+      const { data: projectData, error: createError } = await platform
         .from('projects')
         .insert({
           workspace_id: currentWorkspace.id,
@@ -180,13 +180,13 @@ export function useProjects(): UseProjectsReturn {
         sort_order: index,
       }));
 
-      const { error: colError } = await supabase
+      const { error: colError } = await platform
         .from('project_columns')
         .insert(columnInserts);
 
       if (colError) throw colError;
 
-      const { error: memberError } = await supabase
+      const { error: memberError } = await platform
         .rpc('add_project_member', { p_project_id: projectData.id, p_user_id: userId, p_role: 'owner' });
 
       if (memberError) throw memberError;
@@ -212,7 +212,7 @@ export function useProjects(): UseProjectsReturn {
     try {
       setError(null);
 
-      const { error: updateError } = await supabase
+      const { error: updateError } = await platform
         .from('projects')
         .update({ ...updates, updated_at: new Date().toISOString() })
         .eq('id', projectId);
@@ -232,7 +232,7 @@ export function useProjects(): UseProjectsReturn {
   const updateProjectStatus = useCallback(async (projectId: string, status: string): Promise<boolean> => {
     try {
       setError(null);
-      const { error } = await supabase
+      const { error } = await platform
         .from('projects')
         .update({ status, updated_at: new Date().toISOString() })
         .eq('id', projectId);
@@ -249,7 +249,7 @@ export function useProjects(): UseProjectsReturn {
     try {
       setError(null);
 
-      const { error } = await supabase
+      const { error } = await platform
         .from('projects')
         .update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() })
         .eq('id', projectId);
@@ -268,7 +268,7 @@ export function useProjects(): UseProjectsReturn {
     try {
       setError(null);
 
-      const { error } = await supabase
+      const { error } = await platform
         .from('projects')
         .delete()
         .eq('id', projectId);
@@ -287,7 +287,7 @@ export function useProjects(): UseProjectsReturn {
     try {
       setError(null);
 
-      const { data: tasks, error: taskError } = await supabase
+      const { data: tasks, error: taskError } = await platform
         .from('tasks')
         .select('id, status, due_date, status_order')
         .eq('project_id', projectId)
@@ -295,7 +295,7 @@ export function useProjects(): UseProjectsReturn {
 
       if (taskError) throw taskError;
 
-      const { data: memberCount, error: memberError } = await supabase
+      const { data: memberCount, error: memberError } = await platform
         .rpc('get_project_member_count', { p_project_id: projectId });
 
       if (memberError) throw memberError;
@@ -332,13 +332,13 @@ export function useProjects(): UseProjectsReturn {
     let recipientIds: string[] = [];
 
     if (visibility === 'workspace') {
-      const { data: members } = await supabase
+      const { data: members } = await platform
         .from('workspace_members')
         .select('user_id')
         .eq('workspace_id', workspaceId);
       recipientIds = (members || []).map((m) => m.user_id).filter((id) => id !== creatorId);
     } else if (visibility === 'members') {
-      const { data: projectMembers } = await supabase
+      const { data: projectMembers } = await platform
         .from('project_members')
         .select('user_id')
         .eq('project_id', projectId);
@@ -347,7 +347,7 @@ export function useProjects(): UseProjectsReturn {
 
     if (recipientIds.length === 0) return;
 
-    const creatorProfile = await supabase.from('profiles').select('display_name, username').eq('id', creatorId).single();
+    const creatorProfile = await platform.from('profiles').select('display_name, username').eq('id', creatorId).single();
     const creatorName = creatorProfile.data?.display_name || creatorProfile.data?.username || 'Someone';
 
     await Promise.allSettled(

@@ -12,7 +12,7 @@ import { MentionDropdown } from './MentionDropdown';
 import { RecordButton } from './RecordButton/RecordButton';
 import { UploadProgress } from '@/components/message/UploadProgress';
 import { AttachmentPreview } from '@/components/message/AttachmentPreview';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useInvalidateAttachments } from '@/hooks/useMessageAttachments';
 import type { LinkDisplayMode } from '@/types';
 import styles from './MessageInput.module.css';
@@ -149,7 +149,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
       setChannelMemberIds([]);
       return;
     }
-    supabase
+    platform
       .from('channel_members')
       .select('user_id')
       .eq('channel_id', channelId)

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import styles from './MemberMultiSelect.module.css';
 
 interface Member {
@@ -32,13 +32,13 @@ export function MemberMultiSelect({
   useEffect(() => {
     if (!currentWorkspace) return;
     (async () => {
-      const { data } = await supabase
+      const { data } = await platform
         .from('workspace_members' as never)
         .select('user_id')
         .eq('workspace_id', currentWorkspace.id);
       const userIds = ((data ?? []) as unknown as Array<{ user_id: string }>).map((m) => m.user_id);
       if (userIds.length === 0) return;
-      const { data: profiles } = await supabase
+      const { data: profiles } = await platform
         .from('profiles' as never)
         .select('id, email, display_name, username')
         .in('id', userIds);

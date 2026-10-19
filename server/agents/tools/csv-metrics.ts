@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { rpc, serviceClient } from '../../supabase.js';
+import { rpc, serviceClient } from '../../database.js';
 import { parseCsv } from '../../knowledge/csv.js';
 import { defineTool } from './types.js';
 

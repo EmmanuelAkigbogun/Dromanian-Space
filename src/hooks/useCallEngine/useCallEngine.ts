@@ -1,16 +1,16 @@
 import { useRef, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 
-// If `call_signaling` isn't in your generated Supabase types yet (e.g. the
+// If `call_signaling` isn't in the generated database types yet (e.g. the
 // types file wasn't regenerated after migration 016_call_signaling.sql),
 // the client's generic inference can collapse to `never` for this table and
 // TypeScript will flag properties in the insert object below even though
 // they're correct. Casting to `any` here matches the same workaround already
-// used in call.ts (`const db = supabase as any;`). The real, permanent fix is
-// to regenerate your types: `supabase gen types typescript --project-id <id> > src/types/database.types.ts`
+// used in call.ts (`const db = platform as any;`). The real, permanent fix is
+// to regenerate your types: `platform gen types typescript --project-id <id> > src/types/database.types.ts`
 // (or your project's equivalent command) so `call_signaling` is recognized -
 // do that when you get a chance and you can remove this cast.
-const db = supabase as any;
+const db = platform as any;
 
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
@@ -156,7 +156,7 @@ export function useCallEngine() {
     if (signalingChannelRef.current) {
       const ch = signalingChannelRef.current;
       signalingChannelRef.current = null;
-      try { supabase.removeChannel(ch); } catch { }
+      try { platform.removeChannel(ch); } catch { }
     }
     callIdRef.current = null;
     pendingOffersRef.current = [];
@@ -378,10 +378,10 @@ export function useCallEngine() {
       if (signalingChannelRef.current) {
         const old = signalingChannelRef.current;
         signalingChannelRef.current = null;
-        try { supabase.removeChannel(old); } catch { }
+        try { platform.removeChannel(old); } catch { }
       }
 
-      const ch = supabase.channel(`call-signal:${callId}:${myUserId}`);
+      const ch = platform.channel(`call-signal:${callId}:${myUserId}`);
 
       ch.on('postgres_changes', {
         event: 'INSERT',
@@ -555,7 +555,7 @@ export function useCallEngine() {
   const broadcastEndCall = useCallback(async () => {
     if (!callIdRef.current) return;
     try {
-      const { data } = await supabase
+      const { data } = await platform
         .from('call_participants')
         .select('user_id')
         .eq('call_id', callIdRef.current);

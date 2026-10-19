@@ -8,7 +8,7 @@ import { Avatar } from '@/components/ui/Avatar/Avatar';
 import { Badge } from '@/components/ui/Badge/Badge';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { CalendarEvent, CalendarReminder } from '@/types';
 import styles from './EventDialog.module.css';
 
@@ -77,14 +77,14 @@ export function EventDialog({ event, existingReminder, onSave, onDelete, onClose
   useEffect(() => {
     if (!currentWorkspace?.id) return;
     const fetchMembers = async () => {
-      const { data: memberData, error: memberError } = await supabase
+      const { data: memberData, error: memberError } = await platform
         .from('workspace_members' as never)
         .select('user_id')
         .eq('workspace_id', currentWorkspace.id);
       if (memberError || !memberData || memberData.length === 0) return;
 
       const userIds = (memberData as { user_id: string }[]).map((m) => m.user_id);
-      const { data: profileData } = await supabase
+      const { data: profileData } = await platform
         .from('profiles' as never)
         .select('id, username, avatar_url')
         .in('id', userIds);
@@ -129,12 +129,12 @@ export function EventDialog({ event, existingReminder, onSave, onDelete, onClose
       if (saved?.id) {
         if (reminderOption === 'none') {
           if (existingReminder?.id) {
-            await supabase.from('reminders' as never).delete().eq('id', existingReminder.id);
+            await platform.from('reminders' as never).delete().eq('id', existingReminder.id);
           }
         } else {
           const remindAt = new Date(new Date(saved.start_at).getTime() - Number(reminderOption) * 60000).toISOString();
           if (existingReminder?.id) {
-            await supabase.from('reminders' as never).update({ remind_at: remindAt, title: saved.title } as never).eq('id', existingReminder.id);
+            await platform.from('reminders' as never).update({ remind_at: remindAt, title: saved.title } as never).eq('id', existingReminder.id);
           } else {
             await createReminder({
               entity_type: 'event',

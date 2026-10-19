@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Progress } from '@/components/ui/Progress';
 import { Spinner } from '@/components/ui/Spinner';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { calculateTaskProgress, calculateCompletedTaskCount } from '@/lib/tasks/progress';
 import { truncate } from '@/utils';
 import type { Project } from '@/types';
@@ -35,7 +35,7 @@ function ProjectBoardCard({ project, onClick }: ProjectBoardCardProps) {
 
   useState(() => {
     let cancelled = false;
-    supabase
+    platform
       .from('tasks')
       .select('id, status, status_order')
       .eq('project_id', project.id)
@@ -161,7 +161,7 @@ export function ProjectStatusBoard({
         onStatusChange(draggedProject.id, targetStatus);
       }
 
-      await supabase
+      await platform
         .from('projects')
         .update({ status: targetStatus, updated_at: new Date().toISOString() })
         .eq('id', draggedProject.id);

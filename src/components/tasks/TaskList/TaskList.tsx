@@ -1,7 +1,7 @@
 import { useCallback, useState, useEffect } from 'react';
 import { TaskCard } from '@/components/tasks/TaskCard';
 import { useTasks } from '@/hooks/useTasks';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { Task, TaskStatus } from '@/types/task';
 import styles from './TaskList.module.css';
 
@@ -24,7 +24,7 @@ export function TaskList({ tasks, onTaskClick, onRestore, customStatusesVersion 
     const loadData = async () => {
       const allUserIds = new Set<string>();
       for (const task of tasks) {
-        const { data } = await supabase
+        const { data } = await platform
           .from('task_assignees' as any)
           .select('user_id')
           .eq('task_id', task.id);
@@ -36,7 +36,7 @@ export function TaskList({ tasks, onTaskClick, onRestore, customStatusesVersion 
       }
 
       if (allUserIds.size > 0) {
-        const { data: profiles } = await supabase
+        const { data: profiles } = await platform
           .from('profiles' as any)
           .select('id, display_name, username, email, avatar_url')
           .in('id', Array.from(allUserIds));
@@ -56,14 +56,14 @@ export function TaskList({ tasks, onTaskClick, onRestore, customStatusesVersion 
 
       if (tasks.length > 0) {
         const taskIds = tasks.map((t) => t.id);
-        const { data: assignments } = await supabase
+        const { data: assignments } = await platform
           .from('task_label_assignments' as any)
           .select('task_id, label_id')
           .in('task_id', taskIds);
 
         if (assignments && assignments.length > 0) {
           const labelIds = [...new Set((assignments as unknown as { label_id: string }[]).map((a) => a.label_id))];
-          const { data: labels } = await supabase
+          const { data: labels } = await platform
             .from('task_labels' as any)
             .select('id, name, color')
             .in('id', labelIds);
@@ -85,7 +85,7 @@ export function TaskList({ tasks, onTaskClick, onRestore, customStatusesVersion 
           }
         }
 
-        const { data: customStatuses } = await supabase
+        const { data: customStatuses } = await platform
           .from('task_custom_statuses' as any)
           .select('task_id, id, name')
           .in('task_id', taskIds)

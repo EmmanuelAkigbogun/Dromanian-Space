@@ -3,7 +3,7 @@
 // minutes, and due jobs are not piling up. Counts only; no secrets or content.
 import { json } from '../server/http.js';
 import { providerStates } from '../server/ai/registry.js';
-import { rpc } from '../server/supabase.js';
+import { rpc } from '../server/database.js';
 
 const MAX_QUEUE_LAG_SECONDS = Number(process.env.READY_MAX_QUEUE_LAG_SECONDS ?? 300);
 

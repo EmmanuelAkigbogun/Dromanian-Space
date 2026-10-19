@@ -1,5 +1,5 @@
 // Local preview: Vite, the API adapter and the worker in one process, against
-// the local Supabase emulator (npm run supabase:local -- start).
+// the local PostgreSQL/PostgREST stack (npm run database:local -- start).
 import { createServer } from 'node:http';
 import { createServer as createViteServer } from 'vite';
 import { handleApi } from '../server/node-http.js';

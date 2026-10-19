@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useWorkspaceContext } from '@/app/providers/WorkspaceProvider';
 import { getWorkspaceSettings, saveWorkspaceSettings, type TypographyPrefs } from '@/lib/workspace/settings';
 import { persistAppliedTheme, readAppliedTheme } from '@/lib/workspace/themeCache';
@@ -116,7 +116,7 @@ export function WorkspaceThemeProvider({ children }: WorkspaceThemeProviderProps
   // Realtime: reflect owner theme changes for members (respects their override)
   useEffect(() => {
     if (!workspaceId || !isAuthenticated) return;
-    const channel = supabase
+    const channel = platform
       .channel(`workspace-theme-${workspaceId}`)
       .on(
         'postgres_changes',
@@ -127,7 +127,7 @@ export function WorkspaceThemeProvider({ children }: WorkspaceThemeProviderProps
       )
       .subscribe();
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [workspaceId, isAuthenticated, loadWorkspaceTheme]);
 

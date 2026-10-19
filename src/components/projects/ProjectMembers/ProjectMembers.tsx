@@ -6,7 +6,7 @@ import { Select } from '@/components/ui/Select';
 import { Spinner } from '@/components/ui/Spinner';
 import { Input } from '@/components/ui/Input';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useToast } from '@/components/ui/Toast';
@@ -49,7 +49,7 @@ export function ProjectMembers({ projectId, canManage = false }: ProjectMembersP
   const fetchMembers = useCallback(async (silent = false) => {
     if (!silent) setIsLoading(true);
 
-    const { data, error } = await supabase
+    const { data, error } = await platform
       .rpc('get_project_members', { p_project_id: projectId });
 
     if (error) {
@@ -79,7 +79,7 @@ export function ProjectMembers({ projectId, canManage = false }: ProjectMembersP
   }, [fetchMembers]);
 
   useEffect(() => {
-    const channel = supabase
+    const channel = platform
       .channel(`project-members-${projectId}`)
       .on(
         'postgres_changes',
@@ -89,7 +89,7 @@ export function ProjectMembers({ projectId, canManage = false }: ProjectMembersP
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [projectId, fetchMembers]);
 
@@ -102,7 +102,7 @@ export function ProjectMembers({ projectId, canManage = false }: ProjectMembersP
 
     const memberUserIds = members.map((m) => m.user_id);
 
-    const { data: wmData, error } = await supabase
+    const { data: wmData, error } = await platform
       .from('workspace_members')
       .select('user_id')
       .eq('workspace_id', currentWorkspace.id);
@@ -118,7 +118,7 @@ export function ProjectMembers({ projectId, canManage = false }: ProjectMembersP
       return;
     }
 
-    const { data: profiles } = await supabase
+    const { data: profiles } = await platform
       .from('profiles')
       .select('id, display_name, avatar_url, email')
       .in('id', filtered.map((m) => m.user_id));
@@ -145,7 +145,7 @@ export function ProjectMembers({ projectId, canManage = false }: ProjectMembersP
   }, [members, currentWorkspace?.id]);
 
   const handleAddMember = useCallback(async (userIdToAdd: string) => {
-    const { error } = await supabase
+    const { error } = await platform
       .rpc('add_project_member', { p_project_id: projectId, p_user_id: userIdToAdd });
 
     if (error) {
@@ -161,7 +161,7 @@ export function ProjectMembers({ projectId, canManage = false }: ProjectMembersP
   }, [projectId, fetchMembers, toast]);
 
   const handleRoleChange = useCallback(async (memberId: string, newRole: ProjectMemberRole) => {
-    const { error } = await supabase
+    const { error } = await platform
       .rpc('update_project_member_role', { p_member_id: memberId, p_role: newRole });
 
     if (error) {
@@ -176,7 +176,7 @@ export function ProjectMembers({ projectId, canManage = false }: ProjectMembersP
   }, [toast]);
 
   const handleRemoveMember = useCallback(async (memberId: string) => {
-    const { error } = await supabase
+    const { error } = await platform
       .rpc('remove_project_member', { p_member_id: memberId });
 
     if (error) {

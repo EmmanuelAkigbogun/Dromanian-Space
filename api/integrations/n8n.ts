@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { enqueueRun } from '../../server/agents/tail.js';
 import { errorResponse, HttpError, json } from '../../server/http.js';
 import { checkCallbackUrl, runSummary, verifySignedRequest } from '../../server/integrations/n8n.js';
-import { rpc, serviceClient } from '../../server/supabase.js';
+import { rpc, serviceClient } from '../../server/database.js';
 
 const MAX_BODY = 64 * 1024;
 

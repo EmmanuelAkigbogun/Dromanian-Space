@@ -3,7 +3,7 @@
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { loadEnvFile } from 'node:process';
-import { ENV_FILE } from '../../tools/local-supabase/lib.ts';
+import { ENV_FILE } from '../../tools/local-database/lib.ts';
 import { createUser,createWorkspace,q,admin,pool,type TestUser } from '../helpers/db.ts';
 import { executeRun } from '../../server/agents/engine.js';
 import { startRun } from '../../server/agents/start.js';

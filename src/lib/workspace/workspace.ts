@@ -1,9 +1,9 @@
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { createInvitationNotification } from '@/features/notifications/service';
 import type { Workspace, WorkspaceMember, WorkspaceRole, Invitation, InvitationRole, InvitationStatus, Profile } from '@/types';
 
 export async function getUserWorkspaces(userId: string): Promise<Workspace[]> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('workspace_members')
     .select('workspaces(*)')
     .eq('user_id', userId);
@@ -17,7 +17,7 @@ export async function getUserWorkspaces(userId: string): Promise<Workspace[]> {
 }
 
 export async function getWorkspaceBySlug(slug: string): Promise<Workspace | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('workspaces')
     .select('*')
     .eq('slug', slug)
@@ -28,7 +28,7 @@ export async function getWorkspaceBySlug(slug: string): Promise<Workspace | null
 }
 
 export async function getWorkspaceById(id: string): Promise<Workspace | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('workspaces')
     .select('*')
     .eq('id', id)
@@ -44,7 +44,7 @@ export async function createWorkspace(
   ownerId: string,
   description?: string,
 ): Promise<Workspace | null> {
-  const { data, error } = await supabase.rpc('create_workspace_with_owner' as any, {
+  const { data, error } = await platform.rpc('create_workspace_with_owner' as any, {
     p_name: name,
     p_slug: slug,
     p_owner_id: ownerId,
@@ -59,7 +59,7 @@ export async function updateWorkspace(
   workspaceId: string,
   updates: Partial<Pick<Workspace, 'name' | 'description' | 'avatar_url'>>,
 ): Promise<Workspace | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('workspaces')
     .update(updates)
     .eq('id', workspaceId)
@@ -72,7 +72,7 @@ export async function updateWorkspace(
 
 export async function deleteWorkspace(workspaceId: string): Promise<boolean> {
   await removeWorkspaceAvatar(workspaceId);
-  const { error } = await supabase
+  const { error } = await platform
     .from('workspaces')
     .delete()
     .eq('id', workspaceId);
@@ -81,7 +81,7 @@ export async function deleteWorkspace(workspaceId: string): Promise<boolean> {
 }
 
 export async function getWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[]> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('workspace_members')
     .select('*')
     .eq('workspace_id', workspaceId);
@@ -95,7 +95,7 @@ export async function addWorkspaceMember(
   userId: string,
   role: WorkspaceRole = 'member',
 ): Promise<WorkspaceMember | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('workspace_members')
     .insert({
       workspace_id: workspaceId,
@@ -113,7 +113,7 @@ export async function removeWorkspaceMember(
   workspaceId: string,
   userId: string,
 ): Promise<boolean> {
-  const { error } = await supabase
+  const { error } = await platform
     .from('workspace_members')
     .delete()
     .eq('workspace_id', workspaceId)
@@ -129,13 +129,13 @@ export async function updateMemberRole(
 ): Promise<WorkspaceMember | null> {
   // Roles change only through change_member_role, which checks the caller's
   // authority and records the change in the audit log.
-  const { data: sessionData } = await supabase.auth.getSession();
+  const { data: sessionData } = await platform.auth.getSession();
   const callerId = sessionData.session?.user.id;
   if (!callerId) return null;
   const result = await validateRoleChange(workspaceId, userId, callerId, role);
   if (!result.allowed) return null;
 
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('workspace_members')
     .select()
     .eq('workspace_id', workspaceId)
@@ -150,7 +150,7 @@ export async function getUserWorkspaceRole(
   workspaceId: string,
   userId: string,
 ): Promise<WorkspaceRole | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('workspace_members')
     .select('role')
     .eq('workspace_id', workspaceId)
@@ -174,7 +174,7 @@ export async function createInvitation(
   let invitationId: string | null = null;
   let resend = false;
 
-  const { data: existing } = await supabase
+  const { data: existing } = await platform
     .from('invitations')
     .select('id')
     .eq('workspace_id', workspaceId)
@@ -184,7 +184,7 @@ export async function createInvitation(
 
   if (existing) {
     resend = true;
-    const { error: updateError } = await supabase
+    const { error: updateError } = await platform
       .from('invitations')
       .update({ role, invited_by: invitedBy, created_at: new Date().toISOString() })
       .eq('id', existing.id);
@@ -193,14 +193,14 @@ export async function createInvitation(
   } else {
     // Remove any old non-pending invitation (accepted/declined/expired/cancelled)
     // so the UNIQUE(workspace_id, email) constraint won't block re-invites
-    await supabase
+    await platform
       .from('invitations')
       .delete()
       .eq('workspace_id', workspaceId)
       .eq('email', normalizedEmail)
       .neq('status', 'pending');
 
-    const { data: memberCheck } = await supabase
+    const { data: memberCheck } = await platform
       .from('workspace_members')
       .select('id')
       .eq('workspace_id', workspaceId)
@@ -211,7 +211,7 @@ export async function createInvitation(
       return { invitation: null, error: 'You are not a member of this workspace.' };
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await platform
       .from('invitations')
       .insert({
         workspace_id: workspaceId,
@@ -224,7 +224,7 @@ export async function createInvitation(
 
     if (error || !data) {
       if (error?.code === '23505') {
-        const { data: raced } = await supabase
+        const { data: raced } = await platform
           .from('invitations')
           .select('id')
           .eq('workspace_id', workspaceId)
@@ -244,7 +244,7 @@ export async function createInvitation(
 
   if (!invitationId) return { invitation: null, error: 'Failed to create invitation.' };
 
-  const { data: invitation } = await supabase
+  const { data: invitation } = await platform
     .from('invitations')
     .select('*')
     .eq('id', invitationId)
@@ -256,9 +256,9 @@ export async function createInvitation(
 
   try {
     const [workspaceResult, inviterProfileResult, invitedProfileResult] = await Promise.all([
-      supabase.from('workspaces').select('name').eq('id', workspaceId).single(),
-      supabase.from('profiles').select('display_name, username').eq('id', invitedBy).single(),
-      supabase.rpc('get_user_id_by_email', { p_email: normalizedEmail }),
+      platform.from('workspaces').select('name').eq('id', workspaceId).single(),
+      platform.from('profiles').select('display_name, username').eq('id', invitedBy).single(),
+      platform.rpc('get_user_id_by_email', { p_email: normalizedEmail }),
     ]);
 
     const invitedUserId = invitedProfileResult.data?.[0]?.user_id;
@@ -283,7 +283,7 @@ export async function getWorkspaceInvitations(
   workspaceId: string,
   status?: InvitationStatus,
 ): Promise<Invitation[]> {
-  let query = supabase
+  let query = platform
     .from('invitations')
     .select('*')
     .eq('workspace_id', workspaceId)
@@ -308,7 +308,7 @@ export async function acceptInvitation(
   userId: string,
   userEmail?: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const { data, error } = await supabase.rpc('accept_workspace_invitation' as any, {
+  const { data, error } = await platform.rpc('accept_workspace_invitation' as any, {
     p_invitation_id: invitationId,
     p_user_id: userId,
     p_user_email: userEmail ?? null,
@@ -323,7 +323,7 @@ export async function acceptInvitation(
 }
 
 export async function declineInvitation(invitationId: string): Promise<boolean> {
-  const { error } = await supabase
+  const { error } = await platform
     .from('invitations')
     .update({ status: 'declined' })
     .eq('id', invitationId)
@@ -333,7 +333,7 @@ export async function declineInvitation(invitationId: string): Promise<boolean> 
 }
 
 export async function cancelInvitation(invitationId: string): Promise<boolean> {
-  const { error } = await supabase
+  const { error } = await platform
     .from('invitations')
     .update({ status: 'cancelled' })
     .eq('id', invitationId)
@@ -343,7 +343,7 @@ export async function cancelInvitation(invitationId: string): Promise<boolean> {
 }
 
 export async function deleteInvitation(invitationId: string): Promise<boolean> {
-  const { error } = await supabase
+  const { error } = await platform
     .from('invitations')
     .delete()
     .eq('id', invitationId);
@@ -354,7 +354,7 @@ export async function deleteInvitation(invitationId: string): Promise<boolean> {
 export async function getPendingInvitationByToken(
   token: string,
 ): Promise<Invitation | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('invitations')
     .select('*')
     .eq('token', token)
@@ -364,7 +364,7 @@ export async function getPendingInvitationByToken(
   if (error || !data) return null;
 
   if (new Date(data.expires_at) < new Date()) {
-    await supabase
+    await platform
       .from('invitations')
       .update({ status: 'expired' })
       .eq('id', data.id);
@@ -377,7 +377,7 @@ export async function getPendingInvitationByToken(
 export async function resendInvitation(
   invitationId: string,
 ): Promise<Invitation | null> {
-  const { data: invitation, error: fetchError } = await supabase
+  const { data: invitation, error: fetchError } = await platform
     .from('invitations')
     .select('*')
     .eq('id', invitationId)
@@ -389,7 +389,7 @@ export async function resendInvitation(
   const newToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
   const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('invitations')
     .update({
       status: 'pending',
@@ -405,7 +405,7 @@ export async function resendInvitation(
 }
 
 export async function getUserInvitations(userId: string): Promise<Invitation[]> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('invitations')
     .select('*')
     .eq('user_id', userId)
@@ -424,7 +424,7 @@ export interface UserInvitation extends Invitation {
 export async function getUserInvitationsByEmail(email: string): Promise<UserInvitation[]> {
   const normalizedEmail = email.toLowerCase().trim();
 
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('invitations')
     .select('*')
     .ilike('email', normalizedEmail)
@@ -448,10 +448,10 @@ export async function getUserInvitationsByEmail(email: string): Promise<UserInvi
   try {
     const [workspaceResult, profileResult] = await Promise.all([
       workspaceIds.length > 0
-        ? supabase.from('workspaces').select('*').in('id', workspaceIds)
+        ? platform.from('workspaces').select('*').in('id', workspaceIds)
         : { data: null, error: null },
       inviterIds.length > 0
-        ? supabase.from('profiles').select('*').in('id', inviterIds)
+        ? platform.from('profiles').select('*').in('id', inviterIds)
         : { data: null, error: null },
     ]);
 
@@ -480,10 +480,10 @@ export async function getUserInvitationsByEmail(email: string): Promise<UserInvi
 // --- Workspace Avatar ---
 
 export async function removeWorkspaceAvatar(workspaceId: string): Promise<void> {
-  const { data } = await supabase.storage.from('avatars').list(`${workspaceId}`);
+  const { data } = await platform.storage.from('avatars').list(`${workspaceId}`);
   if (data && data.length > 0) {
     const paths = data.map((f) => `${workspaceId}/${f.name}`);
-    await supabase.storage.from('avatars').remove(paths);
+    await platform.storage.from('avatars').remove(paths);
   }
 }
 
@@ -501,20 +501,20 @@ export async function uploadWorkspaceAvatar(
     const ok = await uploadWorkspaceAvatarWithProgress(filePath, file, onProgress);
     if (!ok) throw new Error('Upload failed');
 
-    const { data: urlData } = supabase.storage
+    const { data: urlData } = platform.storage
       .from('avatars')
       .getPublicUrl(filePath);
 
     return `${urlData.publicUrl}?v=${Date.now()}`;
   }
 
-  const { error: uploadError } = await supabase.storage
+  const { error: uploadError } = await platform.storage
     .from('avatars')
     .upload(filePath, file, { upsert: true });
 
   if (uploadError) throw uploadError;
 
-  const { data: urlData } = supabase.storage
+  const { data: urlData } = platform.storage
     .from('avatars')
     .getPublicUrl(filePath);
 
@@ -527,16 +527,11 @@ function uploadWorkspaceAvatarWithProgress(
   onProgress: (percent: number) => void,
 ): Promise<boolean> {
   return new Promise((resolve) => {
-    const sc = supabase as unknown as { supabaseUrl: string; supabaseKey: string };
-    const form = new FormData();
-    form.append('cacheControl', '3600');
-    form.append('', file);
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${sc.supabaseUrl}/storage/v1/object/avatars/${filePath}`);
-    xhr.setRequestHeader('apikey', sc.supabaseKey);
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const token = session?.access_token ?? sc.supabaseKey;
-      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.open('POST', `/api/storage/object/avatars/${filePath.split('/').map(encodeURIComponent).join('/')}`);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    platform.auth.getSession().then(({ data: { session } }) => {
+      if (session?.access_token) xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && e.total > 0) {
           onProgress(Math.min(100, Math.round((e.loaded / e.total) * 100)));
@@ -545,7 +540,7 @@ function uploadWorkspaceAvatarWithProgress(
       xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
       xhr.onerror = () => resolve(false);
       xhr.onabort = () => resolve(false);
-      xhr.send(form);
+      xhr.send(file);
     });
   });
 }
@@ -557,7 +552,7 @@ export async function transferOwnership(
   currentOwnerId: string,
   newOwnerId: string,
 ): Promise<boolean> {
-  const { data, error } = await supabase.rpc('transfer_workspace_ownership' as any, {
+  const { data, error } = await platform.rpc('transfer_workspace_ownership' as any, {
     p_workspace_id: workspaceId,
     p_current_owner_id: currentOwnerId,
     p_new_owner_id: newOwnerId,
@@ -570,7 +565,7 @@ export async function transferOwnership(
 // --- Self-Protection & Validation ---
 
 export async function getOwnerCount(workspaceId: string): Promise<number> {
-  const { count, error } = await supabase
+  const { count, error } = await platform
     .from('workspace_members')
     .select('id', { count: 'exact', head: true })
     .eq('workspace_id', workspaceId)
@@ -606,7 +601,7 @@ export async function leaveWorkspace(
     return { success: false, error: check.reason };
   }
 
-  const { error } = await supabase
+  const { error } = await platform
     .from('workspace_members')
     .delete()
     .eq('workspace_id', workspaceId)
@@ -621,7 +616,7 @@ export async function validateRemoveMember(
   targetUserId: string,
   callerUserId: string,
 ): Promise<{ allowed: boolean; reason?: string }> {
-  const { data, error } = await supabase.rpc('remove_workspace_member' as any, {
+  const { data, error } = await platform.rpc('remove_workspace_member' as any, {
     p_workspace_id: workspaceId,
     p_target_user_id: targetUserId,
     p_caller_id: callerUserId,
@@ -640,7 +635,7 @@ export async function validateRoleChange(
   callerUserId: string,
   newRole: WorkspaceRole,
 ): Promise<{ allowed: boolean; reason?: string }> {
-  const { data, error } = await supabase.rpc('change_member_role' as any, {
+  const { data, error } = await platform.rpc('change_member_role' as any, {
     p_workspace_id: workspaceId,
     p_target_user_id: targetUserId,
     p_new_role: newRole,

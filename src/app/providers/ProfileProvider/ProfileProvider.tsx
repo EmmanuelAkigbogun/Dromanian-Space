@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo, t
 import { useAuth } from '@/hooks/useAuth';
 import { getProfile, updateProfile as updateProfileService, checkUsernameAvailable, uploadAvatar } from '@/lib/profile';
 import { invalidateProfile } from '@/hooks/useProfiles/useProfiles';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { Profile, ProfileUpdate } from '@/types/profile';
 
 interface ProfileContextValue {
@@ -56,7 +56,7 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
   useEffect(() => {
     if (!userId) return;
 
-    const channel = supabase
+    const channel = platform
       .channel('current-profile-realtime')
       .on(
         'postgres_changes',
@@ -83,7 +83,7 @@ export function ProfileProvider({ children }: ProfileProviderProps) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [userId]);
 

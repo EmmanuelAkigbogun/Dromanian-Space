@@ -44,7 +44,7 @@ export function useBulkMessageActions() {
     setIsDeleting(true);
     try {
       // Fetch the attachment policy once (never per-message, and never through
-      // supabase.auth.getUser()) so a bulk delete can't trigger the auth
+      // platform.auth.getUser()) so a bulk delete can't trigger the auth
       // token-refresh race that randomly signs the user out.
       let policy: ForwardedAttachmentPolicy = 'keep';
       if (userId) policy = await getCurrentForwardedAttachmentPolicy(userId);

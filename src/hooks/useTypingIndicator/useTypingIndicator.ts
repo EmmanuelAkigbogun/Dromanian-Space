@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useAuth } from '@/hooks/useAuth';
 import type { UUID } from '@/types';
 
@@ -23,7 +23,7 @@ export function useTypingIndicator(
 ): UseTypingIndicatorReturn {
   const { userId } = useAuth();
   const [typingUsers, setTypingUsers] = useState<Map<string, TypingUser>>(new Map());
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const channelRef = useRef<ReturnType<typeof platform.channel> | null>(null);
   const lastSentRef = useRef<number>(0);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
@@ -32,7 +32,7 @@ export function useTypingIndicator(
     if (!channelId || !userId) return;
 
     const channelName = `${channelType}:${channelId}:typing`;
-    const channel = supabase.channel(channelName);
+    const channel = platform.channel(channelName);
     channelRef.current = channel;
 
     channel

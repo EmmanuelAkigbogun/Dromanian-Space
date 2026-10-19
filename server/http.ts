@@ -11,7 +11,7 @@ export class HttpError extends Error {
   }
 }
 
-/** Shape of errors returned by supabase-js (PostgREST / Postgres). */
+/** Shape of errors returned by PostgREST / PostgreSQL. */
 export interface DbError {
   message: string;
   code?: string;

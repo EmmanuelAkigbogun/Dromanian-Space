@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { Spinner } from '@/components/ui/Spinner';
 import { Badge } from '@/components/ui/Badge';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { ProjectBoard } from '@/components/projects/ProjectBoard';
@@ -65,8 +65,8 @@ export function ProjectDetail({ projectId }: ProjectDetailProps) {
       setIsLoading(true);
 
       const [projRes, colRes] = await Promise.all([
-        supabase.from('projects').select('*').eq('id', projectId).maybeSingle(),
-        supabase.from('project_columns').select('*').eq('project_id', projectId).order('sort_order'),
+        platform.from('projects').select('*').eq('id', projectId).maybeSingle(),
+        platform.from('project_columns').select('*').eq('project_id', projectId).order('sort_order'),
       ]);
 
       if (projRes.error) throw projRes.error;
@@ -79,7 +79,7 @@ export function ProjectDetail({ projectId }: ProjectDetailProps) {
       setColumns(colRes.data || []);
 
       if (userId) {
-        const { data: memberRow } = await supabase
+        const { data: memberRow } = await platform
           .from('project_members')
           .select('role')
           .eq('project_id', projectId)
@@ -97,8 +97,8 @@ export function ProjectDetail({ projectId }: ProjectDetailProps) {
 
   const fetchStats = useCallback(async () => {
     const [tasksRes, membersRes] = await Promise.all([
-      supabase.from('tasks').select('id, status, due_date, status_order').eq('project_id', projectId).is('archived_at', null),
-      supabase.rpc('get_project_member_count', { p_project_id: projectId }),
+      platform.from('tasks').select('id, status, due_date, status_order').eq('project_id', projectId).is('archived_at', null),
+      platform.rpc('get_project_member_count', { p_project_id: projectId }),
     ]);
 
     const taskList = (tasksRes.data || []) as { status: string; due_date: string | null; status_order: string[] | null }[];
@@ -122,7 +122,7 @@ export function ProjectDetail({ projectId }: ProjectDetailProps) {
 
   useEffect(() => {
     if (!projectId) return;
-    const channel = supabase
+    const channel = platform
       .channel(`project-detail-tasks-${projectId}`)
       .on(
         'postgres_changes',
@@ -132,14 +132,14 @@ export function ProjectDetail({ projectId }: ProjectDetailProps) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [projectId]);
 
   useEffect(() => {
     if (!projectId || !userId) return;
     const refreshRole = async () => {
-      const { data } = await supabase
+      const { data } = await platform
         .from('project_members')
         .select('role')
         .eq('project_id', projectId)
@@ -148,7 +148,7 @@ export function ProjectDetail({ projectId }: ProjectDetailProps) {
       const role = (data?.role as ProjectMemberRole) ?? null;
       setCurrentUserRole(role ?? (project?.visibility === 'workspace' ? 'viewer' : null));
     };
-    const channel = supabase
+    const channel = platform
       .channel(`project-detail-members-${projectId}`)
       .on(
         'postgres_changes',
@@ -158,7 +158,7 @@ export function ProjectDetail({ projectId }: ProjectDetailProps) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [projectId, userId, project?.visibility]);
 
@@ -341,13 +341,13 @@ export function ProjectDetail({ projectId }: ProjectDetailProps) {
                 onUpdate={handleProjectUpdate}
                 canManage={canManage}
                 onArchive={async () => {
-                  const { error } = await supabase.from('projects').update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', projectId);
+                  const { error } = await platform.from('projects').update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', projectId);
                   if (!error) {
                     navigate('/projects');
                   }
                 }}
                 onDelete={async () => {
-                  await supabase.from('projects').delete().eq('id', projectId);
+                  await platform.from('projects').delete().eq('id', projectId);
                   navigate('/projects');
                 }}
               />

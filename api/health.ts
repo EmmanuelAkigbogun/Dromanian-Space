@@ -2,12 +2,12 @@
 import { env } from '../server/env.js';
 import { json } from '../server/http.js';
 import { providerStates } from '../server/ai/registry.js';
-import { serviceClient } from '../server/supabase.js';
+import { serviceClient } from '../server/database.js';
 
 export async function GET(): Promise<Response> {
   const e = env();
   let database: 'reachable' | 'unreachable' | 'not_configured' = 'not_configured';
-  if (e.supabaseUrl && e.supabaseSecretKey) {
+  if (e.databaseUrl && e.appJwtSecret) {
     const { error } = await serviceClient().from('agent_templates').select('key', { head: true, count: 'exact' }).limit(1);
     database = error ? 'unreachable' : 'reachable';
   }

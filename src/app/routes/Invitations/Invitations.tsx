@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { getUserInvitationsByEmail } from '@/lib/workspace';
 import { canInviteMembers } from '@/lib/workspace/permissions';
 import { InvitationCard } from '@/components/workspace/members/InvitationCard';
@@ -45,7 +45,7 @@ export function Invitations() {
     if (!user?.email) return;
 
     const normalizedEmail = user.email.toLowerCase().trim();
-    const channel = supabase
+    const channel = platform
       .channel(`invitations-email:${Math.random().toString(36).slice(2, 9)}`)
       .on(
         'postgres_changes',
@@ -62,7 +62,7 @@ export function Invitations() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [user?.email, fetchInvitations]);
 

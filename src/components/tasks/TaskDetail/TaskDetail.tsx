@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useTasks } from '@/hooks/useTasks';
 import { useToast } from '@/components/ui/Toast';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { createTypedNotification } from '@/features/notifications/service';
 import { resolveTaskStatusLabel } from '@/lib/tasks/status';
 import { Spinner } from '@/components/ui/Spinner';
@@ -92,7 +92,7 @@ export function TaskDetail({
       return;
     }
     const userIds = assignments.map((a) => a.user_id);
-    const { data } = await supabase
+    const { data } = await platform
       .from('profiles' as any)
       .select('*')
       .in('id', userIds);
@@ -109,14 +109,14 @@ export function TaskDetail({
   }, [task.id, getLabels, getTaskLabels]);
 
   const loadMembers = useCallback(async () => {
-    const { data: memberData } = await supabase
+    const { data: memberData } = await platform
       .from('workspace_members' as any)
       .select('user_id')
       .eq('workspace_id', task.workspace_id);
 
     if (memberData && memberData.length > 0) {
       const userIds = (memberData as unknown as { user_id: string }[]).map((m) => m.user_id);
-      const { data: profiles } = await supabase
+      const { data: profiles } = await platform
         .from('profiles' as any)
         .select('*')
         .in('id', userIds);
@@ -181,7 +181,7 @@ export function TaskDetail({
     if (isDefault) {
       await onStatusChange(currentTask.id, statusId as TaskStatus);
     } else {
-      const { error } = await supabase
+      const { error } = await platform
         .from('tasks')
         .update({ status: statusId, updated_at: new Date().toISOString() })
         .eq('id', currentTask.id);
@@ -198,9 +198,9 @@ export function TaskDetail({
   async function notifyCustomStatusChange(taskId: string, statusId: string) {
     if (!userId) return;
     const [taskRes, assigneesRes, actorRes, statusLabel] = await Promise.all([
-      supabase.from('tasks' as any).select('title, workspace_id').eq('id', taskId).single(),
-      supabase.from('task_assignees' as any).select('user_id').eq('task_id', taskId),
-      supabase.from('profiles' as any).select('display_name, username').eq('id', userId).single(),
+      platform.from('tasks' as any).select('title, workspace_id').eq('id', taskId).single(),
+      platform.from('task_assignees' as any).select('user_id').eq('task_id', taskId),
+      platform.from('profiles' as any).select('display_name, username').eq('id', userId).single(),
       resolveTaskStatusLabel(statusId),
     ]);
     const taskRow = taskRes.data as any;
@@ -379,7 +379,7 @@ export function TaskDetail({
 
   const loadCustomStatuses = useCallback(async () => {
     const defaults = TASK_STATUS_OPTIONS.map((o) => ({ id: o.value, name: o.label, isCustom: false }));
-    const { data } = await supabase
+    const { data } = await platform
       .from('task_custom_statuses' as any)
       .select('*')
       .eq('task_id', task.id)
@@ -421,7 +421,7 @@ export function TaskDetail({
 
   const persistStatusOrder = useCallback(async (cols: { id: string; name: string; isCustom: boolean }[]) => {
     const order = cols.map((c) => c.id);
-    await supabase
+    await platform
       .from('tasks')
       .update({ status_order: order })
       .eq('id', currentTask.id);
@@ -492,7 +492,7 @@ export function TaskDetail({
     const customEntries = next.filter((c) => c.isCustom);
     await Promise.all(
       customEntries.map((c, i) =>
-        supabase
+        platform
           .from('task_custom_statuses' as any)
           .update({ sort_order: i })
           .eq('id', c.id)
@@ -505,7 +505,7 @@ export function TaskDetail({
   const handleAddCustomStatus = useCallback(async () => {
     if (!newStatusName.trim()) return;
     const count = statusColumns.filter((c) => c.isCustom).length;
-    const { data, error } = await supabase
+    const { data, error } = await platform
       .from('task_custom_statuses' as any)
       .insert({ task_id: currentTask.id, name: newStatusName.trim(), sort_order: count })
       .select()
@@ -526,12 +526,12 @@ export function TaskDetail({
     const next = statusColumns.filter((c) => c.id !== columnId);
     setStatusColumns(next);
     if (col.isCustom) {
-      await supabase
+      await platform
         .from('task_custom_statuses' as any)
         .delete()
         .eq('id', columnId);
     } else {
-      await supabase
+      await platform
         .from('task_custom_statuses' as any)
         .insert({ task_id: currentTask.id, name: `__hidden__:${columnId}`, sort_order: -1 });
     }

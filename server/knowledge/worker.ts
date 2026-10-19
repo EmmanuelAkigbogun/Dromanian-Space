@@ -1,4 +1,4 @@
-import { rpc, serviceClient } from '../supabase.js';
+import { rpc, serviceClient } from '../database.js';
 import { log } from '../log.js';
 import { chunkUnits } from './chunk.js';
 import { detectKind, extractDocument, extractFile, MAX_EXTRACT_BYTES, type Extraction } from './extract.js';

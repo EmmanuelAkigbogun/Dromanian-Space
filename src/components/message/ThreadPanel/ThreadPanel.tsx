@@ -2,7 +2,6 @@ import { Link } from 'react-router-dom';
 import { platform } from '@/features/platform/client';
 import platformStyles from '@/features/platform/Platform.module.css';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
 import { useThread, useThreadCounts } from '@/app/providers/ThreadProvider';
 import { EditProvider } from '@/app/providers/EditProvider';
 import { useProfiles } from '@/hooks/useProfiles';
@@ -106,7 +105,7 @@ export function ThreadPanel() {
     const matchesThread = (row: Record<string, unknown> | null): boolean =>
       !!row && String(row.parent_id ?? '') === threadId;
 
-    const channel = supabase
+    const channel = platform
       .channel(`thread:${threadId}`)
       .on(
         'postgres_changes',
@@ -139,7 +138,7 @@ export function ThreadPanel() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [activeThread, applyReplyInsert, applyReplyUpdate, applyReplyDelete]);
 

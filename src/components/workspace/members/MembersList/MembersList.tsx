@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useToast } from '@/components/ui/Toast';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { getWorkspaceMembers, validateRemoveMember, validateRoleChange } from '@/lib/workspace';
 import { getProfilesByUserIds } from '@/lib/profile';
 import { Avatar } from '@/components/ui/Avatar';
@@ -62,7 +62,7 @@ export function MembersList() {
 
   useEffect(() => {
     if (!currentWorkspace) return;
-    const channel = supabase
+    const channel = platform
       .channel(`workspace-members:${currentWorkspace.id}:${Math.random().toString(36).slice(2, 9)}`)
       .on(
         'postgres_changes',
@@ -103,7 +103,7 @@ export function MembersList() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [currentWorkspace, fetchMembers]);
 

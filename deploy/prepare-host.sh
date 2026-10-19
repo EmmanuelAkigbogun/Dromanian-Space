@@ -6,7 +6,7 @@ set -euo pipefail
 
 APP_DATA=${APP_DATA:-/srv/app-data}
 CLOUD_DATA=${CLOUD_DATA:-/srv/cloud-data}
-NETWORK=${SUPABASE_NETWORK:-dromanian-supabase}
+NETWORK=${APP_NETWORK:-dromanian-space}
 APPLY=false
 WITH_N8N=false
 # Servers without separate data disks: an explicit, recorded decision to keep
@@ -30,9 +30,8 @@ cores=$(nproc 2>/dev/null || echo 0)
 mem_gb=$(awk '/MemTotal/ {printf "%d", $2/1024/1024}' /proc/meminfo 2>/dev/null || echo 0)
 echo "CPU cores: $cores, memory: ${mem_gb} GB"
 free -h 2>/dev/null || true
-# Planning guidance: Supabase documents 4+ cores and 8+ GB for its own stack.
 (( cores >= 4 )) || echo "  WARNING: fewer than 4 CPU cores; lower WORKER_CONCURRENCY and expect slower agents."
-(( mem_gb >= 8 )) || echo "  WARNING: less than 8 GB RAM; Supabase alone recommends 8 GB."
+(( mem_gb >= 4 )) || echo "  WARNING: less than 4 GB RAM; reduce database and worker limits."
 
 section "Docker"
 docker version --format 'Docker {{.Server.Version}}' 2>/dev/null || echo "Docker is not reachable"
@@ -81,18 +80,19 @@ for base in "$APP_DATA" "$CLOUD_DATA"; do
     fi
   fi
 done
-mkdir -p "$APP_DATA/dromanian-space/supabase/db/data" \
-         "$APP_DATA/dromanian-space/supabase/db/config" \
+mkdir -p "$APP_DATA/dromanian-space/postgres" \
          "$APP_DATA/dromanian-space/config" \
          "$APP_DATA/dromanian-space/backup-staging" \
          "$CLOUD_DATA/dromanian-space/storage"
 chmod 700 "$APP_DATA/dromanian-space/config" "$APP_DATA/dromanian-space/backup-staging"
+chown 999:999 "$APP_DATA/dromanian-space/postgres" 2>/dev/null || echo "Note: run as root to chown postgres to uid 999"
+chown 1000:1000 "$CLOUD_DATA/dromanian-space/storage" 2>/dev/null || echo "Note: run as root to chown storage to uid 1000"
 if $WITH_N8N; then
   mkdir -p "$APP_DATA/dromanian-space/n8n/db" "$APP_DATA/dromanian-space/n8n/data"
   # The n8n image runs as the "node" user (uid 1000); only its data directory needs it.
   chown 1000:1000 "$APP_DATA/dromanian-space/n8n/data" 2>/dev/null || echo "Note: run as root to chown n8n/data to 1000:1000"
 fi
-# Marker files prove the real disks are mounted; the Supabase mount guard checks them.
+# Marker files prove the expected server disks are mounted; Compose fails closed without them.
 for marker in "$APP_DATA/dromanian-space/.dromanian-space-mount" "$CLOUD_DATA/dromanian-space/.dromanian-space-mount"; do
   if $ALLOW_SYSTEM_DISK; then echo "system-disk-acknowledged $(date -u +%F)" > "$marker"; else touch "$marker"; fi
 done

@@ -8,7 +8,7 @@ import {
   useRef,
   type ReactNode,
 } from 'react';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspaceContext } from '@/app/providers/WorkspaceProvider';
 
@@ -60,7 +60,7 @@ export function PresenceProvider({ children }: PresenceProviderProps) {
   const [myStatus, setMyStatusState] = useState<PresenceStatus>('online');
   const manualStatusRef = useRef<PresenceStatus | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const channelRef = useRef<ReturnType<typeof platform.channel> | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const idleCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const deviceIdRef = useRef(getDeviceId());
@@ -125,7 +125,7 @@ export function PresenceProvider({ children }: PresenceProviderProps) {
       return;
     }
 
-    const channel = supabase.channel(`workspace:${workspaceId}:presence`);
+    const channel = platform.channel(`workspace:${workspaceId}:presence`);
     channelRef.current = channel;
 
     channel
@@ -165,7 +165,7 @@ export function PresenceProvider({ children }: PresenceProviderProps) {
 
     heartbeatRef.current = setInterval(async () => {
       try {
-        await supabase.rpc('touch_presence');
+        await platform.rpc('touch_presence');
       } catch {
         // Silently fail heartbeat
       }
@@ -187,7 +187,7 @@ export function PresenceProvider({ children }: PresenceProviderProps) {
     if (!detected) return;
 
     let cancelled = false;
-    supabase
+    platform
       .from('profiles')
       .select('timezone')
       .eq('id', userId)
@@ -195,7 +195,7 @@ export function PresenceProvider({ children }: PresenceProviderProps) {
       .then(({ data }) => {
         if (cancelled) return;
         if (data && data.timezone === detected) return;
-        return supabase.from('profiles').update({ timezone: detected }).eq('id', userId);
+        return platform.from('profiles').update({ timezone: detected }).eq('id', userId);
       });
 
     return () => {
@@ -238,7 +238,7 @@ export function PresenceProvider({ children }: PresenceProviderProps) {
     const handleUnload = async () => {
       manualStatusRef.current = null;
       try {
-        await supabase.rpc('set_user_offline');
+        await platform.rpc('set_user_offline');
       } catch {
         // Best effort
       }

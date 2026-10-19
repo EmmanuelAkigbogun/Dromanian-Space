@@ -1,1 +1,1 @@
-export { supabase } from '@/lib/supabase';
+export { platform } from '@/lib/platform';

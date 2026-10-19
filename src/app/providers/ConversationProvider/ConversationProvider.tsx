@@ -11,7 +11,7 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import {
   getUserConversations,
   getOrCreateDmConversation,
@@ -223,7 +223,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
   useEffect(() => {
     if (!userId) return;
 
-    const channel = supabase
+    const channel = platform
       .channel('conversation-profiles-realtime')
       .on(
         'postgres_changes',
@@ -249,7 +249,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [userId]);
 
@@ -262,7 +262,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
 
     const applyLastMessage = async (channelId: string) => {
       if (!channelIds.has(channelId)) return;
-      const { data } = await (supabase as any).rpc('get_last_messages_for_channels', {
+      const { data } = await (platform as any).rpc('get_last_messages_for_channels', {
         p_channel_ids: [channelId],
       });
       const last = (data ?? [])[0] as
@@ -286,7 +286,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
       });
     };
 
-    const channel = supabase
+    const channel = platform
       .channel('dm-last-message-realtime')
       .on(
         'postgres_changes',
@@ -340,7 +340,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [userId, conversations.length]);
 
@@ -348,7 +348,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
   useEffect(() => {
     if (!userId) return;
 
-    const channel = supabase
+    const channel = platform
       .channel('dm-conversation-deleted-realtime')
       .on(
         'postgres_changes',
@@ -376,7 +376,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [userId, currentConversation?.id, navigate]);
 
@@ -384,7 +384,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
   useEffect(() => {
     if (!userId || !currentWorkspace) return;
 
-    const channel = supabase
+    const channel = platform
       .channel('dm-conversation-created-realtime')
       .on(
         'postgres_changes',
@@ -418,7 +418,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [userId, currentWorkspace?.id]);
 

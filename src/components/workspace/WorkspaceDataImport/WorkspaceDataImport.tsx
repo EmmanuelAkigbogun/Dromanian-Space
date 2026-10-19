@@ -6,7 +6,7 @@ import { useProjects } from '@/hooks/useProjects';
 import { useTasks } from '@/hooks/useTasks';
 import { useAutomation } from '@/hooks/useAutomation';
 import { useToast } from '@/components/ui/Toast';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { parseImportContent, type ParsedImport } from '@/lib/import-export/import';
 import { toRuleDraft, sanitizeAutomationItems } from '@/lib/import-export/automations';
 import type { ParsedTaskRow } from '@/lib/import-export/tasks';
@@ -31,7 +31,7 @@ interface WorkspaceMemberMaps {
 async function buildMemberMaps(workspaceId: string): Promise<WorkspaceMemberMaps> {
   const memberIdByEmail = new Map<string, string>();
   const memberIds = new Set<string>();
-  const { data: members } = await supabase
+  const { data: members } = await platform
     .from('workspace_members')
     .select('user_id')
     .eq('workspace_id', workspaceId);
@@ -40,7 +40,7 @@ async function buildMemberMaps(workspaceId: string): Promise<WorkspaceMemberMaps
     .filter(Boolean);
   ids.forEach((id) => memberIds.add(id));
   if (ids.length > 0) {
-    const { data: profiles } = await supabase
+    const { data: profiles } = await platform
       .from('profiles' as never)
       .select('id, email')
       .in('id', ids);
@@ -179,8 +179,8 @@ export function WorkspaceDataImport() {
       const memberMaps = await buildMemberMaps(workspaceId);
 
       const [existingProjectsResult, existingRulesResult] = await Promise.all([
-        supabase.from('projects').select('id, name').eq('workspace_id', workspaceId),
-        supabase
+        platform.from('projects').select('id, name').eq('workspace_id', workspaceId),
+        platform
           .from('automation_rules' as never)
           .select('name')
           .eq('workspace_id', workspaceId),

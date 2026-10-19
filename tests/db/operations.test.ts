@@ -4,7 +4,7 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import { loadEnvFile } from 'node:process';
-import { ENV_FILE } from '../../tools/local-supabase/lib.ts';
+import { ENV_FILE } from '../../tools/local-database/lib.ts';
 import { admin, asService, createUser, expectDenied, pool, q } from '../helpers/db.ts';
 import { GET as readyEndpoint } from '../../api/ready.js';
 

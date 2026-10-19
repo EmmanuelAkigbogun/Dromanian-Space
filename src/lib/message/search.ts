@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 
 export interface SearchResult {
   message_id: string;
@@ -20,7 +20,7 @@ export async function searchMessages(
 ): Promise<SearchResult[]> {
   const limit = options?.limit ?? 20;
 
-  let dbQuery = supabase
+  let dbQuery = platform
     .from('messages')
     .select('id, channel_id, content, user_id, created_at')
     .ilike('content', `%${query}%`)
@@ -33,7 +33,7 @@ export async function searchMessages(
   }
 
   // Only search in channels the user is a member of
-  const { data: memberChannels } = await supabase
+  const { data: memberChannels } = await platform
     .from('channel_members')
     .select('channel_id')
     .eq('user_id', userId);
@@ -62,6 +62,6 @@ export async function searchMessages(
 export function prepareSearchIndex(_messageId: string): void {
   // Future: If using a dedicated search service (Meilisearch, Typesense, etc.)
   // this would push the message content to the search index.
-  // For now, Supabase's ilike search on the messages table is sufficient
+  // PostgreSQL ilike search on the messages table is sufficient here.
   // for the initial implementation.
 }

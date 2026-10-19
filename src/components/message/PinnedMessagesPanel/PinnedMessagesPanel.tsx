@@ -5,7 +5,7 @@ import { useProfiles } from '@/hooks/useProfiles';
 import { useAuth } from '@/hooks/useAuth';
 import { getDisplayName, formatRelativeTime } from '@/lib/message';
 import { getMessagesByIds } from '@/lib/message';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { Avatar } from '@/components/ui/Avatar';
 import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
@@ -50,7 +50,7 @@ export function PinnedMessagesPanel({ channelId, onClose, showSearch = true, sho
     setIsLoading(true);
 
     try {
-      let query = supabase
+      let query = platform
         .from('pinned_messages')
         .select('*')
         .order('created_at', { ascending: false });
@@ -87,7 +87,7 @@ export function PinnedMessagesPanel({ channelId, onClose, showSearch = true, sho
         ),
       );
       if (channelIds.length > 0) {
-        const { data: chs } = await supabase
+        const { data: chs } = await platform
           .from('channels')
           .select('id, name, slug')
           .in('id', channelIds);
@@ -125,7 +125,7 @@ export function PinnedMessagesPanel({ channelId, onClose, showSearch = true, sho
   }, [fetchPinned]);
 
   useEffect(() => {
-    const channel = supabase
+    const channel = platform
       .channel('pinned-messages-realtime')
       .on(
         'postgres_changes',
@@ -139,11 +139,11 @@ export function PinnedMessagesPanel({ channelId, onClose, showSearch = true, sho
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { platform.removeChannel(channel); };
   }, [fetchPinned, effectiveChannelId]);
 
   const handleUnpin = useCallback(async (pin: PinnedMessageWithContent) => {
-    const { error } = await supabase
+    const { error } = await platform
       .from('pinned_messages')
       .delete()
       .eq('channel_id', pin.channel_id)

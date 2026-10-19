@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect } from 'react';
 import { isVideoFile, isImageFile, isSvgFile, isTextFile, isPdfFile, isAudioFile, isLinkFile, getFileIcon, formatFileSize, normalizeFileType, getEmbeddableUrl, getYouTubeThumbnail } from '@/lib/message';
 import { isTempId } from '@/lib/message';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useSignedUrls } from '@/hooks/useSignedUrls';
 import { uploadFile, createFileAttachment, deleteFileAttachment, reorderAttachments, removeStoragePath } from '@/lib/message/attachment';
 import { MediaViewer } from '@/components/ui/MediaViewer';
@@ -619,7 +619,7 @@ export const AttachmentGrid = memo(function AttachmentGrid({ attachments, messag
       creatorId === viewerId &&
       !isTempId(messageId)
     ) {
-      supabase
+      platform
         .from('messages')
         .update({ attachments_layout: newLayout })
         .eq('id', messageId)

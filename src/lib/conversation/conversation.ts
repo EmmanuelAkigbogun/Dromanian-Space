@@ -1,7 +1,7 @@
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { Profile } from '@/types';
 
-const db = supabase as any;
+const db = platform as any;
 
 export interface DirectConversation {
   id: string;
@@ -31,7 +31,7 @@ export async function getUserConversations(
   userId: string,
   workspaceId: string,
 ): Promise<ConversationWithParticipants[]> {
-  const { data: participations, error } = await (supabase as any)
+  const { data: participations, error } = await (platform as any)
     .from('direct_conversation_participants')
     .select('conversation_id')
     .eq('user_id', userId);
@@ -40,7 +40,7 @@ export async function getUserConversations(
 
   const convIds = participations.map((p: any) => p.conversation_id);
 
-  const { data: conversations } = await supabase
+  const { data: conversations } = await platform
     .from('direct_conversations' as any)
     .select('*')
     .in('id', convIds)
@@ -55,12 +55,12 @@ export async function getUserConversations(
   // Batch all participant lookups, all profiles, and all last-message lookups
   // into 3 total queries instead of 3 per conversation.
   const [{ data: parts }, { data: lastMessages }] = await Promise.all([
-    supabase
+    platform
       .from('direct_conversation_participants')
       .select('*')
       .in('conversation_id', convIds),
     channelIds.length > 0
-      ? (supabase as any).rpc('get_last_messages_for_channels', { p_channel_ids: channelIds })
+      ? (platform as any).rpc('get_last_messages_for_channels', { p_channel_ids: channelIds })
       : { data: [] as any[] },
   ]);
 
@@ -68,7 +68,7 @@ export async function getUserConversations(
   const allUserIds = Array.from(new Set(partsList.map((p: any) => p.user_id)));
   let profiles: Profile[] = [];
   if (allUserIds.length > 0) {
-    const { data: profileData } = await supabase
+    const { data: profileData } = await platform
       .from('profiles')
       .select('*')
       .in('id', allUserIds);
@@ -113,14 +113,14 @@ export async function getOrCreateDmConversation(
   const isSelfDm = otherUserId === createdBy;
 
   // Check if DM already exists
-  const { data: existing } = await supabase
+  const { data: existing } = await platform
     .from('direct_conversation_participants')
     .select('conversation_id')
     .eq('user_id', createdBy);
 
   if (existing && existing.length > 0) {
     const convIds = (existing as any[]).map((p: any) => p.conversation_id);
-    const { data: convs } = await supabase
+    const { data: convs } = await platform
       .from('direct_conversations' as any)
       .select('*')
       .in('id', convIds)
@@ -129,7 +129,7 @@ export async function getOrCreateDmConversation(
 
     if (convs) {
       for (const conv of convs as any[]) {
-        const { data: parts } = await supabase
+        const { data: parts } = await platform
           .from('direct_conversation_participants' as any)
           .select('user_id')
           .eq('conversation_id', conv.id);
@@ -147,7 +147,7 @@ export async function getOrCreateDmConversation(
 
   // Create backing channel
   const slug = 'dm-' + crypto.randomUUID().slice(0, 8);
-  const { data: channel, error: chErr } = await supabase
+  const { data: channel, error: chErr } = await platform
     .from('channels')
     .insert({ workspace_id: workspaceId, name: 'Direct Message', slug, type: 'text', is_private: true, created_by: createdBy })
     .select()
@@ -157,18 +157,18 @@ export async function getOrCreateDmConversation(
 
   // Add users as channel members
   if (isSelfDm) {
-    await supabase.from('channel_members').insert([
+    await platform.from('channel_members').insert([
       { channel_id: channel.id, user_id: createdBy, role: 'owner' },
     ]);
   } else {
-    await supabase.from('channel_members').insert([
+    await platform.from('channel_members').insert([
       { channel_id: channel.id, user_id: createdBy, role: 'owner' },
       { channel_id: channel.id, user_id: otherUserId, role: 'member' },
     ]);
   }
 
   // Create conversation
-  const { data: conv, error: convErr } = await supabase
+  const { data: conv, error: convErr } = await platform
     .from('direct_conversations' as any)
     .insert({ workspace_id: workspaceId, channel_id: channel.id, type: 'dm', created_by: createdBy })
     .select()
@@ -178,11 +178,11 @@ export async function getOrCreateDmConversation(
 
   // Add participants
   if (isSelfDm) {
-    await supabase.from('direct_conversation_participants' as any).insert([
+    await platform.from('direct_conversation_participants' as any).insert([
       { conversation_id: (conv as any).id, user_id: createdBy },
     ]);
   } else {
-    await supabase.from('direct_conversation_participants' as any).insert([
+    await platform.from('direct_conversation_participants' as any).insert([
       { conversation_id: (conv as any).id, user_id: createdBy },
       { conversation_id: (conv as any).id, user_id: otherUserId },
     ]);
@@ -199,7 +199,7 @@ export async function getOrCreateGroupConversation(
 ): Promise<DirectConversation | null> {
   // Create backing channel
   const slug = 'group-' + crypto.randomUUID().slice(0, 8);
-  const { data: channel, error: chErr } = await supabase
+  const { data: channel, error: chErr } = await platform
     .from('channels')
     .insert({ workspace_id: workspaceId, name, slug, type: 'text', is_private: true, created_by: createdBy })
     .select()
@@ -212,10 +212,10 @@ export async function getOrCreateGroupConversation(
     { channel_id: channel.id, user_id: createdBy, role: 'owner' },
     ...participantIds.map((id) => ({ channel_id: channel.id, user_id: id, role: 'member' as const })),
   ];
-  await supabase.from('channel_members').insert(members);
+  await platform.from('channel_members').insert(members);
 
   // Create conversation
-  const { data: conv, error: convErr } = await supabase
+  const { data: conv, error: convErr } = await platform
     .from('direct_conversations' as any)
     .insert({ workspace_id: workspaceId, channel_id: channel.id, type: 'group', name, created_by: createdBy })
     .select()
@@ -228,7 +228,7 @@ export async function getOrCreateGroupConversation(
     { conversation_id: (conv as any).id, user_id: createdBy },
     ...participantIds.map((id) => ({ conversation_id: (conv as any).id, user_id: id })),
   ];
-  await supabase.from('direct_conversation_participants' as any).insert(participants);
+  await platform.from('direct_conversation_participants' as any).insert(participants);
 
   return conv as unknown as DirectConversation;
 }
@@ -236,7 +236,7 @@ export async function getOrCreateGroupConversation(
 export async function getConversationById(
   conversationId: string,
 ): Promise<DirectConversation | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('direct_conversations' as any)
     .select('*')
     .eq('id', conversationId)
@@ -249,7 +249,7 @@ export async function getConversationById(
 export async function getConversationParticipants(
   conversationId: string,
 ): Promise<(ConversationParticipant & { profile: Profile | null })[]> {
-  const { data: parts, error } = await supabase
+  const { data: parts, error } = await platform
     .from('direct_conversation_participants' as any)
     .select('*')
     .eq('conversation_id', conversationId);
@@ -257,7 +257,7 @@ export async function getConversationParticipants(
   if (error || !parts) return [];
 
   const userIds = (parts as any[]).map((p: any) => p.user_id);
-  const { data: profiles } = await supabase
+  const { data: profiles } = await platform
     .from('profiles')
     .select('*')
     .in('id', userIds);
@@ -274,7 +274,7 @@ export async function isUserInConversation(
   conversationId: string,
   userId: string,
 ): Promise<boolean> {
-  const { count } = await supabase
+  const { count } = await platform
     .from('direct_conversation_participants')
     .select('*', { count: 'exact', head: true })
     .eq('conversation_id', conversationId)
@@ -286,7 +286,7 @@ export async function isUserInConversation(
 export async function getConversationByChannelId(
   channelId: string,
 ): Promise<DirectConversation | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('direct_conversations' as any)
     .select('*')
     .eq('channel_id', channelId)
@@ -300,7 +300,7 @@ export async function getDmChannelDisplayNames(
   userId: string,
   workspaceId: string,
 ): Promise<Record<string, string>> {
-  const { data: conversations } = await (supabase as any)
+  const { data: conversations } = await (platform as any)
     .from('direct_conversations')
     .select('id, channel_id')
     .eq('workspace_id', workspaceId)
@@ -311,7 +311,7 @@ export async function getDmChannelDisplayNames(
   const channelIds = conversations.map((c: any) => c.channel_id);
   const conversationIds = conversations.map((c: any) => c.id);
 
-  const { data: parts } = await (supabase as any)
+  const { data: parts } = await (platform as any)
     .from('direct_conversation_participants')
     .select('conversation_id, user_id')
     .in('conversation_id', conversationIds);
@@ -319,7 +319,7 @@ export async function getDmChannelDisplayNames(
   const userIds = Array.from(new Set(((parts ?? []) as any[]).map((p: any) => p.user_id)));
   let profiles: any[] = [];
   if (userIds.length > 0) {
-    const { data: profileData } = await (supabase as any)
+    const { data: profileData } = await (platform as any)
       .from('profiles')
       .select('id, display_name, username')
       .in('id', userIds);

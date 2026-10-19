@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { UUID } from '@/types';
 
 export type FavoriteEntityType = 'channel' | 'conversation' | 'message';
@@ -36,7 +36,7 @@ export function useFavorites(): UseFavoritesReturn {
     setError(null);
 
     try {
-      const { data, error: fetchError } = await supabase
+      const { data, error: fetchError } = await platform
         .from('user_favorites' as any)
         .select('*')
         .eq('user_id', userId)
@@ -73,7 +73,7 @@ export function useFavorites(): UseFavoritesReturn {
 
       try {
         if (existing) {
-          const { error: deleteError } = await supabase
+          const { error: deleteError } = await platform
             .from('user_favorites' as any)
             .delete()
             .eq('id', existing.id);
@@ -86,7 +86,7 @@ export function useFavorites(): UseFavoritesReturn {
             ? Math.max(...favorites.map((f) => f.sort_order)) + 1
             : 0;
 
-          const { data, error: insertError } = await supabase
+          const { data, error: insertError } = await platform
             .from('user_favorites' as any)
             .insert({
               user_id: userId,
@@ -116,7 +116,7 @@ export function useFavorites(): UseFavoritesReturn {
 
       try {
         const updates = orderedIds.map((id, index) =>
-          supabase
+          platform
             .from('user_favorites' as any)
             .update({ sort_order: index })
             .eq('id', id)

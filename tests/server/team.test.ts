@@ -4,7 +4,7 @@
 import { randomUUID } from 'node:crypto';
 import { loadEnvFile } from 'node:process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ENV_FILE, loadOrCreateKeys, signJwt } from '../../tools/local-supabase/lib.ts';
+import { ENV_FILE, loadOrCreateKeys, signJwt } from '../../tools/local-database/lib.ts';
 import { admin, createChannel, createUser, createWorkspace, pool, postMessage, q, type TestUser } from '../helpers/db.ts';
 import { executeRun } from '../../server/agents/engine.js';
 import { startRun } from '../../server/agents/start.js';

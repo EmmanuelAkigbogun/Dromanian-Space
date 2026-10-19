@@ -9,9 +9,9 @@ function read(name: string): string | null {
 export type ProviderName = 'anthropic' | 'openai';
 
 export interface ServerEnv {
-  supabaseUrl: string | null;
-  /** Secret (service role) key. Server jobs and API functions only. */
-  supabaseSecretKey: string | null;
+  databaseUrl: string | null;
+  databaseRestUrl: string;
+  appJwtSecret: string | null;
   anthropicApiKey: string | null;
   /** Server-side refusal fallback (`fallbacks: "default"`); on unless set to "off". */
   refusalFallback: boolean;
@@ -38,8 +38,9 @@ export function env(): ServerEnv {
   if (cached) return cached;
   const provider = read('AI_DEFAULT_PROVIDER');
   cached = {
-    supabaseUrl: read('SUPABASE_URL') ?? read('VITE_SUPABASE_URL'),
-    supabaseSecretKey: read('SUPABASE_SECRET_KEY') ?? read('SUPABASE_SERVICE_ROLE_KEY'),
+    databaseUrl: read('DATABASE_URL'),
+    databaseRestUrl: read('DATABASE_REST_URL') ?? 'http://rest:3000',
+    appJwtSecret: read('APP_JWT_SECRET'),
     anthropicApiKey: read('ANTHROPIC_API_KEY'),
     refusalFallback: read('ANTHROPIC_REFUSAL_FALLBACK') !== 'off',
     openaiApiKey: read('OPENAI_API_KEY'),

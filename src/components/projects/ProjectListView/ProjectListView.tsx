@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Avatar } from '@/components/ui/Avatar';
 import { Checkbox } from '@/components/ui/Checkbox';
 import { Button } from '@/components/ui/Button';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { calculateTaskProgress, calculateCompletedTaskCount } from '@/lib/tasks/progress';
 import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/hooks/useAuth';
@@ -46,7 +46,7 @@ export function ProjectListView({ projectId, workspaceId, onStatsChange, onTaskD
   const [hiddenStatuses, setHiddenStatuses] = useState<Record<string, string[]>>({});
 
   const fetchTasks = useCallback(async () => {
-    const { data: taskData, error } = await supabase
+    const { data: taskData, error } = await platform
       .from('tasks')
       .select('*')
       .eq('project_id', projectId)
@@ -61,11 +61,11 @@ export function ProjectListView({ projectId, workspaceId, onStatsChange, onTaskD
 
     if (taskIds.length > 0) {
       const [assigneeRes, labelRes] = await Promise.all([
-        supabase
+        platform
           .from('task_assignees' as any)
           .select('task_id, user_id, profiles(display_name, avatar_url, email)')
           .in('task_id', taskIds),
-        supabase
+        platform
           .from('task_label_assignments' as any)
           .select('task_id, task_labels(id, name, color)')
           .in('task_id', taskIds),
@@ -122,7 +122,7 @@ export function ProjectListView({ projectId, workspaceId, onStatsChange, onTaskD
   }, [fetchTasks]);
 
   useEffect(() => {
-    const channel = supabase
+    const channel = platform
       .channel(`project-list-tasks-${projectId}`)
       .on(
         'postgres_changes',
@@ -132,7 +132,7 @@ export function ProjectListView({ projectId, workspaceId, onStatsChange, onTaskD
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [projectId, fetchTasks]);
 
@@ -140,7 +140,7 @@ export function ProjectListView({ projectId, workspaceId, onStatsChange, onTaskD
     if (tasks.length === 0) return;
     const loadCustomStatuses = async () => {
       const taskIds = tasks.map((t) => t.id);
-      const { data: customStatuses } = await supabase
+      const { data: customStatuses } = await platform
         .from('task_custom_statuses' as any)
         .select('task_id, id, name')
         .in('task_id', taskIds)
@@ -213,7 +213,7 @@ export function ProjectListView({ projectId, workspaceId, onStatsChange, onTaskD
   );
 
   const handleStatusChange = useCallback(async (taskId: string, newStatus: TaskStatus) => {
-    const { error } = await supabase
+    const { error } = await platform
       .from('tasks')
       .update({ status: newStatus, updated_at: new Date().toISOString() })
       .eq('id', taskId);
@@ -247,7 +247,7 @@ export function ProjectListView({ projectId, workspaceId, onStatsChange, onTaskD
     if (selectedIds.size === 0) return;
 
     const ids = Array.from(selectedIds);
-    const { error } = await supabase
+    const { error } = await platform
       .from('tasks')
       .update({ status, updated_at: new Date().toISOString() })
       .in('id', ids);

@@ -8,7 +8,7 @@ import { TaskSelect } from '@/components/automation/TaskSelect/TaskSelect';
 import { UploadProgress } from '@/components/message/UploadProgress';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { uploadFile, isFileSizeValid, formatFileSize } from '@/lib/message';
 import { TASK_STATUS_OPTIONS } from '@/types/task';
 import type { AutomationAction } from '@/types';
@@ -189,13 +189,13 @@ export function ActionBuilder({ actions, onChange }: ActionBuilderProps) {
       // DM conversations are backed by a channels row named "Direct Message";
       // drop those so only real channels appear in the channel dropdowns.
       const [chRes, dcRes] = await Promise.all([
-        supabase
+        platform
           .from('channels')
           .select('id, name')
           .eq('workspace_id', currentWorkspace.id)
           .is('archived_at', null)
           .order('name'),
-        supabase
+        platform
           .from('direct_conversations' as never)
           .select('channel_id')
           .eq('workspace_id', currentWorkspace.id),
@@ -214,7 +214,7 @@ export function ActionBuilder({ actions, onChange }: ActionBuilderProps) {
   useEffect(() => {
     if (!currentWorkspace || !userId) return;
     (async () => {
-      const { data: participations } = await supabase
+      const { data: participations } = await platform
         .from('direct_conversation_participants' as never)
         .select('conversation_id')
         .eq('user_id', userId);
@@ -223,7 +223,7 @@ export function ActionBuilder({ actions, onChange }: ActionBuilderProps) {
       );
       if (conversationIds.length === 0) return;
 
-      const { data: conversations } = await supabase
+      const { data: conversations } = await platform
         .from('direct_conversations' as never)
         .select('id, type, name, channel_id')
         .eq('workspace_id', currentWorkspace.id)
@@ -238,7 +238,7 @@ export function ActionBuilder({ actions, onChange }: ActionBuilderProps) {
           if (conv.type === 'group') {
             label = `Group${conv.name ? ` · ${conv.name}` : ''}`;
           } else {
-            const { data: others } = await supabase
+            const { data: others } = await platform
               .from('direct_conversation_participants' as never)
               .select('user_id')
               .eq('conversation_id', conv.id)
@@ -247,7 +247,7 @@ export function ActionBuilder({ actions, onChange }: ActionBuilderProps) {
             if (otherIds.length === 0) {
               label = 'DM';
             } else {
-              const { data: profiles } = await supabase
+              const { data: profiles } = await platform
                 .from('profiles' as never)
                 .select('email, display_name, username')
                 .in('id', otherIds);
@@ -274,12 +274,12 @@ export function ActionBuilder({ actions, onChange }: ActionBuilderProps) {
     if (!taskId) return;
     if (taskStatusOptions[taskId]) return;
 
-    const { data: task } = await supabase
+    const { data: task } = await platform
       .from('tasks' as never)
       .select('status_order')
       .eq('id', taskId)
       .maybeSingle();
-    const { data: customs } = await supabase
+    const { data: customs } = await platform
       .from('task_custom_statuses' as never)
       .select('id, name')
       .eq('task_id', taskId)

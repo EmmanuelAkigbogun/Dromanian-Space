@@ -5,7 +5,7 @@
 import { env } from './env.js';
 import { log } from './log.js';
 import { platformDefaultModel, providerNameFor, providerStates } from './ai/registry.js';
-import { rpc } from './supabase.js';
+import { rpc } from './database.js';
 
 export interface EnvProblem {
   level: 'fatal' | 'warning';
@@ -18,9 +18,10 @@ export function checkEnv(): EnvProblem[] {
   const fatal = (message: string) => problems.push({ level: 'fatal', message });
   const warn = (message: string) => problems.push({ level: 'warning', message });
 
-  if (!e.supabaseUrl) fatal('SUPABASE_URL is not set (for Coolify: http://supabase-gateway:8000).');
-  else if (!/^https?:\/\//.test(e.supabaseUrl)) fatal('SUPABASE_URL must start with http:// or https://.');
-  if (!e.supabaseSecretKey) fatal('SUPABASE_SECRET_KEY is not set (the Supabase secret / service role key).');
+  if (!e.databaseUrl) fatal('DATABASE_URL is not set.');
+  else if (!/^postgres(?:ql)?:\/\//.test(e.databaseUrl)) fatal('DATABASE_URL must be a PostgreSQL connection URL.');
+  if (!/^https?:\/\//.test(e.databaseRestUrl)) fatal('DATABASE_REST_URL must start with http:// or https://.');
+  if (!e.appJwtSecret || e.appJwtSecret.length < 32) fatal('APP_JWT_SECRET must contain at least 32 characters.');
 
   const raw = process.env.AI_DEFAULT_PROVIDER?.trim();
   if (raw && raw !== 'anthropic' && raw !== 'openai') fatal(`AI_DEFAULT_PROVIDER must be "anthropic" or "openai", not "${raw}".`);
@@ -36,7 +37,7 @@ export function checkEnv(): EnvProblem[] {
     warn(`AI_DEFAULT_PROVIDER is ${e.defaultProvider} but its key is missing; new workspaces default to the configured provider.`);
   }
   if (e.n8nBaseUrl && !/^https?:\/\/[^/]+/.test(e.n8nBaseUrl)) fatal('N8N_BASE_URL must be an absolute http(s) URL.');
-  for (const name of ['VITE_SUPABASE_SECRET_KEY', 'VITE_ANTHROPIC_API_KEY', 'VITE_OPENAI_API_KEY']) {
+  for (const name of ['VITE_DATABASE_URL', 'VITE_APP_JWT_SECRET', 'VITE_ANTHROPIC_API_KEY', 'VITE_OPENAI_API_KEY']) {
     if (process.env[name]) fatal(`${name} must not exist: VITE_ variables are compiled into the browser bundle.`);
   }
   return problems;

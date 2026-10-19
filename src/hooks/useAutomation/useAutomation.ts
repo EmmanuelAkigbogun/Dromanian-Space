@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { deleteAutomationAttachmentFiles } from '@/lib/message/attachment';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -21,13 +21,13 @@ function notifyRulesChanged() {
 // requests the current user can see (own requests + requests on their rules).
 type EditRequestRealtimeListener = () => void;
 const editRequestRealtimeListeners = new Set<EditRequestRealtimeListener>();
-let editRequestRealtimeChannel: ReturnType<typeof supabase.channel> | null = null;
+let editRequestRealtimeChannel: ReturnType<typeof platform.channel> | null = null;
 let editRequestRealtimeCount = 0;
 
 function acquireEditRequestRealtime() {
   editRequestRealtimeCount += 1;
   if (editRequestRealtimeChannel) return;
-  editRequestRealtimeChannel = supabase
+  editRequestRealtimeChannel = platform
     .channel('automation-edit-requests-realtime')
     .on(
       'postgres_changes',
@@ -42,7 +42,7 @@ function acquireEditRequestRealtime() {
 function releaseEditRequestRealtime() {
   editRequestRealtimeCount = Math.max(0, editRequestRealtimeCount - 1);
   if (editRequestRealtimeCount === 0 && editRequestRealtimeChannel) {
-    supabase.removeChannel(editRequestRealtimeChannel);
+    platform.removeChannel(editRequestRealtimeChannel);
     editRequestRealtimeChannel = null;
   }
 }
@@ -128,7 +128,7 @@ export function useAutomation(): UseAutomationReturn {
 
   const fetchVisibility = useCallback(async () => {
     if (!currentWorkspace?.id || !userId) return;
-    const { data, error } = await supabase.rpc('get_automation_visibility' as never, {
+    const { data, error } = await platform.rpc('get_automation_visibility' as never, {
       p_workspace_id: currentWorkspace.id,
     } as never);
     if (error || !data) return;
@@ -141,7 +141,7 @@ export function useAutomation(): UseAutomationReturn {
 
   const fetchEditAccess = useCallback(async () => {
     if (!currentWorkspace?.id || !userId) return;
-    const { data, error } = await supabase.rpc('get_my_automation_edit_access' as never, {
+    const { data, error } = await platform.rpc('get_my_automation_edit_access' as never, {
       p_workspace_id: currentWorkspace.id,
     } as never);
     if (error || !data) return;
@@ -150,7 +150,7 @@ export function useAutomation(): UseAutomationReturn {
 
   const fetchEditRequests = useCallback(async () => {
     if (!currentWorkspace?.id || !userId) return;
-    const { data, error } = await supabase.rpc('get_automation_edit_requests' as never, {
+    const { data, error } = await platform.rpc('get_automation_edit_requests' as never, {
       p_workspace_id: currentWorkspace.id,
     } as never);
     if (error || !data) return;
@@ -166,7 +166,7 @@ export function useAutomation(): UseAutomationReturn {
   const fetchRules = useCallback(async () => {
     if (!currentWorkspace?.id) return;
     setIsLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await platform
       .from('automation_rules' as never)
       .select('*, automation_triggers(event_type), automation_conditions(field, operator, value, logic), automation_actions(action_type, config, sort_order)')
       .eq('workspace_id', currentWorkspace.id)
@@ -212,7 +212,7 @@ export function useAutomation(): UseAutomationReturn {
   const setVisibility = useCallback(
     async (nextVisibility: AutomationVisibility, nextVisibleMembers?: UUID[]) => {
       if (!currentWorkspace?.id) return false;
-      const { data, error } = await supabase.rpc('set_automation_visibility' as never, {
+      const { data, error } = await platform.rpc('set_automation_visibility' as never, {
         p_workspace_id: currentWorkspace.id,
         p_visibility: nextVisibility,
         p_visible_members: nextVisibleMembers && nextVisibleMembers.length > 0 ? nextVisibleMembers : null,
@@ -231,7 +231,7 @@ export function useAutomation(): UseAutomationReturn {
   const requestEditAccess = useCallback(
     async (ruleId: string) => {
       if (!currentWorkspace?.id || !userId) return false;
-      const { data, error } = await supabase.rpc('request_automation_edit' as never, {
+      const { data, error } = await platform.rpc('request_automation_edit' as never, {
         p_rule_id: ruleId,
       } as never);
       if (error || !data) return false;
@@ -246,7 +246,7 @@ export function useAutomation(): UseAutomationReturn {
   const respondToEditRequest = useCallback(
     async (requestId: string, accept: boolean) => {
       if (!currentWorkspace?.id) return false;
-      const { data, error } = await supabase.rpc('respond_automation_edit_request' as never, {
+      const { data, error } = await platform.rpc('respond_automation_edit_request' as never, {
         p_request_id: requestId,
         p_accept: accept,
       } as never);
@@ -264,7 +264,7 @@ export function useAutomation(): UseAutomationReturn {
   const revokeEditAccess = useCallback(
     async (ruleId: string, userIdToRevoke: string) => {
       if (!currentWorkspace?.id) return false;
-      const { data, error } = await supabase.rpc('revoke_automation_editor' as never, {
+      const { data, error } = await platform.rpc('revoke_automation_editor' as never, {
         p_rule_id: ruleId,
         p_user_id: userIdToRevoke,
       } as never);
@@ -281,7 +281,7 @@ export function useAutomation(): UseAutomationReturn {
   const cancelEditRequest = useCallback(
     async (requestId: string) => {
       if (!currentWorkspace?.id) return false;
-      const { data, error } = await supabase.rpc('cancel_automation_edit_request' as never, {
+      const { data, error } = await platform.rpc('cancel_automation_edit_request' as never, {
         p_request_id: requestId,
       } as never);
       if (error || !data) return false;
@@ -299,7 +299,7 @@ export function useAutomation(): UseAutomationReturn {
 
       try {
         const { data: ruleId, error: ruleError } = await withRetry(async () => {
-          return supabase.rpc('create_automation_rule' as any, {
+          return platform.rpc('create_automation_rule' as any, {
             p_workspace_id: currentWorkspace.id,
             p_name: ruleData.name,
             p_description: ruleData.description || null,
@@ -359,7 +359,7 @@ export function useAutomation(): UseAutomationReturn {
       if (updates.enabled !== undefined) ruleUpdate.enabled = updates.enabled;
 
       await withRetry(async () => {
-        const { error } = await supabase
+        const { error } = await platform
           .from('automation_rules' as never)
           .update(ruleUpdate as never)
           .eq('id', id);
@@ -368,13 +368,13 @@ export function useAutomation(): UseAutomationReturn {
 
       if (updates.triggers !== undefined) {
         await withRetry(async () => {
-          const { error } = await supabase.from('automation_triggers' as never).delete().eq('rule_id', id);
+          const { error } = await platform.from('automation_triggers' as never).delete().eq('rule_id', id);
           if (error) throw error;
         });
         if (updates.triggers!.length > 0) {
           const triggers = updates.triggers!.map((t) => ({ rule_id: id, event_type: t.event_type }));
           await withRetry(async () => {
-            const { error } = await supabase.from('automation_triggers' as never).insert(triggers as never);
+            const { error } = await platform.from('automation_triggers' as never).insert(triggers as never);
             if (error) throw error;
           });
         }
@@ -382,7 +382,7 @@ export function useAutomation(): UseAutomationReturn {
 
       if (updates.conditions !== undefined) {
         await withRetry(async () => {
-          const { error } = await supabase.from('automation_conditions' as never).delete().eq('rule_id', id);
+          const { error } = await platform.from('automation_conditions' as never).delete().eq('rule_id', id);
           if (error) throw error;
         });
         if (updates.conditions!.length > 0) {
@@ -394,7 +394,7 @@ export function useAutomation(): UseAutomationReturn {
             logic: c.logic || 'and',
           }));
           await withRetry(async () => {
-            const { error } = await supabase.from('automation_conditions' as never).insert(conditions as never);
+            const { error } = await platform.from('automation_conditions' as never).insert(conditions as never);
             if (error) throw error;
           });
         }
@@ -402,7 +402,7 @@ export function useAutomation(): UseAutomationReturn {
 
       if (updates.actions !== undefined) {
         await withRetry(async () => {
-          const { error } = await supabase.from('automation_actions' as never).delete().eq('rule_id', id);
+          const { error } = await platform.from('automation_actions' as never).delete().eq('rule_id', id);
           if (error) throw error;
         });
         if (updates.actions!.length > 0) {
@@ -413,7 +413,7 @@ export function useAutomation(): UseAutomationReturn {
             sort_order: a.position ?? i,
           }));
           await withRetry(async () => {
-            const { error } = await supabase.from('automation_actions' as never).insert(actions as never);
+            const { error } = await platform.from('automation_actions' as never).insert(actions as never);
             if (error) throw error;
           });
         }
@@ -457,7 +457,7 @@ export function useAutomation(): UseAutomationReturn {
       // never touched by message deletes/forwards.
       let attachmentUrls: string[] = [];
       await withRetry(async () => {
-        const { data, error } = await supabase
+        const { data, error } = await platform
           .from('automation_actions' as never)
           .select('config')
           .eq('rule_id', id);
@@ -470,7 +470,7 @@ export function useAutomation(): UseAutomationReturn {
         });
       });
       await withRetry(async () => {
-        const { error } = await supabase.from('automation_rules' as never).delete().eq('id', id);
+        const { error } = await platform.from('automation_rules' as never).delete().eq('id', id);
         if (error) throw error;
       });
       if (attachmentUrls.length > 0) {
@@ -491,7 +491,7 @@ export function useAutomation(): UseAutomationReturn {
 
   const getExecutionLogs = useCallback(async (ruleId?: string) => {
     if (!currentWorkspace?.id) return [];
-    const { data, error } = await supabase.rpc('get_execution_logs' as any, {
+    const { data, error } = await platform.rpc('get_execution_logs' as any, {
       p_workspace_id: currentWorkspace.id,
       p_rule_id: ruleId || null,
     });
@@ -502,7 +502,7 @@ export function useAutomation(): UseAutomationReturn {
   const deleteExecutionLog = useCallback(async (logId: string) => {
     try {
       await withRetry(async () => {
-        const { error } = await supabase.from('automation_execution_logs' as never).delete().eq('id', logId);
+        const { error } = await platform.from('automation_execution_logs' as never).delete().eq('id', logId);
         if (error) throw error;
       });
       return true;

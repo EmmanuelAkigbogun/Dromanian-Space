@@ -1,4 +1,4 @@
-import type { User, Session } from '@supabase/supabase-js';
+import type { PlatformUser as User, PlatformSession as Session } from '@/lib/platform';
 
 export type { User, Session };
 

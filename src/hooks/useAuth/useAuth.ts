@@ -5,7 +5,6 @@ import type { AuthState, AuthError, UserRole } from '@/types/auth';
 interface UseAuthReturn extends AuthState {
   signUp: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
-  signInWithOAuth: (provider: 'google' | 'github', options?: { redirectTo?: string }) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>;
   updateProfile: (data: Record<string, unknown>) => Promise<{ error: AuthError | null }>;
@@ -62,7 +61,6 @@ export function useAuth(): UseAuthReturn {
       ...auth,
       signUp,
       signIn,
-      signInWithOAuth: auth.signInWithOAuth,
       signOut: auth.signOut,
       resetPassword,
       updateProfile: auth.updateProfile,
@@ -78,7 +76,6 @@ export function useAuth(): UseAuthReturn {
       auth.status,
       auth.user,
       auth.error,
-      auth.signInWithOAuth,
       auth.signOut,
       auth.updateProfile,
       auth.clearError,

@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo, t
 import { useNavigate } from 'react-router-dom';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import {
   getWorkspaceChannels,
   getChannelBySlug,
@@ -77,7 +77,7 @@ async function getChannelMemberIdsForWorkspace(
   workspaceId: string,
   userId: string,
 ): Promise<Set<string>> {
-  const { data: channelRows, error: channelError } = await supabase
+  const { data: channelRows, error: channelError } = await platform
     .from('channels')
     .select('id')
     .eq('workspace_id', workspaceId)
@@ -88,7 +88,7 @@ async function getChannelMemberIdsForWorkspace(
   const channelIds = channelRows.map((row) => row.id);
   if (channelIds.length === 0) return new Set();
 
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('channel_members')
     .select('channel_id')
     .eq('user_id', userId)
@@ -182,7 +182,7 @@ export function ChannelProvider({ children }: ChannelProviderProps) {
   useEffect(() => {
     if (!currentWorkspace) return;
 
-    const channel = supabase
+    const channel = platform
       .channel('channel-created-realtime')
       .on(
         'postgres_changes',
@@ -206,7 +206,7 @@ export function ChannelProvider({ children }: ChannelProviderProps) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [currentWorkspace?.id, userId]);
 
@@ -214,7 +214,7 @@ export function ChannelProvider({ children }: ChannelProviderProps) {
   useEffect(() => {
     if (!currentWorkspace) return;
 
-    const channel = supabase
+    const channel = platform
       .channel('channel-deleted-realtime')
       .on(
         'postgres_changes',
@@ -242,7 +242,7 @@ export function ChannelProvider({ children }: ChannelProviderProps) {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [currentWorkspace?.id]);
 

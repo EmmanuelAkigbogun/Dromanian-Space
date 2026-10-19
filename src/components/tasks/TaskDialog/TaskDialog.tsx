@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/Switch';
 import { Spinner } from '@/components/ui/Spinner';
 import { Avatar } from '@/components/ui/Avatar';
 import { useTasks } from '@/hooks/useTasks';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { Task, TaskStatus, TaskPriority } from '@/types/task';
 import type { TaskLabel } from '@/types/task';
 import type { Profile } from '@/types';
@@ -83,7 +83,7 @@ export function TaskDialog({
 
     const loadData = async () => {
       const [membersResult, labelsResult] = await Promise.all([
-        supabase
+        platform
           .from('workspace_members' as any)
           .select('user_id')
           .eq('workspace_id', workspaceId),
@@ -93,7 +93,7 @@ export function TaskDialog({
       if (membersResult.data) {
         const userIds = (membersResult.data as unknown as { user_id: string }[]).map((m) => m.user_id);
         if (userIds.length > 0) {
-          const { data: profiles } = await supabase
+          const { data: profiles } = await platform
             .from('profiles' as any)
             .select('*')
             .in('id', userIds);
@@ -111,7 +111,7 @@ export function TaskDialog({
     if (!task || !open) return;
 
     const loadTaskData = async () => {
-      const { data: assigneeData } = await supabase
+      const { data: assigneeData } = await platform
         .from('task_assignees' as any)
         .select('user_id')
         .eq('task_id', task.id);
@@ -120,7 +120,7 @@ export function TaskDialog({
         setSelectedAssignees((assigneeData as unknown as { user_id: string }[]).map((a) => a.user_id));
       }
 
-      const { data: labelData } = await supabase
+      const { data: labelData } = await platform
         .from('task_label_assignments' as any)
         .select('label_id')
         .eq('task_id', task.id);

@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import {
   createCallSession,
   addCallParticipant,
@@ -157,7 +157,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!userId || !currentWorkspace) return;
-    const ch = supabase
+    const ch = platform
       .channel(`user-calls:${userId}`)
       .on(
         'postgres_changes',
@@ -226,7 +226,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         },
       )
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    return () => { platform.removeChannel(ch); };
   }, [userId, currentWorkspace?.id]);
 
   useEffect(() => {
@@ -279,7 +279,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         if (callType === 'channel') {
           sessionChannelId = targetUserId;
           effectiveCallType = 'channel';
-          const { data: members } = await supabase
+          const { data: members } = await platform
             .from('channel_members')
             .select('user_id')
             .eq('channel_id', targetUserId);
@@ -370,7 +370,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (!currentCall) return;
     await engine.broadcastEndCall();
     await declineCall(currentCall.id);
-    (supabase as any)
+    (platform as any)
       .rpc('cleanup_call_signaling', { p_call_id: currentCall.id })
       .then(() => {})
       .catch(() => { });
@@ -382,7 +382,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (!currentCall) return;
     await engine.broadcastEndCall();
     await cancelCall(currentCall.id);
-    (supabase as any)
+    (platform as any)
       .rpc('cleanup_call_signaling', { p_call_id: currentCall.id })
       .then(() => {})
       .catch(() => { });
@@ -398,7 +398,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       endCall(currentCall.id),
       updateCallParticipantStatus(currentCall.id, userId, 'left'),
     ]);
-    (supabase as any)
+    (platform as any)
       .rpc('cleanup_call_signaling', { p_call_id: currentCall.id })
       .then(() => {})
       .catch(() => { });

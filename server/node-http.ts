@@ -8,9 +8,41 @@ import { errorResponse, HttpError, json, methodNotAllowed } from './http.js';
 import { log } from './log.js';
 import { clientAddress, limitFor, RateLimiter } from './rate-limit.js';
 import { ROUTES } from './routes.js';
+import type { ApiMethod, Handler } from './routes.js';
+import { proxyDatabase } from '../api/data.js';
+import * as storage from '../api/storage.js';
 
 const MAX_BODY = 256 * 1024;
+const MAX_STORAGE_BODY = Number(process.env.STORAGE_MAX_FILE_BYTES ?? 50 * 1024 * 1024) + 1024;
 const limiter = new RateLimiter();
+
+function dynamicRoute(pathname: string, method: ApiMethod): Handler | null {
+  if (pathname.startsWith('/api/db/')) {
+    const suffix = pathname.slice('/api/db/'.length);
+    return (request) => proxyDatabase(request, suffix);
+  }
+  if (pathname.startsWith('/api/storage/object/') && method === 'POST') {
+    const suffix = pathname.slice('/api/storage/object/'.length);
+    return (request) => storage.upload(request, suffix);
+  }
+  if (pathname.startsWith('/api/storage/list/') && method === 'POST') {
+    const suffix = pathname.slice('/api/storage/list/'.length);
+    return (request) => storage.list(request, suffix);
+  }
+  if (pathname.startsWith('/api/storage/remove/') && method === 'POST') {
+    const suffix = pathname.slice('/api/storage/remove/'.length);
+    return (request) => storage.remove(request, suffix);
+  }
+  if (pathname.startsWith('/api/storage/sign/') && method === 'POST') {
+    const suffix = pathname.slice('/api/storage/sign/'.length);
+    return (request) => storage.sign(request, suffix);
+  }
+  if (pathname.startsWith('/api/storage/file/') && (method === 'GET' || method === 'HEAD')) {
+    const suffix = pathname.slice('/api/storage/file/'.length);
+    return (request) => storage.file(request, suffix);
+  }
+  return null;
+}
 
 async function send(res: ServerResponse, response: Response, requestId: string) {
   const headers = Object.fromEntries(response.headers);
@@ -41,8 +73,8 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
       return;
     }
     const route = ROUTES[url.pathname];
-    const method = (req.method ?? 'GET') as 'GET' | 'POST';
-    const handler = route?.[method];
+    const method = (req.method ?? 'GET') as ApiMethod;
+    const handler = route?.[method] ?? dynamicRoute(url.pathname, method);
     if (!handler) {
       const r = route ? methodNotAllowed() : new Response(JSON.stringify({ error: { code: 'not_found', message: 'Not found.' } }), { status: 404 });
       status = r.status;
@@ -53,7 +85,8 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
     let size = 0;
     for await (const chunk of req) {
       size += (chunk as Buffer).length;
-      if (size > MAX_BODY) throw new HttpError(413, 'too_large', 'Request is too large.');
+      const limit = url.pathname.startsWith('/api/storage/object/') ? MAX_STORAGE_BODY : MAX_BODY;
+      if (size > limit) throw new HttpError(413, 'too_large', 'Request is too large.');
       chunks.push(chunk as Buffer);
     }
     const headers = new Headers();

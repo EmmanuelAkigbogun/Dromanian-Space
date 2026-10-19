@@ -1,8 +1,8 @@
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import type { ForwardedAttachmentPolicy, Profile, ProfileUpdate } from '@/types/profile';
 
 export async function getProfile(userId: string): Promise<Profile | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('profiles')
     .select('*')
     .eq('id', userId)
@@ -14,7 +14,7 @@ export async function getProfile(userId: string): Promise<Profile | null> {
 
 export async function getProfilesByUserIds(userIds: string[]): Promise<Profile[]> {
   if (userIds.length === 0) return [];
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('profiles')
     .select('*')
     .in('id', userIds);
@@ -33,7 +33,7 @@ export function isSafeSearchQuery(query: string): boolean {
 export async function searchProfiles(query: string, limit = 8): Promise<Profile[]> {
   const q = query.trim();
   if (!isSafeSearchQuery(q)) return [];
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('profiles')
     .select('*')
     .or(`email.ilike.%${q}%,display_name.ilike.%${q}%,username.ilike.%${q}%`)
@@ -44,14 +44,14 @@ export async function searchProfiles(query: string, limit = 8): Promise<Profile[
 }
 
 export async function upsertProfile(userId: string, data: Partial<Profile>): Promise<Profile | null> {
-  const { data: existing } = await supabase
+  const { data: existing } = await platform
     .from('profiles' as never)
     .select('id')
     .eq('id', userId)
     .maybeSingle();
 
   if (existing) {
-    const { data: updated, error } = await supabase
+    const { data: updated, error } = await platform
       .from('profiles' as never)
       .update(data as never)
       .eq('id', userId)
@@ -62,7 +62,7 @@ export async function upsertProfile(userId: string, data: Partial<Profile>): Pro
     return updated as Profile;
   }
 
-  const { data: created, error } = await supabase
+  const { data: created, error } = await platform
     .from('profiles' as never)
     .insert({ id: userId, ...data } as never)
     .select()
@@ -73,7 +73,7 @@ export async function upsertProfile(userId: string, data: Partial<Profile>): Pro
 }
 
 export async function updateProfile(userId: string, updates: ProfileUpdate): Promise<Profile | null> {
-  const { data, error } = await supabase
+  const { data, error } = await platform
     .from('profiles' as never)
     .update(updates as never)
     .eq('id', userId)
@@ -86,7 +86,7 @@ export async function updateProfile(userId: string, updates: ProfileUpdate): Pro
 
 export async function getForwardedAttachmentPolicy(userId: string): Promise<ForwardedAttachmentPolicy> {
   if (!userId) return 'keep';
-  const { data } = await supabase
+  const { data } = await platform
     .from('profiles')
     .select('forwarded_attachment_policy')
     .eq('id', userId)
@@ -97,7 +97,7 @@ export async function getForwardedAttachmentPolicy(userId: string): Promise<Forw
 }
 
 export async function checkUsernameAvailable(username: string, excludeUserId?: string): Promise<boolean> {
-  let query = supabase
+  let query = platform
     .from('profiles')
     .select('id')
     .eq('username', username)
@@ -112,10 +112,10 @@ export async function checkUsernameAvailable(username: string, excludeUserId?: s
 }
 
 export async function removeAvatar(userId: string): Promise<void> {
-  const { data } = await supabase.storage.from('avatars').list(`${userId}`);
+  const { data } = await platform.storage.from('avatars').list(`${userId}`);
   if (data && data.length > 0) {
     const paths = data.map((f) => `${userId}/${f.name}`);
-    await supabase.storage.from('avatars').remove(paths);
+    await platform.storage.from('avatars').remove(paths);
   }
 }
 
@@ -123,13 +123,13 @@ export async function uploadAvatar(userId: string, file: File): Promise<string> 
   const fileExt = file.name.split('.').pop() || 'png';
   const filePath = `${userId}/avatar-${Date.now()}.${fileExt}`;
 
-  const { error: uploadError } = await supabase.storage
+  const { error: uploadError } = await platform.storage
     .from('avatars')
     .upload(filePath, file);
 
   if (uploadError) throw uploadError;
 
-  const { data: urlData } = supabase.storage
+  const { data: urlData } = platform.storage
     .from('avatars')
     .getPublicUrl(filePath);
 
@@ -137,7 +137,7 @@ export async function uploadAvatar(userId: string, file: File): Promise<string> 
 }
 
 export async function listUserAvatars(userId: string): Promise<string[]> {
-  const { data, error } = await supabase.storage
+  const { data, error } = await platform.storage
     .from('avatars')
     .list(userId, { sortBy: { column: 'created_at', order: 'desc' } });
 
@@ -145,7 +145,7 @@ export async function listUserAvatars(userId: string): Promise<string[]> {
 
   return data
     .filter((f) => f.name.startsWith('avatar-'))
-    .map((f) => supabase.storage.from('avatars').getPublicUrl(`${userId}/${f.name}`).data.publicUrl);
+    .map((f) => platform.storage.from('avatars').getPublicUrl(`${userId}/${f.name}`).data.publicUrl);
 }
 
 export async function deleteAvatar(userId: string, url: string): Promise<void> {
@@ -161,6 +161,6 @@ export async function deleteAvatar(userId: string, url: string): Promise<void> {
   }
 
   if (!path) return;
-  const { error } = await supabase.storage.from('avatars').remove([path]);
+  const { error } = await platform.storage.from('avatars').remove([path]);
   if (error) throw error;
 }

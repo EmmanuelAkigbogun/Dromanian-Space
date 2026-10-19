@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { rpc } from '../../supabase.js';
+import { rpc } from '../../database.js';
 import { describeLocation } from '../citations.js';
 import { embeddingsConfigured, embedTexts, toPgVector } from '../../knowledge/embed.js';
 import { defineTool, quoteData, type RunContext } from './types.js';

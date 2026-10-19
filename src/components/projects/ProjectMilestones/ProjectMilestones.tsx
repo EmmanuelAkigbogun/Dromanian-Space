@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Progress } from '@/components/ui/Progress';
 import { Spinner } from '@/components/ui/Spinner';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { supabase } from '@/lib/supabase';
+import { platform } from '@/lib/platform';
 import { useAuth } from '@/hooks/useAuth';
 import { calculateTaskProgress, calculateCompletedTaskCount } from '@/lib/tasks/progress';
 import { useToast } from '@/components/ui/Toast';
@@ -58,7 +58,7 @@ export function ProjectMilestones({ projectId, canEdit = true, canCreate = true 
   const fetchMilestones = useCallback(async () => {
     setIsLoading(true);
 
-    const { data: milestoneData, error } = await supabase
+    const { data: milestoneData, error } = await platform
       .from('project_milestones')
       .select('*')
       .eq('project_id', projectId)
@@ -71,7 +71,7 @@ export function ProjectMilestones({ projectId, canEdit = true, canCreate = true 
     }
 
     let tasks: MilestoneTask[] = [];
-    const { data: taskData } = await supabase
+    const { data: taskData } = await platform
       .from('tasks')
       .select('id, title, status, milestone_id, status_order')
       .eq('project_id', projectId)
@@ -110,7 +110,7 @@ export function ProjectMilestones({ projectId, canEdit = true, canCreate = true 
 
   useEffect(() => {
     if (!projectId) return;
-    const channel = supabase
+    const channel = platform
       .channel(`project-milestones-${projectId}`)
       .on(
         'postgres_changes',
@@ -125,7 +125,7 @@ export function ProjectMilestones({ projectId, canEdit = true, canCreate = true 
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      platform.removeChannel(channel);
     };
   }, [projectId, fetchMilestones]);
 
@@ -177,14 +177,14 @@ export function ProjectMilestones({ projectId, canEdit = true, canCreate = true 
 
     try {
       if (toAssign.length > 0) {
-        const { error } = await supabase
+        const { error } = await platform
           .from('tasks')
           .update({ milestone_id: milestoneId, updated_at: new Date().toISOString() })
           .in('id', toAssign);
         if (error) throw error;
       }
       if (toRemove.length > 0) {
-        const { error } = await supabase
+        const { error } = await platform
           .from('tasks')
           .update({ milestone_id: null, updated_at: new Date().toISOString() })
           .in('id', toRemove);
@@ -206,7 +206,7 @@ export function ProjectMilestones({ projectId, canEdit = true, canCreate = true 
     setIsSaving(true);
     try {
       if (editingMilestone) {
-        const { error } = await supabase
+        const { error } = await platform
           .from('project_milestones')
           .update({
             title: title.trim(),
@@ -220,7 +220,7 @@ export function ProjectMilestones({ projectId, canEdit = true, canCreate = true 
         if (error) throw error;
         toast({ description: 'Milestone updated', variant: 'success' });
       } else {
-        const { error } = await supabase
+        const { error } = await platform
           .from('project_milestones')
           .insert({
             project_id: projectId,
@@ -251,7 +251,7 @@ export function ProjectMilestones({ projectId, canEdit = true, canCreate = true 
   const confirmDelete = useCallback(async () => {
     if (!deletingMilestoneId) return;
 
-    const { error } = await supabase
+    const { error } = await platform
       .from('project_milestones')
       .delete()
       .eq('id', deletingMilestoneId);
@@ -268,7 +268,7 @@ export function ProjectMilestones({ projectId, canEdit = true, canCreate = true 
   }, [deletingMilestoneId, fetchMilestones, toast]);
 
   const handleDuplicateMilestone = useCallback(async (ms: MilestoneWithProgress) => {
-    const { error } = await supabase.from('project_milestones').insert({
+    const { error } = await platform.from('project_milestones').insert({
       project_id: projectId,
       created_by: userId,
       title: ms.title,
