@@ -1,19 +1,25 @@
 import { useCallContext } from '@/app/providers/CallProvider/CallProvider';
+import { Avatar } from '@/components/ui/Avatar/Avatar';
+import { useAuth } from '@/hooks/useAuth';
+import { callProfileName, useCallProfiles } from '@/hooks/useCallProfiles/useCallProfiles';
 import styles from './OutgoingCall.module.css';
 
 export function OutgoingCall() {
-  const { currentCall, cancelOutgoingCall } = useCallContext();
+  const { userId } = useAuth();
+  const { currentCall, participants, cancelOutgoingCall } = useCallContext();
+  const remoteIds = participants.filter((participant) => participant.user_id !== userId).map((participant) => participant.user_id);
+  const profiles = useCallProfiles(remoteIds);
+  const names = remoteIds.map((id) => callProfileName(profiles.get(id), 'Connecting…'));
+  const primaryProfile = remoteIds[0] ? profiles.get(remoteIds[0]) : undefined;
+  const displayName = names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ') || 'Connecting…';
 
   return (
     <div className={styles.container}>
       <div className={styles.ringAnimation} />
       <div className={styles.callerInfo}>
-        <div className={styles.avatar}>
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-          </svg>
-        </div>
-        <h2 className={styles.title}>Calling...</h2>
+        <Avatar src={primaryProfile?.avatar_url ?? undefined} name={displayName} alt={displayName} size="xl" className={styles.avatar} />
+        <h2 className={styles.title}>{displayName}</h2>
+        <p className={styles.callingStatus}>Calling…</p>
         <p className={styles.subtitle}>{currentCall?.call_type === 'group' ? 'Group Call' : 'Direct Call'}</p>
       </div>
       <button type="button" className={styles.cancelButton} onClick={cancelOutgoingCall} aria-label="Cancel call">

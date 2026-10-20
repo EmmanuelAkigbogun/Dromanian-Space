@@ -225,6 +225,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
           if (updated.status === 'active' && (screen === 'outgoing' || screen === 'incoming')) {
             setCallScreen('active');
+            void getCallParticipants(updated.id).then((freshParticipants) => {
+              if (currentCallRef.current?.id === updated.id) setParticipants(freshParticipants);
+            });
           } else if (updated.status === 'ended' || updated.status === 'cancelled' || updated.status === 'declined') {
             engineRef.current.stopOfferRetry();
             engineRef.current.cleanupAll();
@@ -318,10 +321,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
           ? effectiveParticipantIds
           : [targetUserId, ...effectiveParticipantIds.filter((id) => id !== userId && id !== targetUserId)];
 
-        const session = await createCallSession(currentWorkspace.id, userId, effectiveCallType, {
+        const createdCall = await createCallSession(currentWorkspace.id, userId, effectiveCallType, {
           channelId: sessionChannelId ?? undefined, withVideo, targetUserIds: allParticipants,
         });
-        if (!session) { engine.stopLocalMedia(); return; }
+        if (!createdCall) { engine.stopLocalMedia(); return; }
+        const { session, participants: createdParticipants } = createdCall;
 
         // FIX: mark this call as "ours" the instant it exists - synchronously,
         // before any participant row (including our own) is inserted. This is
@@ -329,6 +333,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         outgoingCallIdsRef.current.add(session.id);
 
         setCurrentCall(session);
+        setParticipants(createdParticipants);
         setCallScreen('outgoing');
 
         engine.setupSignaling(session.id, userId);

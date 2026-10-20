@@ -8,13 +8,14 @@ export async function createCallSession(
   _createdBy: string,
   callType: 'direct' | 'group' | 'channel',
   options?: { channelId?: string; conversationId?: string; withVideo?: boolean; targetUserIds?: string[] },
-): Promise<CallSession | null> {
+): Promise<{ session: CallSession; participants: CallParticipant[] } | null> {
   const response = await fetch('/api/calls', {
     method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ workspaceId, callType, channelId: options?.channelId, conversationId: options?.conversationId, withVideo: options?.withVideo ?? false, targetUserIds: options?.targetUserIds ?? [] }),
   });
   if (!response.ok) return null;
-  return (await response.json()).session as CallSession;
+  const payload = await response.json() as { session: CallSession; participants: CallParticipant[] };
+  return payload;
 }
 
 export async function updateCallParticipantMuted(
