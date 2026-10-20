@@ -72,7 +72,7 @@ function VideoTileImpl({ stream, label, isMuted, isLocal, isSpeaking, handRaised
         </div>
       )}
       {hasVideo ? (
-        <video ref={videoRef} autoPlay playsInline muted={isLocal} className={styles.videoElement} />
+        <video ref={videoRef} autoPlay playsInline muted className={styles.videoElement} />
       ) : (
         <div className={styles.videoPlaceholder}>
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -137,6 +137,7 @@ export function ActiveCall() {
     isMuted,
     isVideoEnabled,
     isScreenSharing,
+    isAudioPlaybackBlocked,
     callDuration,
     localStream,
     remoteStreams,
@@ -144,6 +145,7 @@ export function ActiveCall() {
     toggleVideo,
     toggleScreenShare,
     endActiveCall,
+    enableCallAudio,
     getPeers,
   } = useCallContext();
 
@@ -513,6 +515,22 @@ export function ActiveCall() {
       )}
 
       <div className={styles.controls}>
+        {isAudioPlaybackBlocked && (
+          <button
+            type="button"
+            className={`${styles.controlButton} ${styles.controlButtonActive}`}
+            onClick={() => { void enableCallAudio(); }}
+            aria-label="Enable call audio"
+            title="Enable call audio"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+            </svg>
+          </button>
+        )}
+
         <button
           type="button"
           className={`${styles.controlButton} ${isMuted ? styles.controlButtonActive : ''}`}

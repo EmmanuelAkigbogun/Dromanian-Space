@@ -38,6 +38,8 @@ export function useCallEngine() {
   const onRemoteStreamRef = useRef<((userId: string, stream: MediaStream) => void) | null>(null);
   const onCallEndRef = useRef<(() => void) | null>(null);
   const onPeerConnectedRef = useRef<((userId: string) => void) | null>(null);
+  const onAudioPlaybackBlockedRef = useRef<((blocked: boolean) => void) | null>(null);
+  const blockedAudioPeersRef = useRef<Set<string>>(new Set());
   const pendingIceRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const remoteAudioContainerRef = useRef<HTMLDivElement | null>(null);
   const pendingOffersRef = useRef<Array<{ fromUserId: string; offer: RTCSessionDescriptionInit }>>([]);
@@ -134,6 +136,22 @@ export function useCallEngine() {
     }
   }, []);
 
+  const playRemoteAudio = useCallback(async (userId: string, element: HTMLAudioElement): Promise<boolean> => {
+    try {
+      element.muted = false;
+      element.volume = 1;
+      await element.play();
+      blockedAudioPeersRef.current.delete(userId);
+      onAudioPlaybackBlockedRef.current?.(blockedAudioPeersRef.current.size > 0);
+      return true;
+    } catch (error) {
+      blockedAudioPeersRef.current.add(userId);
+      onAudioPlaybackBlockedRef.current?.(true);
+      console.warn('[call] remote audio playback was blocked by the browser:', error);
+      return false;
+    }
+  }, []);
+
   const cleanupPeer = useCallback((userId: string) => {
     const entry = peersRef.current.get(userId);
     if (entry) {
@@ -142,6 +160,8 @@ export function useCallEngine() {
       try { entry.peerConnection.close(); } catch { }
       peersRef.current.delete(userId);
     }
+    blockedAudioPeersRef.current.delete(userId);
+    onAudioPlaybackBlockedRef.current?.(blockedAudioPeersRef.current.size > 0);
   }, []);
 
   const cleanupAll = useCallback(() => {
@@ -152,6 +172,8 @@ export function useCallEngine() {
       try { entry.peerConnection.close(); } catch { }
     });
     peersRef.current.clear();
+    blockedAudioPeersRef.current.clear();
+    onAudioPlaybackBlockedRef.current?.(false);
     pendingIceRef.current.clear();
     stopLocalMedia();
     if (signalingChannelRef.current) {
@@ -217,7 +239,10 @@ export function useCallEngine() {
           el.srcObject = remoteStream;
         }
         if (el && remoteStream.getAudioTracks().length > 0) {
-          el.play().catch(() => { });
+          void playRemoteAudio(remoteUserId, el);
+        }
+        if (track.kind === 'audio') {
+          track.onunmute = () => { void playRemoteAudio(remoteUserId, audioEl); };
         }
       };
 
@@ -259,8 +284,17 @@ export function useCallEngine() {
       const container = getRemoteAudioContainer();
       const audioEl = document.createElement('audio');
       audioEl.autoplay = true;
+      audioEl.muted = false;
+      audioEl.volume = 1;
+      audioEl.preload = 'auto';
+      audioEl.setAttribute('playsinline', '');
       audioEl.id = `call-audio-${remoteUserId}`;
       audioEl.srcObject = remoteStream;
+      audioEl.oncanplay = () => { void playRemoteAudio(remoteUserId, audioEl); };
+      audioEl.onplaying = () => {
+        blockedAudioPeersRef.current.delete(remoteUserId);
+        onAudioPlaybackBlockedRef.current?.(blockedAudioPeersRef.current.size > 0);
+      };
       container.appendChild(audioEl);
 
       const entry: PeerEntry = {
@@ -274,7 +308,7 @@ export function useCallEngine() {
       peersRef.current.set(remoteUserId, entry);
       return entry;
     },
-    [getRemoteAudioContainer, sendSignaling, cleanupPeer, renegotiate],
+    [getRemoteAudioContainer, sendSignaling, cleanupPeer, renegotiate, playRemoteAudio],
   );
 
   const handleOffer = useCallback(
@@ -643,13 +677,14 @@ export function useCallEngine() {
 
   const getPeers = useCallback(() => peersRef.current, []);
 
-  const resumeAllAudio = useCallback(() => {
-    peersRef.current.forEach((entry) => {
-      if (entry.remoteAudioElement && entry.remoteAudioElement.paused) {
-        entry.remoteAudioElement.play().catch(() => { });
-      }
+  const resumeAllAudio = useCallback(async (): Promise<boolean> => {
+    const attempts = Array.from(peersRef.current.entries()).map(([userId, entry]) => {
+      if (!entry.remoteAudioElement) return Promise.resolve(true);
+      return playRemoteAudio(userId, entry.remoteAudioElement);
     });
-  }, []);
+    const results = await Promise.all(attempts);
+    return results.every(Boolean);
+  }, [playRemoteAudio]);
 
   const switchDevice = useCallback(
     async (kind: 'audioinput' | 'videoinput', deviceId: string) => {
@@ -706,6 +741,9 @@ export function useCallEngine() {
     },
     onPeerConnected: (cb: (userId: string) => void) => {
       onPeerConnectedRef.current = cb;
+    },
+    onAudioPlaybackBlocked: (cb: (blocked: boolean) => void) => {
+      onAudioPlaybackBlockedRef.current = cb;
     },
     getPeers,
     getLocalStream: () => localStreamRef.current,

@@ -22,6 +22,7 @@ import {
 } from '@/lib/call/call';
 import { createTypedNotification } from '@/features/notifications/service';
 import { useCallEngine } from '@/hooks/useCallEngine/useCallEngine';
+import { useCallSounds } from '@/hooks/useCallSounds/useCallSounds';
 import type { CallSession, CallParticipant, CallScreen } from '@/types';
 
 interface DeviceInfo {
@@ -38,6 +39,7 @@ interface CallContextValue {
   isVideoEnabled: boolean;
   isScreenSharing: boolean;
   isAccepting: boolean;
+  isAudioPlaybackBlocked: boolean;
   callDuration: number;
   localStream: MediaStream | null;
   remoteStreams: Map<string, MediaStream>;
@@ -52,6 +54,7 @@ interface CallContextValue {
   toggleScreenShare: () => Promise<void>;
   getDevices: () => Promise<{ audioInputs: DeviceInfo[]; videoInputs: DeviceInfo[]; audioOutputs: DeviceInfo[] }>;
   switchDevice: (kind: 'audioinput' | 'videoinput', deviceId: string) => Promise<void>;
+  enableCallAudio: () => Promise<void>;
   setCallScreen: (screen: CallScreen) => void;
 }
 
@@ -69,9 +72,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const [isVideoEnabled, setIsVideoEnabled] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isAccepting, setIsAccepting] = useState(false);
+  const [isAudioPlaybackBlocked, setIsAudioPlaybackBlocked] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
+  const { unlockAudio } = useCallSounds(callScreen);
 
   const currentCallRef = useRef<CallSession | null>(null);
   const callScreenRef = useRef<CallScreen>('none');
@@ -148,6 +153,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setIsVideoEnabled(false);
     setIsScreenSharing(false);
     setIsAccepting(false);
+    setIsAudioPlaybackBlocked(false);
     setCallDuration(0);
     setLocalStream(null);
     setRemoteStreams(new Map());
@@ -253,11 +259,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
         setCallScreen('active');
       }
     });
+    engine.onAudioPlaybackBlocked(setIsAudioPlaybackBlocked);
   }, [engine, resetState]);
 
   useEffect(() => {
     if (callScreen === 'active') {
-      engine.resumeAllAudio();
+      void engine.resumeAllAudio().then((playing) => setIsAudioPlaybackBlocked(!playing));
     }
   }, [callScreen, engine]);
 
@@ -266,6 +273,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       if (!userId || !currentWorkspace) return;
 
       try {
+        void unlockAudio();
         const stream = await engine.startLocalMedia(withVideo);
         if (!stream) return;
         setLocalStream(stream);
@@ -325,13 +333,14 @@ export function CallProvider({ children }: { children: ReactNode }) {
         resetState();
       }
     },
-    [userId, currentWorkspace, engine, resetState],
+    [userId, currentWorkspace, engine, resetState, unlockAudio],
   );
 
   const acceptCall = useCallback(
     async (withVideo = false) => {
       if (!currentCall || !userId || isAccepting) return;
 
+      void unlockAudio();
       setIsAccepting(true);
       try {
         const stream = await engine.startLocalMedia(withVideo);
@@ -356,7 +365,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           console.error('[call] answerCall DB update failed (non-fatal):', err);
         });
 
-        engine.resumeAllAudio();
+        void engine.resumeAllAudio().then((playing) => setIsAudioPlaybackBlocked(!playing));
 
         setIsAccepting(false);
         setCallScreen('active');
@@ -366,7 +375,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         resetState();
       }
     },
-    [currentCall, userId, isAccepting, engine, resetState, participants],
+    [currentCall, userId, isAccepting, engine, resetState, participants, unlockAudio],
   );
 
   const declineIncomingCall = useCallback(async () => {
@@ -448,16 +457,22 @@ export function CallProvider({ children }: { children: ReactNode }) {
     await engine.switchDevice(kind, deviceId);
   }, [engine]);
 
+  const enableCallAudio = useCallback(async () => {
+    await unlockAudio();
+    const playing = await engine.resumeAllAudio();
+    setIsAudioPlaybackBlocked(!playing);
+  }, [engine, unlockAudio]);
+
   const value = useMemo<CallContextValue>(() => ({
-    callScreen, currentCall, participants, isMuted, isVideoEnabled, isScreenSharing, isAccepting,
+    callScreen, currentCall, participants, isMuted, isVideoEnabled, isScreenSharing, isAccepting, isAudioPlaybackBlocked,
     callDuration, localStream, remoteStreams, getPeers: engine.getPeers,
     startCall, acceptCall, declineIncomingCall, cancelOutgoingCall, endActiveCall,
-    toggleMute, toggleVideo, toggleScreenShare, getDevices, switchDevice, setCallScreen,
+    toggleMute, toggleVideo, toggleScreenShare, getDevices, switchDevice, enableCallAudio, setCallScreen,
   }), [
-    callScreen, currentCall, participants, isMuted, isVideoEnabled, isScreenSharing, isAccepting,
+    callScreen, currentCall, participants, isMuted, isVideoEnabled, isScreenSharing, isAccepting, isAudioPlaybackBlocked,
     callDuration, localStream, remoteStreams, engine.getPeers,
     startCall, acceptCall, declineIncomingCall, cancelOutgoingCall, endActiveCall,
-    toggleMute, toggleVideo, toggleScreenShare, getDevices, switchDevice, setCallScreen,
+    toggleMute, toggleVideo, toggleScreenShare, getDevices, switchDevice, enableCallAudio, setCallScreen,
   ]);
 
   return <CallContext.Provider value={value}>{children}</CallContext.Provider>;
