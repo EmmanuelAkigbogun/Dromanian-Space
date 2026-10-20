@@ -508,9 +508,11 @@ export function DmConversationView() {
           <button type="button" className={styles.headerNameButton} onClick={handleHeaderProfileClick}>
             <h2 className={styles.headerName}>{displayName}</h2>
           </button>
-          {currentConversation.type === 'group' && currentParticipants && (
-            <span className={styles.headerSubtitle}>{currentParticipants.length} members</span>
-          )}
+          <span className={styles.headerSubtitle}>
+            {currentConversation.type === 'group' && currentParticipants
+              ? `${currentParticipants.length} members`
+              : getPresenceLabel(otherProfile ? presenceMap.get(otherProfile.id)?.status : 'offline')}
+          </span>
         </div>
         <div className={styles.pinnedMenuContainer} ref={pinnedMenuRef}>
           <button

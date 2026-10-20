@@ -2,7 +2,7 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  margin: 2px 0;
+  margin: 0;
 }
 
 .rowSelectable {
@@ -23,36 +23,49 @@
 }
 
 .actionsBar {
+  position: absolute;
+  top: -14px;
+  right: var(--space-3);
+  z-index: 4;
   display: flex;
   justify-content: flex-end;
   gap: 2px;
-  padding: 0 var(--space-3);
-  height: 32px;
+  padding: 3px;
+  height: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-surface);
+  box-shadow: var(--shadow-md);
   opacity: 0;
+  transform: translateY(3px);
   pointer-events: none;
-  transition: opacity var(--transition-fast);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
 
-.actionsBarVisible {
+.actionsBarVisible,
+.row:focus-within .actionsBar {
   opacity: 1;
+  transform: translateY(0);
   pointer-events: auto;
 }
 
 .message {
   display: flex;
-  gap: var(--space-3);
-  padding: var(--space-1) var(--space-3);
-  border-radius: var(--radius-md);
+  gap: 10px;
+  min-height: 44px;
+  padding: 7px var(--space-4) 6px var(--space-3);
+  border-radius: var(--radius-sm);
   transition: background-color var(--transition-fast);
 }
 
 .messageOwn {
-  flex-direction: row-reverse;
+  flex-direction: row;
 }
 
 .messageGrouped {
-  padding-top: 1px;
-  padding-bottom: 1px;
+  min-height: 28px;
+  padding-top: 2px;
+  padding-bottom: 2px;
 }
 
 .messageGrouped .header {
@@ -66,18 +79,19 @@
 .avatar {
   flex-shrink: 0;
   align-self: flex-start;
-  width: 32px;
+  width: 36px;
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: 2px;
+  padding-top: 1px;
 }
 
 .timestampInline {
-  font-size: var(--font-size-xs);
+  font-size: 10px;
   color: var(--color-text-muted);
   visibility: hidden;
   white-space: nowrap;
+  padding-top: 3px;
 }
 
 .message:hover .timestampInline {
@@ -93,7 +107,7 @@
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  margin-bottom: var(--space-2);
+  margin-bottom: 2px;
   flex-wrap: wrap;
 }
 
@@ -101,6 +115,7 @@
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text);
+  line-height: 1.35;
 }
 
 .time {
@@ -128,14 +143,30 @@
 .text {
   font-size: var(--font-size-sm);
   color: var(--color-text);
-  line-height: 1.5;
+  line-height: 1.45;
   word-break: break-word;
   white-space: pre-wrap;
 }
 
 @media (min-width: 769px) {
   .text {
-    max-width: 600px;
+    max-width: 860px;
+  }
+}
+
+@media (max-width: 639px) {
+  .message {
+    gap: var(--space-2);
+    padding-right: var(--space-2);
+    padding-left: var(--space-2);
+  }
+
+  .avatar {
+    width: 32px;
+  }
+
+  .actionsBar {
+    right: var(--space-2);
   }
 }
 

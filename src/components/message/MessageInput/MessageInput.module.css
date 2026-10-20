@@ -1,10 +1,12 @@
 .form {
-  padding: var(--space-4);
-  border-top: 1px solid var(--color-border);
+  padding: 0;
 }
 
 .wrapper {
   position: relative;
+  flex-shrink: 0;
+  padding: 0 clamp(var(--space-3), 2vw, var(--space-6)) var(--space-3);
+  background-color: var(--color-background);
 }
 
 .dragging {
@@ -17,7 +19,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-4) 0;
+  padding: var(--space-2) 0;
   max-height: 400px;
   overflow-y: auto;
 }
@@ -25,16 +27,18 @@
 .inputWrapper {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3);
+  gap: 3px;
+  padding: var(--space-2) var(--space-3);
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  transition: border-color var(--transition-fast);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .inputWrapper:focus-within {
   border-color: var(--color-primary);
+  box-shadow: 0 0 0 1px var(--color-primary), var(--shadow-sm);
 }
 
 .inputActions {
@@ -59,8 +63,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius-md);
   color: var(--color-text-muted);
   flex-shrink: 0;
@@ -87,7 +91,7 @@
   font-family: inherit;
   resize: none;
   outline: none;
-  min-height: 20px;
+  min-height: 24px;
   max-height: 200px;
   line-height: 1.5;
 }
@@ -100,8 +104,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: var(--radius-md);
   background-color: var(--color-primary);
   color: white;
@@ -115,8 +119,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius-md);
   color: var(--color-text-muted);
   background: none;
@@ -328,12 +332,16 @@
   opacity: 0.8;
 }
 
-.toolbarPlaceholder {
+.composerUtilities {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-4) 0;
+  gap: var(--space-1);
+  padding: var(--space-1) 0 var(--space-2);
+}
+
+.toolbarPlaceholder {
+  display: contents;
   min-height: 0;
 }
 
@@ -434,7 +442,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-top: var(--space-1);
+  padding: 4px 2px 0;
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
 }
@@ -449,12 +457,12 @@
 }
 
 @media (max-width: 639px) {
-  .form {
-    padding: var(--space-2);
+  .wrapper {
+    padding: 0 var(--space-2) var(--space-2);
   }
 
-  .toolbarPlaceholder {
-    padding: var(--space-1) var(--space-2) 0;
+  .composerUtilities {
+    padding-bottom: var(--space-1);
   }
 
   .inputWrapper {

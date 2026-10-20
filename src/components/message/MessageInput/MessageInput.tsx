@@ -614,9 +614,11 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
         </div>
       )}
 
-      <div className={styles.toolbarPlaceholder}>
-        {showLinkControls && (
-          <>
+      {(showLinkControls || (channelId && !activeEdit)) && (
+        <div className={styles.composerUtilities}>
+          <div className={styles.toolbarPlaceholder}>
+            {showLinkControls && (
+              <>
             {linkMode === 'text' ? (
               <button
                 type="button"
@@ -701,11 +703,13 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
                 ))}
               </div>
             )}
-          </>
-        )}
-      </div>
+              </>
+            )}
+          </div>
 
-      {channelId && !activeEdit && <DriveShare channelId={channelId} parentId={parentId} />}
+          {channelId && !activeEdit && <DriveShare channelId={channelId} parentId={parentId} />}
+        </div>
+      )}
       <form className={styles.form} onSubmit={handleSubmit}>
         <div className={styles.inputWrapper}>
           <input
