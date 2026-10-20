@@ -20,6 +20,38 @@ const signalBody = z.object({
   payload: z.record(z.string(), z.unknown()).default({}),
   clientMessageId: uuid.optional(),
 });
+
+const cloudflareIceResponse = z.object({
+  iceServers: z.array(z.object({
+    urls: z.union([z.string(), z.array(z.string())]),
+    username: z.string().optional(),
+    credential: z.string().optional(),
+  })),
+});
+
+async function managedIceServers() {
+  const keyId = process.env.CLOUDFLARE_TURN_KEY_ID?.trim();
+  const apiToken = process.env.CLOUDFLARE_TURN_KEY_API_TOKEN?.trim();
+  if (!keyId || !apiToken) return undefined;
+
+  const response = await fetch(
+    `https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(keyId)}/credentials/generate-ice-servers`,
+    {
+      method: 'POST',
+      headers: { authorization: `Bearer ${apiToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ ttl: 14_400 }),
+      signal: AbortSignal.timeout(8_000),
+    },
+  );
+  if (!response.ok) {
+    throw new HttpError(502, 'turn_credentials_failed', 'Cloudflare could not issue call relay credentials.');
+  }
+  const parsed = cloudflareIceResponse.safeParse(await response.json());
+  if (!parsed.success || parsed.data.iceServers.length === 0) {
+    throw new HttpError(502, 'turn_credentials_invalid', 'Cloudflare returned invalid call relay credentials.');
+  }
+  return parsed.data.iceServers;
+}
 const participantStateBody = z.object({ isMuted: z.boolean() });
 
 function databaseEvent(table: string, event: 'INSERT' | 'UPDATE', row: unknown) {
@@ -113,6 +145,9 @@ export async function active(request: Request): Promise<Response> {
 
 export async function ice(request: Request): Promise<Response> {
   const user = await authenticate(request);
+  const managed = await managedIceServers();
+  if (managed) return json({ iceServers: managed, expiresAt: Math.floor(Date.now() / 1000) + 14_400 });
+
   const host = process.env.TURN_HOST?.trim();
   const secret = process.env.TURN_SHARED_SECRET?.trim();
   if (!host || !secret) throw new HttpError(503, 'turn_not_configured', 'The TURN relay is not configured.');
@@ -153,7 +188,8 @@ export async function mediaToken(request: Request, callId: string): Promise<Resp
     canSubscribe: true,
     canPublishData: true,
   });
-  return json({ token: await token.toJwt(), url, room: `call-${callId}` });
+  const iceServers = await managedIceServers();
+  return json({ token: await token.toJwt(), url, room: `call-${callId}`, iceServers });
 }
 
 export async function action(request: Request, callId: string, operation: string): Promise<Response> {

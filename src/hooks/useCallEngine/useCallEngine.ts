@@ -20,6 +20,7 @@ interface MediaTokenResponse {
   token: string;
   url: string;
   room: string;
+  iceServers?: RTCIceServer[];
 }
 
 /**
@@ -187,7 +188,17 @@ export function useCallEngine() {
       });
       attachRoomEvents(room);
       roomRef.current = room;
-      await room.connect(credentials.url, credentials.token, { autoSubscribe: true });
+      const managedRelay = Boolean(credentials.iceServers?.length);
+      await room.connect(credentials.url, credentials.token, {
+        autoSubscribe: true,
+        rtcConfig: managedRelay ? {
+          iceServers: credentials.iceServers,
+          iceTransportPolicy: 'relay',
+        } : undefined,
+        // Inbound media ports are commonly blocked on home-hosted servers.
+        // Full ICE lets the SFU initiate checks to Cloudflare's relay instead.
+        disableIceLite: managedRelay,
+      });
       await publishLocalTracks(room);
       for (const participant of room.remoteParticipants.values()) {
         onPeerConnectedRef.current?.(participant.identity);
