@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useCallContext } from '@/app/providers/CallProvider/CallProvider';
 import styles from './PreJoinScreen.module.css';
 
 export function PreJoinScreen() {
-  const { acceptCall, currentCall } = useCallContext();
+  const { acceptCall } = useCallContext();
   const videoRef = useRef<HTMLVideoElement>(null);
   const previewStreamRef = useRef<MediaStream | null>(null);
   const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);

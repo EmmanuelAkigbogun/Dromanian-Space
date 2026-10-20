@@ -13,6 +13,35 @@ body {
   flex-direction: column;
 }
 
+button,
+input,
+textarea,
+select {
+  transition: border-color var(--transition-fast), background-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+dialog,
+[role='dialog'] {
+  color: var(--color-text);
+}
+
+table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
 /* Prevent the browser from scrolling the document (e.g. to reveal a focused
    input under the virtual keyboard) instead of the intended scroll container. */
 html,

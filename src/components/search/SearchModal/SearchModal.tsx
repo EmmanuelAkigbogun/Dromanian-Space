@@ -65,6 +65,15 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
 
   const flatResults = Object.values(groupedResults).flat();
 
+  const handleSelect = useCallback(
+    (item: SearchResultItem) => {
+      if (item.link) navigate(item.link);
+      clearSearch();
+      onClose();
+    },
+    [navigate, clearSearch, onClose],
+  );
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'ArrowDown') {
@@ -81,18 +90,7 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
         }
       }
     },
-    [flatResults, highlightedIndex],
-  );
-
-  const handleSelect = useCallback(
-    (item: SearchResultItem) => {
-      if (item.link) {
-        navigate(item.link);
-      }
-      clearSearch();
-      onClose();
-    },
-    [navigate, clearSearch, onClose],
+    [flatResults, highlightedIndex, handleSelect],
   );
 
   const handleInputChange = useCallback(
@@ -101,11 +99,6 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
     },
     [search],
   );
-
-  const handleClear = useCallback(() => {
-    clearSearch();
-    inputRef.current?.focus();
-  }, [clearSearch]);
 
   if (!open) return null;
 

@@ -1,8 +1,8 @@
--- Local emulation of the parts of a hosted Supabase database that the application
+-- Local standalone roles and schemas that the application
 -- and its migrations depend on. Used only by tools/local-database and the test
 -- suite; never applied to a hosted project (which already provides all of this).
 --
--- Mirrors Supabase behaviour that matters for security testing:
+-- Mirrors production behaviour that matters for security testing:
 --   * roles anon / authenticated / service_role (BYPASSRLS) / authenticator
 --   * auth.uid(), auth.role(), auth.email(), auth.jwt() read PostgREST's
 --     request.jwt.claims setting
@@ -196,7 +196,7 @@ GRANT EXECUTE ON FUNCTION storage.foldername(text), storage.filename(text), stor
   TO anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
--- pg_cron stand-in (Supabase provides the real extension). Jobs are recorded
+-- pg_cron stand-in. Jobs are recorded
 -- but never executed here, so they are inactive: the worker runs maintenance
 -- locally (run_unscheduled_maintenance skips only active cron jobs).
 -- ---------------------------------------------------------------------------
@@ -228,7 +228,7 @@ BEGIN
 END $$;
 
 -- ---------------------------------------------------------------------------
--- Realtime publication (Supabase creates it empty)
+-- Compatibility publication used by legacy migration statements
 -- ---------------------------------------------------------------------------
 DO $$
 BEGIN
@@ -238,7 +238,7 @@ BEGIN
 END $$;
 
 -- ---------------------------------------------------------------------------
--- Supabase default privileges for the public schema
+-- Default privileges for the public schema
 -- ---------------------------------------------------------------------------
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;

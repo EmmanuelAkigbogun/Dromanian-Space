@@ -102,7 +102,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
         navigate('/dm', { replace: true });
       }
     }
-  }, [currentWorkspace?.id]);
+  }, [currentWorkspace?.id, location.pathname, navigate]);
 
   const fetchConversations = useCallback(async () => {
     if (!userId || !currentWorkspace) {
@@ -180,7 +180,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
         });
       }
     },
-    [conversations, currentWorkspace],
+    [conversations, currentWorkspace, navigate],
   );
 
   const startDm = useCallback(
@@ -342,7 +342,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
     return () => {
       platform.removeChannel(channel);
     };
-  }, [userId, conversations.length]);
+  }, [userId, conversations]);
 
   // Realtime: remove conversations from sidebar when deleted
   useEffect(() => {
@@ -420,7 +420,7 @@ export function ConversationProvider({ children }: ConversationProviderProps) {
     return () => {
       platform.removeChannel(channel);
     };
-  }, [userId, currentWorkspace?.id]);
+  }, [userId, currentWorkspace]);
 
   const refreshConversations = useCallback(async () => {
     await fetchConversations();

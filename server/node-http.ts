@@ -11,12 +11,21 @@ import { ROUTES } from './routes.js';
 import type { ApiMethod, Handler } from './routes.js';
 import { proxyDatabase } from '../api/data.js';
 import * as storage from '../api/storage.js';
+import * as calls from '../api/calls.js';
 
 const MAX_BODY = 256 * 1024;
 const MAX_STORAGE_BODY = Number(process.env.STORAGE_MAX_FILE_BYTES ?? 50 * 1024 * 1024) + 1024;
 const limiter = new RateLimiter();
 
 function dynamicRoute(pathname: string, method: ApiMethod): Handler | null {
+  const callRoute = /^\/api\/calls\/([0-9a-f-]{36})\/(answer|decline|cancel|end|signals|participant|history)$/i.exec(pathname);
+  if (callRoute) {
+    if (callRoute[2] === 'signals' && (method === 'GET' || method === 'POST')) return (request) => calls.signals(request, callRoute[1]);
+    if (callRoute[2] === 'participant' && method === 'POST') return (request) => calls.participantState(request, callRoute[1]);
+    if (callRoute[2] === 'history' && method === 'DELETE') return (request) => calls.removeHistory(request, callRoute[1]);
+    if (method === 'POST') return (request) => calls.action(request, callRoute[1], callRoute[2]);
+    return null;
+  }
   if (pathname.startsWith('/api/db/')) {
     const suffix = pathname.slice('/api/db/'.length);
     return (request) => proxyDatabase(request, suffix);
@@ -57,6 +66,14 @@ async function send(res: ServerResponse, response: Response, requestId: string) 
   body.pipe(res);
 }
 
+function logPath(pathname: string): string {
+  const storagePrefixes = ['/api/storage/object/', '/api/storage/file/', '/api/storage/sign/'];
+  const prefix = storagePrefixes.find((value) => pathname.startsWith(value));
+  if (!prefix) return pathname;
+  const bucket = pathname.slice(prefix.length).split('/')[0] || '[bucket]';
+  return `${prefix}${bucket}/[redacted]`;
+}
+
 export async function handleApi(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const requestId = (req.headers['x-request-id'] as string | undefined)?.slice(0, 64) || randomUUID();
   const started = Date.now();
@@ -81,17 +98,31 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
       await send(res, r, requestId);
       return;
     }
-    const chunks: Buffer[] = [];
-    let size = 0;
-    for await (const chunk of req) {
-      size += (chunk as Buffer).length;
-      const limit = url.pathname.startsWith('/api/storage/object/') ? MAX_STORAGE_BODY : MAX_BODY;
-      if (size > limit) throw new HttpError(413, 'too_large', 'Request is too large.');
-      chunks.push(chunk as Buffer);
-    }
     const headers = new Headers();
     for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers.set(k, v);
-    const request = new Request(url, { method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined });
+    let request: Request;
+    if (url.pathname.startsWith('/api/storage/object/') && method === 'POST') {
+      if (Number(req.headers['content-length'] ?? 0) > MAX_STORAGE_BODY) {
+        throw new HttpError(413, 'too_large', 'Request is too large.');
+      }
+      request = new Request(url, {
+        method,
+        headers,
+        body: Readable.toWeb(req) as unknown as BodyInit,
+        // Node requires this for streamed request bodies even though it is not
+        // part of the browser RequestInit type.
+        duplex: 'half',
+      } as RequestInit & { duplex: 'half' });
+    } else {
+      const chunks: Buffer[] = [];
+      let size = 0;
+      for await (const chunk of req) {
+        size += (chunk as Buffer).length;
+        if (size > MAX_BODY) throw new HttpError(413, 'too_large', 'Request is too large.');
+        chunks.push(chunk as Buffer);
+      }
+      request = new Request(url, { method, headers, body: chunks.length ? Buffer.concat(chunks) : undefined });
+    }
     const response = await handler(request);
     status = response.status;
     await send(res, response, requestId);
@@ -100,6 +131,6 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
     status = response.status;
     await send(res, response, requestId);
   } finally {
-    log.info('request', { request_id: requestId, method: req.method, path: url.pathname, status, ms: Date.now() - started, client });
+    log.info('request', { request_id: requestId, method: req.method, path: logPath(url.pathname), status, ms: Date.now() - started, client });
   }
 }

@@ -38,10 +38,13 @@ export function reasoningEffortFor(model: string, effort: Effort): OpenAIEffort 
 }
 
 let client: OpenAI | null = null;
+let clientConfiguration: string | null = null;
+let clientInjectedForTests = false;
 function getClient(): OpenAI {
   const e = env();
   if (!e.openaiApiKey) throw new ProviderError('not_configured', 'OpenAI is not configured on the server (OPENAI_API_KEY).');
-  if (!client) {
+  const configuration = JSON.stringify([e.openaiApiKey, e.openaiBaseUrl, e.openaiOrganization, e.openaiProject]);
+  if (!client || (!clientInjectedForTests && clientConfiguration !== configuration)) {
     client = new OpenAI({
       apiKey: e.openaiApiKey,
       baseURL: e.openaiBaseUrl ?? undefined,
@@ -50,6 +53,7 @@ function getClient(): OpenAI {
       maxRetries: 2,
       timeout: 10 * 60 * 1000,
     });
+    clientConfiguration = configuration;
   }
   return client;
 }
@@ -57,6 +61,8 @@ function getClient(): OpenAI {
 /** For tests: inject a client (for example one with a stubbed fetch). */
 export function setOpenAIClientForTests(c: OpenAI | null): void {
   client = c;
+  clientInjectedForTests = c !== null;
+  clientConfiguration = null;
 }
 
 function mapError(err: unknown): ProviderError {

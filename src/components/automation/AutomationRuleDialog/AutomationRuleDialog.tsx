@@ -114,7 +114,6 @@ export function AutomationRuleDialog({ rule, onSave, onClose }: AutomationRuleDi
             <ConditionBuilder
               conditions={conditions}
               onChange={setConditions}
-              triggerTypes={triggers.map((t) => t.event_type)}
             />
           </TabsContent>
 

@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState, useLayoutEffect, useRef } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { isVideoFile, isImageFile, isSvgFile, isTextFile, isPdfFile, getFileIcon, formatFileSize } from '@/lib/message';
 import { useSignedUrls } from '@/hooks/useSignedUrls';
 import { MediaViewer } from '@/components/ui/MediaViewer';

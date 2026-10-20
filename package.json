@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "oxlint",
+    "lint": "oxlint --deny-warnings",
     "preview": "vite preview",
     "database:local": "tsx tools/local-database/cli.ts",
     "test": "vitest run",
@@ -28,7 +28,7 @@
     "pg": "^8.23.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-router-dom": "^7.18.1",
+    "react-router-dom": "^7.18.4",
     "unpdf": "^1.8.1",
     "zod": "^4.6.5"
   },
@@ -50,5 +50,10 @@
   },
   "engines": {
     "node": ">=24"
+  },
+  "overrides": {
+    "mammoth": {
+      "argparse": "3.0.0"
+    }
   }
 }

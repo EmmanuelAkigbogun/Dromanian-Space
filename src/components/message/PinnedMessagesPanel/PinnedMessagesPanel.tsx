@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useChannel } from '@/hooks/useChannel';
 import { useProfiles } from '@/hooks/useProfiles';
-import { useAuth } from '@/hooks/useAuth';
 import { getDisplayName, formatRelativeTime } from '@/lib/message';
 import { getMessagesByIds } from '@/lib/message';
 import { platform } from '@/lib/platform';
@@ -29,7 +28,6 @@ interface PinnedMessagesPanelProps {
 
 export function PinnedMessagesPanel({ channelId, onClose, showSearch = true, showChannelNames = true }: PinnedMessagesPanelProps) {
   const { currentChannel, channels } = useChannel();
-  const { userId } = useAuth();
   const navigate = useNavigate();
   const [pinned, setPinned] = useState<PinnedMessageWithContent[]>([]);
   const [isLoading, setIsLoading] = useState(true);

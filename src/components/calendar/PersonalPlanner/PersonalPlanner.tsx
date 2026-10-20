@@ -7,7 +7,6 @@ import styles from './PersonalPlanner.module.css';
 
 interface PersonalPlannerProps {
   events: CalendarEvent[];
-  reminders: CalendarReminder[];
   pendingReminders: CalendarReminder[];
   onEventClick?: (event: CalendarEvent) => void;
 }
@@ -34,7 +33,7 @@ function isPast(date: Date): boolean {
   return date < new Date();
 }
 
-export function PersonalPlanner({ events, reminders, pendingReminders, onEventClick }: PersonalPlannerProps) {
+export function PersonalPlanner({ events, pendingReminders, onEventClick }: PersonalPlannerProps) {
   const now = Date.now();
   const todayEvents = events.filter((e) => isToday(new Date(e.start_at)));
   const thisWeekEvents = events.filter((e) => {

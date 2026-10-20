@@ -23,8 +23,11 @@ x-server-env: &server-env
   DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-10}
   APP_JWT_SECRET: ${APP_JWT_SECRET:?APP_JWT_SECRET}
   SESSION_DAYS: ${SESSION_DAYS:-30}
+  DEFAULT_WORKSPACE_SLUG: ${DEFAULT_WORKSPACE_SLUG:-digital-romanian}
+  DEFAULT_CHANNEL_SLUG: ${DEFAULT_CHANNEL_SLUG:-general}
   STORAGE_ROOT: /data/storage
   STORAGE_MAX_FILE_BYTES: ${STORAGE_MAX_FILE_BYTES:-52428800}
+  STORAGE_SIGNING_SECRET: ${STORAGE_SIGNING_SECRET:-}
   AI_DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-anthropic}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
   ANTHROPIC_REFUSAL_FALLBACK: ${ANTHROPIC_REFUSAL_FALLBACK:-on}
@@ -39,6 +42,8 @@ x-server-env: &server-env
   CRON_SECRET: ${CRON_SECRET:-}
   AGENT_RUN_BUDGET_MS: ${AGENT_RUN_BUDGET_MS:-600000}
   N8N_BASE_URL: ${N8N_BASE_URL:-}
+  TURN_HOST: ${TURN_HOST:-turn.purplehive.pro}
+  TURN_SHARED_SECRET: ${TURN_SHARED_SECRET:-}
   NODE_OPTIONS: --max-old-space-size=384
 
 services:
@@ -201,6 +206,51 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+
+  coturn:
+    image: coturn/coturn:4.18.0-r0
+    restart: unless-stopped
+    logging: *logging
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    command:
+      - --listening-port=3478
+      - --tls-listening-port=5349
+      - --min-port=49160
+      - --max-port=49200
+      - --fingerprint
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SHARED_SECRET:?TURN_SHARED_SECRET}
+      - --realm=${TURN_HOST:-turn.purplehive.pro}
+      - --server-name=${TURN_HOST:-turn.purplehive.pro}
+      - --external-ip=${TURN_EXTERNAL_IP:?TURN_EXTERNAL_IP}
+      - --cert=/run/coturn/fullchain.pem
+      - --pkey=/run/coturn/privkey.pem
+      - --stale-nonce=600
+      - --no-multicast-peers
+      - --no-loopback-peers
+      - --no-cli
+      - --no-software-attribute
+    ports:
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+      - "5349:5349/tcp"
+      - "49160-49200:49160-49200/tcp"
+      - "49160-49200:49160-49200/udp"
+    volumes:
+      - type: bind
+        source: /srv/app-data/dromanian-space/coturn
+        target: /run/coturn
+        read_only: true
+        bind:
+          create_host_path: false
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
 
   web:
     <<: *app-hardening

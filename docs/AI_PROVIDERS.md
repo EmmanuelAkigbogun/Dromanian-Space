@@ -17,10 +17,21 @@ different providers. No GPU and no local model server are needed.
 | `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID` | Optional OpenAI client settings. |
 | `AI_DEFAULT_PROVIDER` | `anthropic` or `openai`: which default applies to new workspaces. If only the other provider has a key, its default is used. |
 
-Keys are server-only. They are never sent to the browser, logged, or stored in the database. Set
-them as Coolify secrets shared by `api` and `worker`, then redeploy. At startup the server records
-only which providers are configured (booleans) and the platform default model. `GET /api/health`
-and `/api/ready` report the same booleans.
+Keys are server-only. The platform administrator can enter or replace them in **Agents → AI
+settings**. The browser submits a key once over the authenticated same-origin API; the key is
+encrypted with AES-256-GCM and stored in the deployment's private shared storage volume. It is
+never returned to the browser, logged, or stored as plaintext. Both the API and worker pick up a
+replacement without a redeploy.
+
+Coolify runtime secrets remain supported as a fallback. A key saved through AI settings overrides
+the matching `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` environment variable. At startup the server
+records only which providers are configured (booleans) and the platform default model.
+`GET /api/health` and `/api/ready` report the same booleans.
+
+Drive file bytes are stored on the server at
+`/srv/cloud-data/dromanian-space/storage/drive`. PostgreSQL stores the logical folder tree,
+ownership, versions and grants. A file belongs to its uploader and remains private until its owner
+or an authorized editor shares it with a user, channel, project or the whole workspace.
 
 ## Workspace configuration (Agents → AI settings, admins)
 
@@ -47,7 +58,7 @@ A served snapshot id such as `gpt-5.4-2026-03-05` is priced by its most specific
   you set them, OpenAI usage is recorded with tokens but no cost, and the settings dialog says so.
   The app never invents a price.
 
-Set or update prices in Studio's SQL editor:
+Set or update prices through an administrator PostgreSQL session:
 
 ```sql
 UPDATE ai_models SET input_per_mtok = 1.25, output_per_mtok = 10, cache_read_per_mtok = 0.125
@@ -110,4 +121,4 @@ The OpenAI adapter is covered by deterministic tests against a scripted Response
 truncation, refusals, domain-filtered search, error mapping and cancellation. The Anthropic adapter
 and the engine are covered by provider-double tests. **No live request to Anthropic or OpenAI has
 been made** while building this. After deployment, run one agent per configured provider (checklist
-in [COOLIFY_SETUP.md](COOLIFY_SETUP.md) section 9) to confirm keys, model access and streaming.
+in the [COOLIFY_SETUP.md](COOLIFY_SETUP.md) acceptance checklist) to confirm keys, model access and streaming.

@@ -12,7 +12,7 @@ umask 077
 
 archive=${1:?archive path required}
 : "${AGE_IDENTITY_FILE:?Set AGE_IDENTITY_FILE to the private key file}"
-DB_IMAGE=${DB_IMAGE:-supabase/postgres:17.6.1.136}
+DB_IMAGE=${DB_IMAGE:-pgvector/pgvector:0.8.1-pg17-bookworm}
 
 work=$(mktemp -d)
 name="dromanian-restore-check-$$"
@@ -33,12 +33,11 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 
-as_admin() { docker exec -i -e PGPASSWORD="$password" "$name" psql -h 127.0.0.1 -U supabase_admin -d postgres -X -q "$@"; }
+as_admin() { docker exec -i -e PGPASSWORD="$password" "$name" psql -h 127.0.0.1 -U postgres -d postgres -X -q "$@"; }
 
 echo "Restoring roles and database (errors about objects that already exist in the image are expected)"
 as_admin -f - < "$work/globals.sql" >/dev/null 2>"$work/globals.err" || true
-docker exec -i -e PGPASSWORD="$password" "$name" pg_restore -h 127.0.0.1 -U supabase_admin -d postgres --clean --if-exists --no-owner < "$work/database.dump" 2>"$work/restore.err" || true
-echo "pg_restore reported $(grep -c 'error' "$work/restore.err" || true) error line(s); review $work/restore.err if the counts below look wrong."
+docker exec -i -e PGPASSWORD="$password" "$name" pg_restore -h 127.0.0.1 -U postgres -d postgres --clean --if-exists --no-owner --exit-on-error < "$work/database.dump" 2>"$work/restore.err"
 
 echo "Record counts"
 as_admin -A -t -F ' ' -c "SELECT 'users', count(*) FROM auth.users UNION ALL SELECT 'workspaces', count(*) FROM public.workspaces

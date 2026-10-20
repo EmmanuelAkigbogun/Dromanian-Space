@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useMentions } from '@/hooks/useMentions';
 import { Badge } from '@/components/ui/Badge';
-import { ScrollArea } from '@/components/ui/ScrollArea';
+
 import { SavedMessagesPanel } from '../SavedMessagesPanel/SavedMessagesPanel';
 import { PinnedMessagesPanel } from '@/components/message/PinnedMessagesPanel';
 import { FavoritesPanel } from '../FavoritesPanel/FavoritesPanel';

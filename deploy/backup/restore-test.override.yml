@@ -1,94 +1,53 @@
-# Turns deploy/supabase/docker-compose.yml into an ISOLATED copy for restore
-# tests on the same server (used by deploy/backup/restore-test.sh):
-#   * its own data under RESTORE_ROOT (never the production directories),
-#   * no fixed container names (no clash with production),
-#   * no public route, no shared networks, gateway only on 127.0.0.1:18000.
-# Requires Docker Compose 2.24.4+ (!reset / !override).
-
+# Isolates the root standalone Compose stack for a restore drill. Production
+# containers, paths and ports are never referenced by this override.
 services:
   mount-guard:
     volumes: !override
       - type: bind
         source: ${RESTORE_ROOT:?RESTORE_ROOT}/app
         target: /check/app
-        read_only: true
         bind:
           create_host_path: false
       - type: bind
         source: ${RESTORE_ROOT:?RESTORE_ROOT}/cloud
         target: /check/cloud
-        read_only: true
         bind:
           create_host_path: false
 
   db:
-    container_name: !reset null
     volumes: !override
-      - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
-      - ./volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
-      - ./volumes/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:Z
-      - ./volumes/db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:Z
-      - ./volumes/db/_supabase.sql:/docker-entrypoint-initdb.d/migrations/97-_supabase.sql:Z
-      - ./volumes/db/logs.sql:/docker-entrypoint-initdb.d/migrations/99-logs.sql:Z
-      - ./volumes/db/pooler.sql:/docker-entrypoint-initdb.d/migrations/99-pooler.sql:Z
       - type: bind
-        source: ${RESTORE_ROOT:?RESTORE_ROOT}/app/supabase/db/data
+        source: ${RESTORE_ROOT:?RESTORE_ROOT}/app/postgres
         target: /var/lib/postgresql/data
         bind:
           create_host_path: false
-      - db-config:/etc/postgresql-custom
 
-  storage:
-    container_name: !reset null
+  api:
     volumes: !override
       - type: bind
         source: ${RESTORE_ROOT:?RESTORE_ROOT}/cloud/storage
-        target: /var/lib/storage
+        target: /data/storage
         bind:
           create_host_path: false
 
-  imgproxy:
-    container_name: !reset null
+  worker:
     volumes: !override
       - type: bind
         source: ${RESTORE_ROOT:?RESTORE_ROOT}/cloud/storage
-        target: /var/lib/storage
+        target: /data/storage
+        bind:
+          create_host_path: false
+
+  coturn:
+    profiles: ["turn-restore-test"]
+    volumes: !override
+      - type: bind
+        source: ${RESTORE_ROOT:?RESTORE_ROOT}/app/coturn
+        target: /run/coturn
         read_only: true
         bind:
           create_host_path: false
 
-  api-gw:
-    container_name: !reset null
+  web:
     ports: !override
-      - "127.0.0.1:18000:8000"
-    networks: !override
-      default:
-        aliases:
-          - envoy
-          - kong
-    labels: !reset []
-
-  studio:
-    container_name: !reset null
-  auth:
-    container_name: !reset null
-  rest:
-    container_name: !reset null
-  realtime:
-    # Realtime derives its tenant from this host name; keep it, scoped to this project.
-    container_name: !reset null
-    hostname: realtime-dev.supabase-realtime
-  meta:
-    container_name: !reset null
-  functions:
-    container_name: !reset null
-  supavisor:
-    container_name: !reset null
-
-volumes:
-  db-config:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${RESTORE_ROOT:?RESTORE_ROOT}/app/supabase/db/config
+      - "127.0.0.1:18000:8080"

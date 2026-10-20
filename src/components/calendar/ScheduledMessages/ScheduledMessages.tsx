@@ -13,7 +13,6 @@ import type { ScheduledMessage, ScheduledMessageAttachment } from '@/types';
 import styles from './ScheduledMessages.module.css';
 
 const MAX_FILES = 5;
-const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
 interface ScheduleFormData {
   content: string;

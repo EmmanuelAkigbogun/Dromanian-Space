@@ -1,6 +1,8 @@
 // Server-only configuration. Nothing here may be exposed through a VITE_
 // variable or imported by browser code.
 
+import { providerApiKey } from './provider-secrets.js';
+
 function read(name: string): string | null {
   const value = process.env[name]?.trim();
   return value ? value : null;
@@ -12,6 +14,8 @@ export interface ServerEnv {
   databaseUrl: string | null;
   databaseRestUrl: string;
   appJwtSecret: string | null;
+  defaultWorkspaceSlug: string;
+  defaultChannelSlug: string;
   anthropicApiKey: string | null;
   /** Server-side refusal fallback (`fallbacks: "default"`); on unless set to "off". */
   refusalFallback: boolean;
@@ -35,15 +39,21 @@ export interface ServerEnv {
 let cached: ServerEnv | null = null;
 
 export function env(): ServerEnv {
-  if (cached) return cached;
+  if (cached) {
+    cached.anthropicApiKey = providerApiKey('anthropic');
+    cached.openaiApiKey = providerApiKey('openai');
+    return cached;
+  }
   const provider = read('AI_DEFAULT_PROVIDER');
   cached = {
     databaseUrl: read('DATABASE_URL'),
     databaseRestUrl: read('DATABASE_REST_URL') ?? 'http://rest:3000',
     appJwtSecret: read('APP_JWT_SECRET'),
-    anthropicApiKey: read('ANTHROPIC_API_KEY'),
+    defaultWorkspaceSlug: read('DEFAULT_WORKSPACE_SLUG') ?? 'digital-romanian',
+    defaultChannelSlug: read('DEFAULT_CHANNEL_SLUG') ?? 'general',
+    anthropicApiKey: providerApiKey('anthropic'),
     refusalFallback: read('ANTHROPIC_REFUSAL_FALLBACK') !== 'off',
-    openaiApiKey: read('OPENAI_API_KEY'),
+    openaiApiKey: providerApiKey('openai'),
     openaiBaseUrl: read('OPENAI_BASE_URL'),
     openaiOrganization: read('OPENAI_ORG_ID'),
     openaiProject: read('OPENAI_PROJECT_ID'),

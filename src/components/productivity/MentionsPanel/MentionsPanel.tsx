@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMentions } from '@/hooks/useMentions';
 import { Avatar } from '@/components/ui/Avatar';

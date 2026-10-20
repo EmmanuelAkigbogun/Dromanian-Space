@@ -10,9 +10,7 @@ import { platform } from '@/lib/platform';
 // to regenerate your types: `platform gen types typescript --project-id <id> > src/types/database.types.ts`
 // (or your project's equivalent command) so `call_signaling` is recognized -
 // do that when you get a chance and you can remove this cast.
-const db = platform as any;
-
-const ICE_SERVERS: RTCConfiguration = {
+const FALLBACK_ICE_SERVERS: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
@@ -47,6 +45,7 @@ export function useCallEngine() {
   const offerRetryIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const destroyedRef = useRef<boolean>(false);
   const processedMsgIdsRef = useRef<Set<string>>(new Set());
+  const iceConfigurationRef = useRef<RTCConfiguration>(FALLBACK_ICE_SERVERS);
 
   const getRemoteAudioContainer = useCallback(() => {
     if (!remoteAudioContainerRef.current) {
@@ -68,6 +67,11 @@ export function useCallEngine() {
   const startLocalMedia = useCallback(
     async (withVideo: boolean): Promise<MediaStream | null> => {
       try {
+        try {
+          const response = await fetch('/api/calls/ice', { credentials: 'same-origin' });
+          if (response.ok) iceConfigurationRef.current = { iceServers: (await response.json()).iceServers };
+          else console.warn('[call] TURN relay unavailable; calls may fail across different networks');
+        } catch { console.warn('[call] Could not load TURN credentials'); }
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: true,
           video: withVideo ? { width: 640, height: 480, facingMode: 'user' } : false,
@@ -120,14 +124,11 @@ export function useCallEngine() {
     const callId = callIdRef.current;
     if (destroyedRef.current || !callId) return;
     try {
-      const { error } = await db.from('call_signaling').insert({
-        call_id: callId,
-        from_user_id: myUserIdRef.current,
-        to_user_id: toUserId,
-        type,
-        payload,
+      const response = await fetch(`/api/calls/${callId}/signals`, {
+        method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ toUserId, type, payload, clientMessageId: crypto.randomUUID() }),
       });
-      if (error) console.warn('[call] sendSignaling insert error:', error.message);
+      if (!response.ok) console.warn('[call] signaling API rejected a message');
     } catch (err) {
       console.error('[call] sendSignaling failed:', err);
     }
@@ -191,7 +192,7 @@ export function useCallEngine() {
 
   const createPeerConnection = useCallback(
     (remoteUserId: string, localStream: MediaStream): PeerEntry => {
-      const pc = new RTCPeerConnection(ICE_SERVERS);
+      const pc = new RTCPeerConnection(iceConfigurationRef.current);
       const remoteStream = new MediaStream();
 
       localStream.getTracks().forEach((track) => {
@@ -447,6 +448,12 @@ export function useCallEngine() {
       ch.subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           console.log('[call] signaling channel subscribed (db-backed)');
+          fetch(`/api/calls/${callId}/signals`, { credentials: 'same-origin' })
+            .then((response) => response.ok ? response.json() : [])
+            .then((messages) => Promise.all((messages as any[]).map((message) => {
+              ch.dispatch({ kind: 'postgres_changes', table: 'call_signaling', event: 'INSERT', payload: { new: message, old: {}, eventType: 'INSERT' } });
+            })))
+            .catch(() => undefined);
         } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           console.warn(`[call] signaling channel failed: ${status}, retrying...`);
           if (!destroyedRef.current && signalingChannelRef.current === ch) {
@@ -548,8 +555,12 @@ export function useCallEngine() {
     }
   }, []);
 
-  const broadcastMute = useCallback((_isMuted: boolean) => {
-    // Mute state tracked via call_participants table
+  const broadcastMute = useCallback((isMuted: boolean) => {
+    const callId = callIdRef.current;
+    if (!callId) return;
+    void import('@/lib/call/call').then(({ updateCallParticipantMuted }) =>
+      updateCallParticipantMuted(callId, isMuted),
+    );
   }, []);
 
   const broadcastEndCall = useCallback(async () => {

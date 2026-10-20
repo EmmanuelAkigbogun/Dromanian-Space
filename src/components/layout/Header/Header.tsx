@@ -41,8 +41,8 @@ export function Header({ title = 'Δαρκ space' }: HeaderProps) {
           </svg>
         </button>
         <h1 className={styles.headerTitle}>
-          <span className={styles.titleFull}>Δαρκ space</span>
-          <span className={styles.titleShort}>Δαρκ ❀</span>
+          <span className={styles.titleFull}>{title}</span>
+          <span className={styles.titleShort}>DS</span>
         </h1>
       </div>
 

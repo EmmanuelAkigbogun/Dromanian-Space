@@ -46,6 +46,7 @@ export function ProjectListView({ projectId, workspaceId, onStatsChange, onTaskD
   const [hiddenStatuses, setHiddenStatuses] = useState<Record<string, string[]>>({});
 
   const fetchTasks = useCallback(async () => {
+    void taskVersion;
     const { data: taskData, error } = await platform
       .from('tasks')
       .select('*')

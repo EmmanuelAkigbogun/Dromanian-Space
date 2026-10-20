@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
-# Restores a backup's DATA into a FRESH Supabase stack (new server, or an
+# Restores a backup's DATA into a FRESH standalone stack (new server, or an
 # isolated recovery stack). It refuses any target that already holds users or
 # workspaces, so it cannot overwrite a production database.
 #
 # Procedure (docs/DISASTER_RECOVERY.md has the full runbook):
-#   1. Bring up an empty Supabase stack with the SAME secrets as the backup
-#      (config.tar inside the archive holds supabase.env).
+#   1. Bring up an empty standalone stack with the SAME secrets as the backup.
 #   2. Read the backup's schema version:   deploy/backup/restore.sh <archive> --manifest
-#   3. Build that schema with migrations:  deploy/migrate.sh apply --to <latest version in the manifest>
+#   3. Build that schema with migrations:  docker compose run --rm migrate
 #   4. Restore the data and files:         DB_CONTAINER=... STORAGE_DIR=... deploy/backup/restore.sh <archive>
-#   5. Apply newer migrations, if any:     deploy/migrate.sh apply
-#   6. Restart the Supabase stack and the app, sign in, open a document.
+#   5. Restart the stack, sign in, and open a document.
 #
 # Environment: AGE_IDENTITY_FILE (private key; keep it off the server except
 # during recovery), DB_CONTAINER (target database container; required, never
@@ -38,7 +36,7 @@ if [[ "${2:-}" == "--manifest" ]]; then
   echo "Backup created: $created"
   echo "Database image: $(sed -n 's/^db_image=//p' "$work/MANIFEST")"
   echo "Latest migration: ${latest:-unknown}"
-  echo "Next: deploy/migrate.sh apply --to ${latest:-<version>} on the fresh stack."
+  echo "Next: run the repository migrator on a fresh standalone stack."
   exit 0
 fi
 
@@ -50,7 +48,8 @@ if [[ -n "${PGPASSWORD_FILE:-}" ]]; then
   export PGPASSWORD
   PASS_ARGS=(-e PGPASSWORD)
 fi
-sql() { docker exec -i ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} "$DB_CONTAINER" psql -h 127.0.0.1 -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -X -q -At "$@"; }
+DB_USER=${DB_USER:-postgres}
+sql() { docker exec -i ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} "$DB_CONTAINER" psql -h 127.0.0.1 -U "$DB_USER" -d postgres -v ON_ERROR_STOP=1 -X -q -At "$@"; }
 
 # ---- Guards: never overwrite a database or storage that holds data --------
 users=$(sql -c "SELECT count(*) FROM auth.users")
@@ -59,13 +58,14 @@ if (( users > 0 || workspaces > 0 )); then
   echo "Refusing: the target already has $users user(s) and $workspaces workspace(s). Restore only into a fresh stack." >&2
   exit 1
 fi
-target=$(sql -c "SELECT coalesce(string_agg(version, ',' ORDER BY version), '') FROM supabase_migrations.schema_migrations" 2>/dev/null || echo "")
-if [[ "$target" != "$migrations" ]]; then
-  echo "The target schema does not match the backup." >&2
-  echo "  backup latest: ${latest:-unknown}; target latest: ${target##*,}" >&2
-  echo "Run: deploy/migrate.sh apply --to $latest   (on the fresh stack), then retry." >&2
-  exit 1
-fi
+target=$(sql -c "SELECT coalesce(string_agg(version, ',' ORDER BY version), '') FROM app_migrations.schema_migrations" 2>/dev/null || echo "")
+IFS=',' read -ra backup_versions <<< "$migrations"
+for version in "${backup_versions[@]}"; do
+  [[ -z "$version" || ",$target," == *",$version,"* ]] || {
+    echo "The target is missing backup migration $version. Run the repository migrator, then retry." >&2
+    exit 1
+  }
+done
 if [[ ! -d "$STORAGE_DIR" ]] || find "$STORAGE_DIR" -type f -print -quit | grep -q .; then
   echo "Refusing: $STORAGE_DIR is missing or already contains files." >&2
   exit 1
@@ -82,7 +82,7 @@ tables=$(grep 'TABLE DATA' "$work/restore.list" | awk '{printf "\"%s\".\"%s\"\n"
 echo "Restoring data for $(grep -c 'TABLE DATA' "$work/restore.list") tables (backup $created)"
 # Rows seeded by migrations (catalogs, defaults) are replaced by the backup's.
 sql -c "TRUNCATE TABLE $tables CASCADE"
-docker exec ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} "$DB_CONTAINER" pg_restore -h 127.0.0.1 -U supabase_admin -d postgres \
+docker exec ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} "$DB_CONTAINER" pg_restore -h 127.0.0.1 -U "$DB_USER" -d postgres \
   --data-only --disable-triggers --single-transaction --exit-on-error -L /tmp/restore.list /tmp/restore.dump
 
 # ---- Files -----------------------------------------------------------------
@@ -93,4 +93,4 @@ echo "Record counts"
 sql -F ' ' -c "SELECT 'users', count(*) FROM auth.users UNION ALL SELECT 'workspaces', count(*) FROM public.workspaces
   UNION ALL SELECT 'messages', count(*) FROM public.messages UNION ALL SELECT 'drive_items', count(*) FROM public.drive_items
   UNION ALL SELECT 'storage_objects', count(*) FROM storage.objects"
-echo "Data restored. Next: deploy/migrate.sh apply (newer migrations), restart the Supabase stack and the app, then sign in and open a file."
+echo "Data restored. Restart the standalone stack, then sign in and open a file."

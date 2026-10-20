@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { ProjectCard } from '@/components/projects/ProjectCard';
 import { Spinner } from '@/components/ui/Spinner';
 import type { Project } from '@/types';

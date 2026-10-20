@@ -208,7 +208,7 @@ export function ChannelProvider({ children }: ChannelProviderProps) {
     return () => {
       platform.removeChannel(channel);
     };
-  }, [currentWorkspace?.id, userId]);
+  }, [currentWorkspace, userId]);
 
   // Realtime: remove channels from sidebar when deleted
   useEffect(() => {
@@ -244,7 +244,7 @@ export function ChannelProvider({ children }: ChannelProviderProps) {
     return () => {
       platform.removeChannel(channel);
     };
-  }, [currentWorkspace?.id]);
+  }, [currentWorkspace]);
 
   const switchChannel = useCallback(
     async (slug: string) => {
@@ -391,7 +391,7 @@ export function ChannelProvider({ children }: ChannelProviderProps) {
         }
       }
     },
-    [currentChannel],
+    [currentChannel, navigate],
   );
 
   const joinChannelHandler = useCallback(

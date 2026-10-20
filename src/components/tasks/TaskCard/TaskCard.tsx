@@ -101,7 +101,7 @@ export const TaskCard = memo(function TaskCard({
     } else if (e.key === 'Escape') {
       setShowStatusDropdown(false);
     }
-  }, [showStatusDropdown, activeIndex, visibleStatusOptions, onStatusChange, task.id]);
+  }, [activeIndex, visibleStatusOptions, onStatusChange, task.id]);
 
   const handleCardClick = useCallback(() => {
     setShowStatusDropdown(false);

@@ -38,10 +38,14 @@ const UNKNOWN_CAPS: ModelCaps = { adaptive: false, effort: false, fallbacks: fal
 const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
 
 let client: Anthropic | null = null;
+let clientKey: string | null = null;
 function getClient(): Anthropic {
   const key = env().anthropicApiKey;
   if (!key) throw new ProviderError('not_configured', 'Anthropic is not configured on the server (ANTHROPIC_API_KEY).');
-  if (!client) client = new Anthropic({ apiKey: key, maxRetries: 2, timeout: 10 * 60 * 1000 });
+  if (!client || clientKey !== key) {
+    client = new Anthropic({ apiKey: key, maxRetries: 2, timeout: 10 * 60 * 1000 });
+    clientKey = key;
+  }
   return client;
 }
 

@@ -135,7 +135,7 @@ export function DmConversationView() {
     }
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
-  }, [channelId]);
+  }, [channelId, currentWorkspace?.id, threadCountsCtx]);
 
   useLayoutEffect(() => {
     const container = scrollAreaRef.current;
@@ -153,7 +153,7 @@ export function DmConversationView() {
     if (newMsgArrived && atBottomRef.current && messages.length > 0 && !loadingOlderRef.current) {
       container.scrollTop = container.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, threadCountsCtx]);
 
   useEffect(() => {
     const container = scrollAreaRef.current;
@@ -237,11 +237,11 @@ export function DmConversationView() {
       });
 
     return () => { platform.removeChannel(ch); };
-  }, [channelId]);
+  }, [channelId, currentWorkspace?.id, threadCountsCtx]);
 
   useEffect(() => {
     messagesRef.current = messages;
-  }, [messages]);
+  }, [messages, threadCountsCtx]);
 
   useEffect(() => {
     if (!threadCountsCtx || messages.length === 0) return;
@@ -253,7 +253,7 @@ export function DmConversationView() {
         }
       });
     });
-  }, [messages]);
+  }, [messages, threadCountsCtx]);
 
   const loadMore = useCallback(async () => {
     if (!channelId || isLoadingMore || !hasMore || messagesRef.current.length === 0) return;

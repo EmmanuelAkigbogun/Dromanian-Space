@@ -24,21 +24,21 @@ export function useAuth(): UseAuthReturn {
     async (email: string, password: string) => {
       return auth.signUp({ email, password });
     },
-    [auth.signUp]
+    [auth]
   );
 
   const signIn = useCallback(
     async (email: string, password: string) => {
       return auth.signIn({ email, password });
     },
-    [auth.signIn]
+    [auth]
   );
 
   const resetPassword = useCallback(
     async (email: string) => {
       return auth.resetPassword(email);
     },
-    [auth.resetPassword]
+    [auth]
   );
 
   const isLoading = auth.status === 'loading';
@@ -54,7 +54,7 @@ export function useAuth(): UseAuthReturn {
       return role;
     }
     return 'member';
-  }, [auth.user]);
+  }, [auth]);
 
   return useMemo(
     () => ({
@@ -73,12 +73,7 @@ export function useAuth(): UseAuthReturn {
       userRole,
     }),
     [
-      auth.status,
-      auth.user,
-      auth.error,
-      auth.signOut,
-      auth.updateProfile,
-      auth.clearError,
+      auth,
       signUp,
       signIn,
       resetPassword,

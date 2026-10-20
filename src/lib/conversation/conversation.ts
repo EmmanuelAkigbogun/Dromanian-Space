@@ -1,8 +1,6 @@
 import { platform } from '@/lib/platform';
 import type { Profile } from '@/types';
 
-const db = platform as any;
-
 export interface DirectConversation {
   id: string;
   workspace_id: string;

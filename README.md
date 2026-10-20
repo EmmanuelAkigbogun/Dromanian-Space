@@ -8,7 +8,7 @@ Requires Node 24, PostgreSQL 17 and PostgREST. The local adapter defaults to Hom
 
 ```sh
 npm ci
-npm run supabase:local -- start
+npm run database:local -- start
 npm run dev:local
 ```
 
@@ -20,11 +20,11 @@ For a new installation, create a preview owner, teammate, two workspaces and a s
 node --import tsx scripts/seed-preview.ts
 ```
 
-The email and password are saved in `.local/preview.json`. Re-running the seed creates additional fixtures; it does not replace an existing account. Do not run `supabase:local reset` to restart the preview: it deletes the local database. Use `stop` / `start` instead.
+The email and password are saved in `.local/preview.json`. Re-running the seed creates additional fixtures; it does not replace an existing account. Do not run `database:local -- reset` to restart the preview: it deletes the local database. Use `stop` / `start` instead.
 
 AI requests need a server-side `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY`; each agent runs on the provider of its model (see [AI providers](docs/AI_PROVIDERS.md)). The app shows a setup state when no provider is configured. Set keys in the shell before starting `dev:local`; local database configuration is loaded automatically. Voyage embeddings are optional. Never place server keys in `VITE_` variables.
 
-The emulator supports database authorization, password login and Storage for development. It does not implement Supabase Realtime, OAuth, email delivery, or production storage infrastructure.
+The local stack supports database authorization, password login and filesystem storage. It does not emulate production SSE, email delivery, TURN or backup infrastructure.
 
 ## Checks
 
@@ -48,4 +48,4 @@ npm run types:platform
 - [AI providers](docs/AI_PROVIDERS.md) (Anthropic and OpenAI) and [automation with n8n](docs/AUTOMATION.md)
 - [Permissions](docs/PERMISSIONS.md) and [testing and evidence](docs/TESTING.md)
 
-`src/` contains the browser app; `api/` contains the web-standard HTTP handlers; `server/` contains the API server and worker entry points, provider adapters, agent tools and background jobs. Production runs as Docker containers (`Dockerfile`, `docker-compose.yml`, `deploy/`) on Coolify with self-hosted Supabase; see the self-hosting guide. `supabase/migrations/` is the ordered schema history. Never replay `supabase/SQL/all/all.sql` on an existing project.
+`src/` contains the browser app; `api/` contains the web-standard HTTP handlers; `server/` contains the API server and worker entry points, provider adapters, agent tools and background jobs. Production runs as one standalone Docker Compose stack (`Dockerfile`, `docker-compose.yml`, `deploy/`) on Coolify. `database/migrations/` is the ordered schema history. Never replay `database/SQL/all/all.sql` on an existing installation.

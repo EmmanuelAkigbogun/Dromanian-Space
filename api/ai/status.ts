@@ -8,6 +8,7 @@ import { crmInstalled } from '../../server/capabilities.js';
 import { embeddingsConfigured } from '../../server/knowledge/embed.js';
 import { KNOWN_TOOLS, toolAvailability } from '../../server/agents/tools/index.js';
 import { authenticate, requireMember, rpc, serviceClient } from '../../server/database.js';
+import { providerKeySource } from '../../server/provider-secrets.js';
 
 interface Settings {
   enabled: boolean;
@@ -97,6 +98,7 @@ export async function GET(request: Request): Promise<Response> {
       db.from('workspace_members').select('role').eq('workspace_id', workspaceId).eq('user_id', user.id).maybeSingle(),
     ]);
     const isAdmin = ['owner', 'admin'].includes((membership.data?.role as string | undefined) ?? '');
+    const canManageProviderKeys = user.appMetadata?.platform_admin === true;
     const providers = providerStates();
     const configured = new Set<string>(providers.filter((p) => p.configured).map((p) => p.name));
     const providerConfigured = anyProviderConfigured();
@@ -111,6 +113,12 @@ export async function GET(request: Request): Promise<Response> {
     return json({
       provider: { name: env().defaultProvider, configured: providerConfigured, refusal_fallback: env().refusalFallback },
       providers: providers.map((p) => ({ name: p.name, label: p.label, configured: p.configured })),
+      provider_key_management: {
+        allowed: canManageProviderKeys,
+        providers: canManageProviderKeys
+          ? providers.map((p) => ({ name: p.name, source: providerKeySource(p.name) }))
+          : [],
+      },
       models,
       costs,
       // Where data goes when agents work, stated plainly for workspace settings.

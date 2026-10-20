@@ -299,6 +299,116 @@
   }
 }
 
+/* Dark-professional product palette. Kept as a late semantic override so
+   workspace branding can still replace the brand variables safely. */
+:root,
+[data-theme='light'] {
+  --brand-primary: #6d5ce7;
+  --brand-secondary: #171a24;
+  --brand-background: #f4f6fa;
+  --brand-accent: #0891b2;
+  --color-primary: #6d5ce7;
+  --color-primary-hover: #5b4bd2;
+  --color-primary-active: #493bb8;
+  --color-secondary: #171a24;
+  --color-secondary-hover: #252938;
+  --color-secondary-active: #0f1118;
+  --color-accent: #0891b2;
+  --color-accent-hover: #0e7490;
+  --color-accent-active: #155e75;
+  --color-background: #f4f6fa;
+  --color-surface: #ffffff;
+  --color-surface-secondary: #edf0f6;
+  --color-surface-tertiary: #e3e7ef;
+  --color-text: #171923;
+  --color-text-secondary: #50586b;
+  --color-text-muted: #737c91;
+  --color-text-inverse: #ffffff;
+  --color-border: #d8dde8;
+  --color-border-hover: #bfc7d6;
+  --color-focus: #6d5ce7;
+  --color-interactive: #6d5ce7;
+  --color-interactive-hover: #5b4bd2;
+  --color-interactive-active: #493bb8;
+  --color-info: #087e9c;
+  --color-info-hover: #0e7490;
+  --color-info-subtle: #e1f7fb;
+  --shadow-color: 226 28% 19%;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.125rem;
+}
+
+[data-theme='dark'] {
+  --brand-primary: #9b8afb;
+  --brand-secondary: #12151c;
+  --brand-background: #0b0d12;
+  --brand-accent: #43d7ee;
+  --color-primary: #9b8afb;
+  --color-primary-hover: #b0a3ff;
+  --color-primary-active: #8372ea;
+  --color-secondary: #171a23;
+  --color-secondary-hover: #222735;
+  --color-secondary-active: #0d0f14;
+  --color-accent: #43d7ee;
+  --color-accent-hover: #67e2f4;
+  --color-accent-active: #22bdd6;
+  --color-background: #0b0d12;
+  --color-surface: #12151c;
+  --color-surface-secondary: #181c25;
+  --color-surface-tertiary: #202532;
+  --color-text: #f5f7fb;
+  --color-text-secondary: #b7bdca;
+  --color-text-muted: #7f8798;
+  --color-text-inverse: #0b0d12;
+  --color-border: #2a303d;
+  --color-border-hover: #3b4353;
+  --color-focus: #9b8afb;
+  --color-interactive: #9b8afb;
+  --color-interactive-hover: #b0a3ff;
+  --color-interactive-active: #8372ea;
+  --color-success: #4ade80;
+  --color-success-subtle: #102b1c;
+  --color-warning: #f6c453;
+  --color-warning-subtle: #30230d;
+  --color-error: #fb7185;
+  --color-error-subtle: #35131a;
+  --color-info: #43d7ee;
+  --color-info-hover: #67e2f4;
+  --color-info-subtle: #0e2930;
+  --shadow-color: 230 40% 3%;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --brand-primary: #9b8afb;
+    --brand-background: #0b0d12;
+    --brand-accent: #43d7ee;
+    --color-primary: #9b8afb;
+    --color-primary-hover: #b0a3ff;
+    --color-primary-active: #8372ea;
+    --color-accent: #43d7ee;
+    --color-background: #0b0d12;
+    --color-surface: #12151c;
+    --color-surface-secondary: #181c25;
+    --color-surface-tertiary: #202532;
+    --color-text: #f5f7fb;
+    --color-text-secondary: #b7bdca;
+    --color-text-muted: #7f8798;
+    --color-text-inverse: #0b0d12;
+    --color-border: #2a303d;
+    --color-border-hover: #3b4353;
+    --color-focus: #9b8afb;
+    --color-interactive: #9b8afb;
+    --color-interactive-hover: #b0a3ff;
+    --color-info: #43d7ee;
+    --color-info-subtle: #0e2930;
+    --shadow-color: 230 40% 3%;
+  }
+}
+
 /* Reset */
 *,
 *::before,
@@ -321,7 +431,9 @@ body {
   font-weight: var(--font-weight-normal);
   line-height: var(--line-height-normal);
   color: var(--color-text);
-  background-color: var(--color-background);
+  background:
+    radial-gradient(circle at 15% -10%, color-mix(in srgb, var(--color-primary) 10%, transparent), transparent 32rem),
+    var(--color-background);
   transition: background-color var(--transition-normal), color var(--transition-normal);
 }
 
@@ -349,6 +461,9 @@ img {
 
 input, textarea, select {
   font: inherit;
+  color: var(--color-text);
+  background: var(--color-surface-secondary);
+  border-color: var(--color-border);
 }
 
 /* Focus Styles */

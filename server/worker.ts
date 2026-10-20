@@ -8,6 +8,7 @@ import { log } from './log.js';
 import { rpc } from './database.js';
 import { JOB_KINDS, runJob, runMaintenance } from './jobs/runner.js';
 import type { JobRow } from './jobs/types.js';
+import { reconcileStorage } from './storage-maintenance.js';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -35,6 +36,7 @@ export function startWorker(options: WorkerOptions = {}): RunningWorker {
   let stopping = false;
   let lastMaintenance = 0;
   let lastHeartbeat = 0;
+  let lastStorageMaintenance = 0;
 
   const loop = (async () => {
     log.info('worker started', { worker, concurrency, kinds: JOB_KINDS });
@@ -56,6 +58,12 @@ export function startWorker(options: WorkerOptions = {}): RunningWorker {
           lastMaintenance = Date.now();
           const result = await runMaintenance();
           log.info('maintenance', result);
+          if (Date.now() - lastStorageMaintenance > 60 * 60_000) {
+            lastStorageMaintenance = Date.now();
+            const storage = await reconcileStorage();
+            if (storage.missing || storage.orphaned) log.warn('storage reconciliation found inconsistencies', storage);
+            else log.info('storage reconciliation', storage);
+          }
         }
         if (inFlight.size < concurrency) {
           const [job] = await rpc<JobRow[]>('claim_jobs', { p_worker: worker, p_kinds: JOB_KINDS, p_limit: 1, p_lease_seconds: 120 });

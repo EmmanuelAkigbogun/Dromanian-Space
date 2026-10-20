@@ -45,7 +45,7 @@ export function CallHistoryPage() {
     getCallHistory(userId, currentWorkspace.id, { limit: 50 })
       .then((data) => { setCalls(data); setLoading(false); })
       .catch(() => setLoading(false));
-  }, [userId, currentWorkspace?.id]);
+  }, [userId, currentWorkspace]);
 
   async function handleConfirmDelete() {
     if (!userId || !deletingId) return;

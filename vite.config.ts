@@ -18,7 +18,7 @@ export default defineConfig({
     proxy: { '/api': 'http://127.0.0.1:5174' },
     strictPort: false,
     headers: {
-      'Permissions-Policy': 'compute-pressure=*',
+      'Permissions-Policy': 'camera=(self), microphone=(self), display-capture=(self), compute-pressure=()',
     },
   },
 })

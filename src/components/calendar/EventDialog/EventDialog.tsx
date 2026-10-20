@@ -5,7 +5,7 @@ import { Textarea } from '@/components/ui/Textarea/Textarea';
 import { Select } from '@/components/ui/Select/Select';
 import { Switch } from '@/components/ui/Switch/Switch';
 import { Avatar } from '@/components/ui/Avatar/Avatar';
-import { Badge } from '@/components/ui/Badge/Badge';
+
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/hooks/useAuth';
 import { platform } from '@/lib/platform';

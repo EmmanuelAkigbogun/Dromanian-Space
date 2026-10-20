@@ -26,16 +26,6 @@ interface FloatingReaction {
   userId: string;
 }
 
-interface RemoteRaisedHand {
-  userId: string;
-  raised: boolean;
-}
-
-interface RemoteScreenSharer {
-  userId: string;
-  sharing: boolean;
-}
-
 interface VideoTileProps {
   stream: MediaStream | null;
   label: string;
@@ -297,7 +287,6 @@ export function ActiveCall() {
     });
   }, [isScreenSharing, userId]);
 
-  const isGroup = connectedParticipants.length > 2;
   const hasAnyVideo = isVideoEnabled || Array.from(remoteStreams.values()).some((s) => s.getVideoTracks().some((t) => t.enabled));
   const hasRaisedHands = remoteRaisedHands.size > 0;
   const hasPresenters = remoteScreenSharers.size > 0 || isScreenSharing;
@@ -517,25 +506,6 @@ export function ActiveCall() {
                 {speakingUsers.has(p.user_id) && <span className={styles.speakingBadge}>Speaking</span>}
                 {remoteRaisedHands.get(p.user_id) && <span className={styles.handBadge}>✋ Hand raised</span>}
                 {remoteScreenSharers.get(p.user_id) && <span className={styles.screenShareBadge}>Presenting</span>}
-              </div>
-              <div className={styles.participantActions}>
-                {p.user_id !== currentCall?.created_by && (
-                  <button
-                    type="button"
-                    className={styles.participantActionButton}
-                    title="Mute participant"
-                    onClick={async () => {
-                      if (!currentCall) return;
-                      const { updateCallParticipantMuted } = await import('@/lib/call/call');
-                      await updateCallParticipantMuted(currentCall.id, p.user_id, !p.is_muted);
-                    }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                    </svg>
-                  </button>
-                )}
               </div>
             </div>
           ))}

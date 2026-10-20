@@ -5,123 +5,44 @@ const db = platform as any;
 
 export async function createCallSession(
   workspaceId: string,
-  createdBy: string,
+  _createdBy: string,
   callType: 'direct' | 'group' | 'channel',
-  options?: { channelId?: string; conversationId?: string; withVideo?: boolean },
+  options?: { channelId?: string; conversationId?: string; withVideo?: boolean; targetUserIds?: string[] },
 ): Promise<CallSession | null> {
-  const { data, error } = await db
-    .from('call_sessions')
-    .insert({
-      workspace_id: workspaceId,
-      channel_id: options?.channelId ?? null,
-      conversation_id: options?.conversationId ?? null,
-      call_type: callType,
-      with_video: options?.withVideo ?? false,
-      created_by: createdBy,
-      status: 'ringing',
-    })
-    .select()
-    .single();
-
-  if (error || !data) return null;
-  return data as CallSession;
-}
-
-export async function addCallParticipant(
-  callId: string,
-  userId: string,
-): Promise<CallParticipant | null> {
-  const { data, error } = await db
-    .from('call_participants')
-    .upsert({
-      call_id: callId,
-      user_id: userId,
-      status: 'ringing',
-    }, { onConflict: 'call_id,user_id' })
-    .select()
-    .single();
-
-  if (error || !data) return null;
-  return data as CallParticipant;
-}
-
-export async function updateCallParticipantStatus(
-  callId: string,
-  userId: string,
-  status: CallParticipant['status'],
-): Promise<boolean> {
-  const updates: Record<string, unknown> = { status };
-  if (status === 'connected') updates.joined_at = new Date().toISOString();
-  if (status === 'left' || status === 'disconnected') updates.left_at = new Date().toISOString();
-
-  const { error } = await db
-    .from('call_participants')
-    .update(updates)
-    .eq('call_id', callId)
-    .eq('user_id', userId);
-
-  return !error;
+  const response = await fetch('/api/calls', {
+    method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ workspaceId, callType, channelId: options?.channelId, conversationId: options?.conversationId, withVideo: options?.withVideo ?? false, targetUserIds: options?.targetUserIds ?? [] }),
+  });
+  if (!response.ok) return null;
+  return (await response.json()).session as CallSession;
 }
 
 export async function updateCallParticipantMuted(
   callId: string,
-  userId: string,
   isMuted: boolean,
 ): Promise<boolean> {
-  const { error } = await db
-    .from('call_participants')
-    .update({ is_muted: isMuted })
-    .eq('call_id', callId)
-    .eq('user_id', userId);
-
-  return !error;
+  return (await fetch(`/api/calls/${callId}/participant`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ isMuted }),
+  })).ok;
 }
 
 export async function answerCall(callId: string): Promise<boolean> {
-  const { error } = await db
-    .from('call_sessions')
-    .update({ status: 'active', started_at: new Date().toISOString(), answered_at: new Date().toISOString() })
-    .eq('id', callId);
-
-  return !error;
+  return (await fetch(`/api/calls/${callId}/answer`, { method: 'POST', credentials: 'same-origin' })).ok;
 }
 
 export async function endCall(callId: string): Promise<boolean> {
-  const now = new Date().toISOString();
-  const { data: session } = await db
-    .from('call_sessions')
-    .select('answered_at')
-    .eq('id', callId)
-    .single();
-
-  const duration = session?.answered_at
-    ? Math.floor((Date.now() - new Date(session.answered_at).getTime()) / 1000)
-    : 0;
-
-  const { error } = await db
-    .from('call_sessions')
-    .update({ status: 'ended', ended_at: now, duration })
-    .eq('id', callId);
-
-  return !error;
+  return (await fetch(`/api/calls/${callId}/end`, { method: 'POST', credentials: 'same-origin' })).ok;
 }
 
 export async function declineCall(callId: string): Promise<boolean> {
-  const { error } = await db
-    .from('call_sessions')
-    .update({ status: 'declined', ended_at: new Date().toISOString() })
-    .eq('id', callId);
-
-  return !error;
+  return (await fetch(`/api/calls/${callId}/decline`, { method: 'POST', credentials: 'same-origin' })).ok;
 }
 
 export async function cancelCall(callId: string): Promise<boolean> {
-  const { error } = await db
-    .from('call_sessions')
-    .update({ status: 'cancelled', ended_at: new Date().toISOString() })
-    .eq('id', callId);
-
-  return !error;
+  return (await fetch(`/api/calls/${callId}/cancel`, { method: 'POST', credentials: 'same-origin' })).ok;
 }
 
 export async function getCallSession(callId: string): Promise<CallSession | null> {
@@ -201,31 +122,9 @@ export async function getCallHistory(
 }
 
 export async function deleteCallHistory(callId: string, userId: string): Promise<boolean> {
-  const { data: session } = await db
-    .from('call_sessions')
-    .select('created_by')
-    .eq('id', callId)
-    .maybeSingle();
-
-  if (session && session.created_by === userId) {
-    await db
-      .from('call_participants')
-      .delete()
-      .eq('call_id', callId);
-
-    const { error } = await db
-      .from('call_sessions')
-      .delete()
-      .eq('id', callId);
-
-    return !error;
-  }
-
-  const { error } = await db
-    .from('call_participants')
-    .delete()
-    .eq('call_id', callId)
-    .eq('user_id', userId);
-
-  return !error;
+  void userId;
+  return (await fetch(`/api/calls/${callId}/history`, {
+    method: 'DELETE',
+    credentials: 'same-origin',
+  })).ok;
 }

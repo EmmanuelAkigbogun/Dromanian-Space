@@ -114,7 +114,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       localStorage.setItem(PROFILE_SETUP_FLAG, '1');
       return { error: null };
-    } catch (err) {
+    } catch  {
       const authError = { message: 'An unexpected error occurred during sign up' };
       setError(authError);
       return { error: authError };
@@ -136,7 +136,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       return { error: null };
-    } catch (err) {
+    } catch  {
       const authError = { message: 'An unexpected error occurred during sign in' };
       setError(authError);
       return { error: authError };
@@ -148,7 +148,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setError(null);
       localStorage.setItem(PROFILE_SETUP_FLAG, '1');
       await platform.auth.signOut();
-    } catch (err) {
+    } catch  {
       setError({ message: 'An unexpected error occurred during sign out' });
     }
   }, []);
@@ -167,7 +167,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       return { error: null };
-    } catch (err) {
+    } catch  {
       const authError = { message: 'An unexpected error occurred during password reset' };
       setError(authError);
       return { error: authError };
@@ -186,7 +186,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       return { error: null };
-    } catch (err) {
+    } catch  {
       const authError = { message: 'An unexpected error occurred during profile update' };
       setError(authError);
       return { error: authError };

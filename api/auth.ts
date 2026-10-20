@@ -3,6 +3,7 @@ import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:cry
 import { z } from 'zod';
 import { authenticate, databasePool, issueAccessToken, tokenHash, type AuthUser, type RequestAuth } from '../server/database.js';
 import { HttpError, json, readJson } from '../server/http.js';
+import { env } from '../server/env.js';
 
 const scrypt = promisify(scryptCallback);
 const credentials = z.object({ email: z.string().trim().email().max(255), password: z.string().min(8).max(1024) });
@@ -98,6 +99,55 @@ export async function signup(request: Request): Promise<Response> {
        VALUES ($1::uuid, 'email', jsonb_build_object('sub', $1::uuid::text, 'email', $2::text))`,
       [row.id, row.email],
     );
+    if (isFirstUser) {
+      const workspace = await client.query(
+        `INSERT INTO public.workspaces (name, slug, description, owner_id)
+         VALUES ('Digital Romanian', $1::text, 'Digital Romanian company workspace', $2::uuid)
+         ON CONFLICT (slug) DO UPDATE SET owner_id = EXCLUDED.owner_id
+         RETURNING id`,
+        [env().defaultWorkspaceSlug, row.id],
+      );
+      const channel = await client.query(
+        `INSERT INTO public.channels (workspace_id, name, slug, description, type, is_private, created_by)
+         VALUES ($1::uuid, 'General', $2::text, 'Company-wide conversations and announcements', 'text', false, $3::uuid)
+         ON CONFLICT (workspace_id, slug) DO UPDATE SET archived_at = NULL
+         RETURNING id`,
+        [workspace.rows[0].id, env().defaultChannelSlug, row.id],
+      );
+      await client.query(
+        `INSERT INTO public.workspace_settings (workspace_id, default_channel_ids, updated_by)
+         VALUES ($1::uuid, ARRAY[$2::uuid], $3::uuid)
+         ON CONFLICT (workspace_id) DO UPDATE
+         SET default_channel_ids = CASE
+               WHEN $2::uuid = ANY(coalesce(workspace_settings.default_channel_ids, '{}'::uuid[]))
+                 THEN workspace_settings.default_channel_ids
+               ELSE array_append(coalesce(workspace_settings.default_channel_ids, '{}'::uuid[]), $2::uuid)
+             END,
+             updated_by = $3::uuid,
+             updated_at = now()`,
+        [workspace.rows[0].id, channel.rows[0].id, row.id],
+      );
+      await client.query(
+        `INSERT INTO public.workspace_members (workspace_id, user_id, role)
+         VALUES ($1::uuid, $2::uuid, 'owner')
+         ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = 'owner'`,
+        [workspace.rows[0].id, row.id],
+      );
+    } else {
+      const canonical = await client.query(
+        `SELECT id FROM public.workspaces WHERE slug = $1::text FOR SHARE`,
+        [env().defaultWorkspaceSlug],
+      );
+      if (!canonical.rowCount) {
+        throw new HttpError(503, 'workspace_enrollment_unavailable', 'The company workspace is not ready. No account was created.');
+      }
+      await client.query(
+        `INSERT INTO public.workspace_members (workspace_id, user_id, role)
+         VALUES ($1::uuid, $2::uuid, 'member')
+         ON CONFLICT (workspace_id, user_id) DO NOTHING`,
+        [canonical.rows[0].id, row.id],
+      );
+    }
     await client.query('COMMIT');
     const user: AuthUser = { id: row.id, email: row.email, appMetadata: row.raw_app_meta_data, userMetadata: row.raw_user_meta_data };
     const created = await createSession(user, request);

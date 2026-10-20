@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Encrypted logical backup: database (pg_dump custom format plus roles), the
-# database's key directory (pgsodium), uploaded file bytes (Supabase Storage
-# file backend), the protected recovery configuration and, when present, the
-# n8n database. A database dump alone does not contain files.
+# uploaded file bytes, the protected recovery configuration and, when present,
+# the n8n database. A database dump alone does not contain files.
 #
 # Environment (defaults match docs/COOLIFY_SETUP.md; usually set in
 # /srv/app-data/dromanian-space/config/backup.env, see backup.env.example):
@@ -10,9 +9,8 @@
 #   BACKUP_ROOT          /srv/app-data/dromanian-space/backup-staging
 #   STORAGE_DIR          /srv/cloud-data/dromanian-space/storage
 #   CONFIG_DIR           /srv/app-data/dromanian-space/config
-#   DB_CONFIG_DIR        /srv/app-data/dromanian-space/supabase/db/config
-#   DB_CONTAINER         auto-detected (supabase-db)
-#   DB_USER              supabase_admin (superuser, needed for roles and all schemas)
+#   DB_CONTAINER         auto-detected from the Compose db service
+#   DB_USER              postgres (superuser, needed for roles and all schemas)
 #   PGPASSWORD_FILE      optional file with that user's password
 #   WORKER_CONTAINER     optional; paused during the backup so no file is purged mid-way
 #   N8N_DB_CONTAINER     optional; its database is added to the archive
@@ -28,8 +26,7 @@ umask 077
 BACKUP_ROOT=${BACKUP_ROOT:-/srv/app-data/dromanian-space/backup-staging}
 STORAGE_DIR=${STORAGE_DIR:-/srv/cloud-data/dromanian-space/storage}
 CONFIG_DIR=${CONFIG_DIR:-/srv/app-data/dromanian-space/config}
-DB_CONFIG_DIR=${DB_CONFIG_DIR:-/srv/app-data/dromanian-space/supabase/db/config}
-DB_USER=${DB_USER:-supabase_admin}
+DB_USER=${DB_USER:-postgres}
 RETENTION_DAYS=${RETENTION_DAYS:-14}
 RCLONE_REMOTE=${RCLONE_REMOTE:-}
 WORKER_CONTAINER=${WORKER_CONTAINER:-}
@@ -57,6 +54,7 @@ trap on_exit EXIT
 for cmd in docker age tar sha256sum flock; do
   command -v "$cmd" >/dev/null || { step="checking $cmd"; echo "Missing command: $cmd" >&2; exit 1; }
 done
+mkdir -p "$BACKUP_ROOT"
 step="checking data mounts"
 for marker in /srv/app-data/dromanian-space/.dromanian-space-mount /srv/cloud-data/dromanian-space/.dromanian-space-mount; do
   [[ -f "$marker" ]] || { echo "Data mount missing ($marker). Not backing up." >&2; exit 1; }
@@ -68,11 +66,10 @@ flock -n 9 || { step="waiting for lock"; echo "Another backup is running." >&2; 
 
 step="finding the database container"
 if [[ -z "${DB_CONTAINER:-}" ]]; then
-  if docker inspect supabase-db >/dev/null 2>&1; then DB_CONTAINER=supabase-db
-  else DB_CONTAINER=$(docker ps --filter label=com.docker.compose.service=db --format '{{.Names}} {{.Image}}' \
-    | awk '$2 ~ /^(supabase\/postgres:|dromanian-supabase-db:)/ {print $1; exit}'); fi
+  DB_CONTAINER=$(docker ps --filter label=com.docker.compose.service=db --format '{{.Names}} {{.Image}}' \
+    | awk '$2 ~ /^(pgvector\/pgvector:|postgres:)/ {print $1; exit}')
 fi
-[[ -n "${DB_CONTAINER:-}" ]] || { echo "Cannot find the Supabase database container; set DB_CONTAINER." >&2; exit 1; }
+[[ -n "${DB_CONTAINER:-}" ]] || { echo "Cannot find the standalone PostgreSQL container; set DB_CONTAINER." >&2; exit 1; }
 
 # The password travels through the environment, never the command line.
 PASS_ARGS=()
@@ -106,7 +103,7 @@ dbexec pg_dumpall -h 127.0.0.1 -U "$DB_USER" --globals-only > "$work/globals.sql
 dbexec pg_dump -h 127.0.0.1 -U "$DB_USER" -d postgres -Fc > "$work/database.dump"
 [[ -s "$work/database.dump" ]] || { echo "Empty database dump" >&2; exit 1; }
 migrations=$(dbexec psql -h 127.0.0.1 -U "$DB_USER" -d postgres -At -c \
-  "SELECT string_agg(version, ',' ORDER BY version) FROM supabase_migrations.schema_migrations" 2>/dev/null || echo "")
+  "SELECT string_agg(version, ',' ORDER BY version) FROM app_migrations.schema_migrations" 2>/dev/null || echo "")
 
 # Files after the database: every object the dump references already exists.
 # GNU tar exits 1 when a file changes while it is read (an upload in
@@ -116,11 +113,10 @@ echo "Archiving uploaded files"
 tar -C "$STORAGE_DIR" -cf "$work/storage.tar" . || [[ $? -eq 1 ]]
 step="archiving configuration"
 tar -C "$CONFIG_DIR" --exclude='./*.lock' -cf "$work/config.tar" .
-tar -C "$DB_CONFIG_DIR" -cf "$work/dbconfig.tar" .
 
 if $paused; then docker unpause "$WORKER_CONTAINER" >/dev/null && paused=false; fi
 
-parts=(globals.sql database.dump storage.tar config.tar dbconfig.tar)
+parts=(globals.sql database.dump storage.tar config.tar)
 if [[ -n "$N8N_DB_CONTAINER" ]]; then
   step="dumping the n8n database"
   docker exec "$N8N_DB_CONTAINER" pg_dump -U n8n -d n8n -Fc > "$work/n8n.dump"

@@ -27,7 +27,6 @@ export function AutomationPage() {
     deleteRule,
     getExecutionLogs,
     deleteExecutionLog,
-    refetch,
     visibility,
     visibleMembers,
     setVisibility,

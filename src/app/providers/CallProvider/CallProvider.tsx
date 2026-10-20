@@ -13,13 +13,10 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 import { platform } from '@/lib/platform';
 import {
   createCallSession,
-  addCallParticipant,
   answerCall,
   endCall,
   declineCall,
   cancelCall,
-  updateCallParticipantStatus,
-  updateCallParticipantMuted,
   getCallParticipants,
   getCallSession,
 } from '@/lib/call/call';
@@ -94,6 +91,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   // session id synchronously the instant it's created (well before any
   // participant row exists) removes the race entirely - no timing dependency.
   const outgoingCallIdsRef = useRef<Set<string>>(new Set());
+  const resetStateRef = useRef<() => void>(() => undefined);
 
   useEffect(() => { currentCallRef.current = currentCall; }, [currentCall]);
   useEffect(() => { callScreenRef.current = callScreen; }, [callScreen]);
@@ -121,7 +119,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         engineRef.current.stopOfferRetry();
         await cancelCall(currentCall.id);
         engineRef.current.cleanupAll();
-        resetState();
+        resetStateRef.current();
         return;
       }
       const s = await getCallSession(currentCall.id);
@@ -132,7 +130,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       } else if (s.status !== 'ringing') {
         engineRef.current.stopOfferRetry();
         engineRef.current.cleanupAll();
-        resetState();
+        resetStateRef.current();
       }
     }, 1000);
     return () => clearInterval(id);
@@ -154,6 +152,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setLocalStream(null);
     setRemoteStreams(new Map());
   }, []);
+  resetStateRef.current = resetState;
 
   useEffect(() => {
     if (!userId || !currentWorkspace) return;
@@ -227,7 +226,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       )
       .subscribe();
     return () => { platform.removeChannel(ch); };
-  }, [userId, currentWorkspace?.id]);
+  }, [userId, currentWorkspace, resetState]);
 
   useEffect(() => {
     engine.onCallEnd(() => {
@@ -254,7 +253,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         setCallScreen('active');
       }
     });
-  }, []);
+  }, [engine, resetState]);
 
   useEffect(() => {
     if (callScreen === 'active') {
@@ -288,7 +287,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
             .filter((id) => id !== userId);
         }
 
-        const session = await createCallSession(currentWorkspace.id, userId, effectiveCallType, { channelId: sessionChannelId ?? undefined, withVideo });
+        const allParticipants = callType === 'channel'
+          ? effectiveParticipantIds
+          : [targetUserId, ...effectiveParticipantIds.filter((id) => id !== userId && id !== targetUserId)];
+
+        const session = await createCallSession(currentWorkspace.id, userId, effectiveCallType, {
+          channelId: sessionChannelId ?? undefined, withVideo, targetUserIds: allParticipants,
+        });
         if (!session) { engine.stopLocalMedia(); return; }
 
         // FIX: mark this call as "ours" the instant it exists - synchronously,
@@ -296,22 +301,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
         // what makes the race-guard above deterministic instead of timing-dependent.
         outgoingCallIdsRef.current.add(session.id);
 
-        const allParticipants = callType === 'channel'
-          ? effectiveParticipantIds
-          : [targetUserId, ...effectiveParticipantIds.filter((id) => id !== userId)];
-
-        await Promise.all([
-          addCallParticipant(session.id, userId).then(() => updateCallParticipantStatus(session.id, userId, 'connected')),
-          ...allParticipants.map((pid) => addCallParticipant(session.id, pid)),
-        ]);
-
         setCurrentCall(session);
         setCallScreen('outgoing');
 
         engine.setupSignaling(session.id, userId);
 
         for (const pid of allParticipants) {
-          engine.createOffer(pid, stream);
+          if (userId.localeCompare(pid) < 0) engine.createOffer(pid, stream);
         }
         engine.startOfferRetry();
 
@@ -348,10 +344,17 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
         await engine.processPendingOffers();
 
+        if (stream) {
+          for (const participant of participants) {
+            if (participant.user_id !== userId && userId.localeCompare(participant.user_id) < 0) {
+              await engine.createOffer(participant.user_id, stream);
+            }
+          }
+        }
+
         answerCall(currentCall.id).catch((err) => {
           console.error('[call] answerCall DB update failed (non-fatal):', err);
         });
-        updateCallParticipantStatus(currentCall.id, userId, 'connected').catch(() => { });
 
         engine.resumeAllAudio();
 
@@ -363,7 +366,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         resetState();
       }
     },
-    [currentCall, userId, isAccepting, engine, resetState],
+    [currentCall, userId, isAccepting, engine, resetState, participants],
   );
 
   const declineIncomingCall = useCallback(async () => {
@@ -396,7 +399,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
     await Promise.all([
       engine.broadcastEndCall(),
       endCall(currentCall.id),
-      updateCallParticipantStatus(currentCall.id, userId, 'left'),
     ]);
     (platform as any)
       .rpc('cleanup_call_signaling', { p_call_id: currentCall.id })
@@ -410,8 +412,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
     const muted = engine.toggleMute();
     setIsMuted(muted);
     engine.broadcastMute(muted);
-    if (currentCall && userId) updateCallParticipantMuted(currentCall.id, userId, muted);
-  }, [engine, currentCall, userId]);
+    // Mute is a local media state; it is intentionally not a direct database
+    // write now that call mutation is owned by the validated call API.
+  }, [engine]);
 
   const toggleVideo = useCallback(async () => {
     const ls = engine.getLocalStream();

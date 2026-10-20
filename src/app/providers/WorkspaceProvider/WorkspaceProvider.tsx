@@ -126,7 +126,7 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
       const members = await getWorkspaceMembers(selectedWorkspace.id);
       const membership = members.find((m) => m.user_id === userId);
       setCurrentRole(membership ? (membership.role as WorkspaceRole) : null);
-    } catch (err) {
+    } catch  {
       setError('Failed to load workspaces');
       setCurrentWorkspace(null);
       setCurrentRole(null);

@@ -1,5 +1,5 @@
 /**
- * Shared helpers for the local Supabase emulation used in development and tests.
+ * Shared helpers for the local standalone data stack used in development and tests.
  * Nothing here is deployed; it exists so that RLS, Storage policies, RPCs and the
  * /api handlers can be exercised against a real PostgreSQL 17 + PostgREST stack
  * without Docker.
@@ -25,14 +25,28 @@ export const ENV_FILE = path.join(STATE_DIR, 'env');
 export const MIGRATIONS_DIR = path.join(REPO_ROOT, 'database', 'migrations');
 export const BOOTSTRAP_SQL = path.join(here, 'bootstrap.sql');
 
-export const PG_BIN = process.env.LOCAL_PG_BIN ?? '/opt/homebrew/opt/postgresql@17/bin';
-export const POSTGREST_BIN = process.env.LOCAL_POSTGREST_BIN ?? '/opt/homebrew/bin/postgrest';
+function defaultPgBin(): string {
+  if (process.platform !== 'win32') return '/opt/homebrew/opt/postgresql@17/bin';
+  const programFiles = process.env.ProgramFiles ?? 'C:\\Program Files';
+  for (const version of ['18', '17', '16']) {
+    const candidate = path.join(programFiles, 'PostgreSQL', version, 'bin');
+    if (existsSync(path.join(candidate, 'psql.exe'))) return candidate;
+  }
+  return path.join(programFiles, 'PostgreSQL', '17', 'bin');
+}
+
+export const PG_BIN = process.env.LOCAL_PG_BIN ?? defaultPgBin();
+export const POSTGREST_BIN = process.env.LOCAL_POSTGREST_BIN ?? (process.platform === 'win32' ? 'postgrest.exe' : '/opt/homebrew/bin/postgrest');
+export function pgExecutable(name: string): string {
+  return path.join(PG_BIN, process.platform === 'win32' ? `${name}.exe` : name);
+}
 
 export const PG_PORT = Number(process.env.LOCAL_PG_PORT ?? 55432);
 export const POSTGREST_PORT = Number(process.env.LOCAL_POSTGREST_PORT ?? 55320);
 export const GATEWAY_PORT = Number(process.env.LOCAL_GATEWAY_PORT ?? 55321);
 export const GATEWAY_URL = `http://localhost:${GATEWAY_PORT}`;
 export const DATABASE_URL = `postgres://postgres@localhost:${PG_PORT}/postgres`;
+export const LOCAL_APP_JWT_SECRET = 'dromanian-local-hmac-session-secret-development-only-2026';
 
 export interface LocalKeys {
   kid: string;
@@ -80,7 +94,7 @@ export async function signJwt(
 
 export function psql(args: string[], options: { input?: string; database?: string } = {}) {
   const result = spawnSync(
-    path.join(PG_BIN, 'psql'),
+    pgExecutable('psql'),
     [
       '-X',
       '-q',
@@ -99,13 +113,13 @@ export function psql(args: string[], options: { input?: string; database?: strin
     { input: options.input, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
   );
   if (result.status !== 0) {
-    throw new Error(`psql failed (${args.join(' ')}):\n${result.stderr || result.stdout}`);
+    throw new Error(`psql failed (${args.join(' ')}):\n${result.error?.message || result.stderr || result.stdout || `Install PostgreSQL 17 or set LOCAL_PG_BIN (looked in ${PG_BIN})`}`);
   }
   return result.stdout;
 }
 
 /**
- * Hosted Supabase ships pg_cron; this machine does not. The bootstrap provides
+ * Production scheduling is handled by the worker. The bootstrap provides
  * a stand-in `cron` schema, so the legacy baseline only needs its
  * `CREATE EXTENSION pg_cron` statements neutralised. The SQL is otherwise
  * applied exactly as written.
@@ -127,7 +141,7 @@ export function applySqlFile(file: string, database = 'postgres'): void {
 
 /**
  * Applies every migration not yet recorded by the local database runner. The
- * bootstrap (roles, auth/storage schemas, Supabase default grants) runs only
+ * bootstrap (roles, auth/storage schemas and default grants) runs only
  * once per database, exactly like a freshly provisioned hosted project; running
  * it again would re-grant privileges that migrations deliberately revoke.
  */

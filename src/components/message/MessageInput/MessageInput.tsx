@@ -35,6 +35,16 @@ const MAX_MESSAGE_LENGTH = 100000;
 const DRAFT_STORAGE_KEY = 'dark-space-drafts';
 const IS_MOBILE = typeof navigator !== 'undefined' && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
+function resizeTextarea(textarea: HTMLTextAreaElement) {
+  if (!textarea.value.trim()) {
+    textarea.style.height = '';
+    return;
+  }
+  textarea.style.height = 'auto';
+  const maxHeight = parseInt(getComputedStyle(textarea).maxHeight, 10) || 400;
+  textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
+}
+
 interface MessageInputProps {
   parentId?: string;
   placeholder?: string;
@@ -137,7 +147,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
     if (draft) {
       setContent(draft);
       requestAnimationFrame(() => {
-        if (textareaRef.current) handleResize(textareaRef.current);
+        if (textareaRef.current) resizeTextarea(textareaRef.current);
       });
     } else {
       setContent('');
@@ -167,26 +177,16 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
     }
   }, [content, contentUrls.length, pendingLinkEmbeds.length]);
 
-  const handleResize = useCallback((textarea: HTMLTextAreaElement) => {
-    if (!textarea.value.trim()) {
-      textarea.style.height = '';
-      return;
-    }
-    textarea.style.height = 'auto';
-    const maxHeight = parseInt(getComputedStyle(textarea).maxHeight, 10) || 400;
-    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
-  }, []);
-
   useEffect(() => {
-    if (textareaRef.current) handleResize(textareaRef.current);
-  }, [content, handleResize]);
+    if (textareaRef.current) resizeTextarea(textareaRef.current);
+  }, [content]);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     if (value.length > MAX_MESSAGE_LENGTH && content.length <= MAX_MESSAGE_LENGTH) return;
     setContent(value);
     setSendError(null);
-    handleResize(e.target);
+    resizeTextarea(e.target);
 
     if (channelId && !parentId && !activeEdit) {
       saveDraft(`${userId}:${channelId}:${parentId ?? 'root'}`, value);
@@ -202,7 +202,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
       }
     }
     setMentionQuery(null);
-  }, [handleResize, channelId, parentId, activeEdit, content.length]);
+  }, [channelId, parentId, activeEdit, content.length, userId]);
 
   const handleMentionSelect = useCallback((username: string) => {
     const lastAtIndex = content.lastIndexOf('@');

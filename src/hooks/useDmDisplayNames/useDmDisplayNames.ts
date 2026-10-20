@@ -33,7 +33,7 @@ export function useDmDisplayNames(): Record<string, string> {
     return () => {
       cancelled = true;
     };
-  }, [userId, currentWorkspace?.id]);
+  }, [userId, currentWorkspace]);
 
   return names;
 }

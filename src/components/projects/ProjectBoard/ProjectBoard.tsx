@@ -48,6 +48,7 @@ export function ProjectBoard({ projectId, workspaceId, onTaskClick, onTaskUpdate
   const [projectNames, setProjectNames] = useState<Record<string, string>>({});
 
   const fetchTasks = useCallback(async () => {
+    void taskVersion;
     const { data: taskData, error } = await platform
       .from('tasks')
       .select('*')

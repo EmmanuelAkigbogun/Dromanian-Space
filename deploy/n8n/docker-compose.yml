@@ -1,7 +1,7 @@
 # Optional n8n for external workflow automation — a third, independent
 # Coolify resource. Dromanian Space works fully without it.
 #
-# Isolation: n8n has its own PostgreSQL (never the Supabase database) and its
+# Isolation: n8n has its own PostgreSQL (never the application database) and its
 # own data directories, and talks to the app only through the signed public
 # API (/api/integrations/n8n/runs). Internal scheduling stays with pg_cron and
 # the app's worker; n8n never runs the app's maintenance jobs.

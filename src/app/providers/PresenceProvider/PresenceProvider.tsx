@@ -157,7 +157,7 @@ export function PresenceProvider({ children }: PresenceProviderProps) {
       channel.unsubscribe();
       channelRef.current = null;
     };
-  }, [workspaceId, userId, isAuthenticated]);
+  }, [workspaceId, userId, isAuthenticated, trackPresence, myStatus]);
 
   // Heartbeat
   useEffect(() => {

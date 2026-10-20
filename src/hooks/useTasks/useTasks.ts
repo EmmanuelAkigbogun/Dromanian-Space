@@ -742,7 +742,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
       if (error) return null;
       return data as unknown as TaskLabel;
     },
-    [],
+    [currentWorkspace?.id],
   );
 
   const assignLabel = useCallback(

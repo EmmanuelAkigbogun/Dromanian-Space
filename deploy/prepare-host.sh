@@ -82,6 +82,7 @@ for base in "$APP_DATA" "$CLOUD_DATA"; do
 done
 mkdir -p "$APP_DATA/dromanian-space/postgres" \
          "$APP_DATA/dromanian-space/config" \
+         "$APP_DATA/dromanian-space/coturn" \
          "$APP_DATA/dromanian-space/backup-staging" \
          "$CLOUD_DATA/dromanian-space/storage"
 chmod 700 "$APP_DATA/dromanian-space/config" "$APP_DATA/dromanian-space/backup-staging"

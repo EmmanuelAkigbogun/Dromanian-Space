@@ -3,7 +3,7 @@ import { platform } from '@/lib/platform';
 import { deleteAutomationAttachmentFiles } from '@/lib/message/attachment';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
-import type { AutomationRule, AutomationExecutionLog, AutomationTrigger, AutomationCondition, AutomationAction, AutomationVisibility, AutomationEditRequest, UUID } from '@/types';
+import type { AutomationRule, AutomationExecutionLog, AutomationCondition, AutomationVisibility, AutomationEditRequest, UUID } from '@/types';
 type ConditionOperator = AutomationCondition['operator'];
 
 // useAutomation is used by the automation settings page. After any rule
@@ -348,7 +348,7 @@ export function useAutomation(): UseAutomationReturn {
         return null;
       }
     },
-    [currentWorkspace?.id, userId, fetchRules, rules]
+    [currentWorkspace?.id, userId, fetchRules]
   );
 
   const updateRule = useCallback(async (id: string, updates: Partial<AutomationRule>) => {
@@ -386,7 +386,7 @@ export function useAutomation(): UseAutomationReturn {
           if (error) throw error;
         });
         if (updates.conditions!.length > 0) {
-          const conditions = updates.conditions!.map((c, i) => ({
+          const conditions = updates.conditions!.map((c) => ({
             rule_id: id,
             field: c.field,
             operator: c.operator,

@@ -2,12 +2,14 @@
 import * as health from '../api/health.js';
 import * as ready from '../api/ready.js';
 import * as status from '../api/ai/status.js';
+import * as providerKeys from '../api/ai/provider-keys.js';
 import * as run from '../api/agents/run.js';
 import * as mention from '../api/agents/mention.js';
 import * as jobs from '../api/jobs/run.js';
 import * as n8n from '../api/integrations/n8n.js';
 import * as auth from '../api/auth.js';
 import * as events from '../api/events.js';
+import * as calls from '../api/calls.js';
 
 export type Handler = (request: Request) => Promise<Response>;
 export type ApiMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'HEAD';
@@ -16,6 +18,7 @@ export const ROUTES: Record<string, Partial<Record<ApiMethod, Handler>>> = {
   '/api/health': health,
   '/api/ready': ready,
   '/api/ai/status': status,
+  '/api/ai/provider-keys': providerKeys,
   '/api/agents/run': run,
   '/api/agents/mention': mention,
   '/api/jobs/run': jobs,
@@ -30,4 +33,7 @@ export const ROUTES: Record<string, Partial<Record<ApiMethod, Handler>>> = {
   '/api/events': { GET: events.stream },
   '/api/events/broadcast': { POST: events.broadcast },
   '/api/events/presence': { POST: events.presence },
+  '/api/calls': { POST: calls.create },
+  '/api/calls/active': { GET: calls.active },
+  '/api/calls/ice': { GET: calls.ice },
 };

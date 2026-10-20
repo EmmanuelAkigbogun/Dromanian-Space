@@ -81,7 +81,7 @@ function DriveBrowser({ workspaceId: ws, userId, itemId, folderId }: {workspaceI
   if(itemId)return <DriveItem key={itemId} itemId={itemId} workspaceId={ws} userId={userId}/>;
   const itemLink=(i:Item)=>`/drive/${i.kind==='folder'?'folder':'item'}/${i.id}`;
   return <div className={s.page} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(!busy)void uploadFiles([...e.dataTransfer.files]);}}>
-    <header className={s.header}><div><div className={s.eyebrow}>Shared knowledge · Drive</div><h1>{folderId ? crumbs.data?.at(-1)?.name ?? 'Folder' : driveViews.find(v=>v[0]===view)?.[1] ?? 'Drive'}</h1><p className={s.muted}>One place for your team’s files, documents, and ideas.</p></div><div className={s.actions}>
+    <header className={s.header}><div><div className={s.eyebrow}>Shared knowledge · Drive</div><h1>{folderId ? crumbs.data?.at(-1)?.name ?? 'Folder' : driveViews.find(v=>v[0]===view)?.[1] ?? 'Drive'}</h1><p className={s.muted}>Files are stored on this server. Your files stay private to you until you share them with a person, channel, project, or the workspace.</p></div><div className={s.actions}>
       <button className={s.button} onClick={()=>setCreate('folder')}>New folder</button><button className={s.button} onClick={()=>setCreate('document')}>New document</button>
       <label className={s.primary}>Upload files<input aria-label="Upload files" type="file" multiple disabled={busy} style={{position:'absolute',width:1,height:1,opacity:0}} onChange={e=>void uploadFiles([...(e.target.files ?? [])])}/></label>
     </div></header>

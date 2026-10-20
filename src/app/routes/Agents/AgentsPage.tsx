@@ -25,6 +25,10 @@ interface ModelOption {
 interface Status {
   provider: { configured: boolean };
   providers?: Array<{ name: string; label: string; configured: boolean }>;
+  provider_key_management?: {
+    allowed: boolean;
+    providers: Array<{ name: string; source: 'saved' | 'environment' | 'none' }>;
+  };
   models?: ModelOption[];
   costs?: { month_usd: number; unpriced_rows: number; by_model: Array<{ provider: string; model: string; runs: number; cost_usd: number | null }> } | null;
   data_flow: { generation: string; embeddings: string; storage: string };
@@ -84,7 +88,6 @@ const CONNECTED_ACTIONS: Record<string, string> = {
   email_inbox: 'summarizing your inbox',
 };
 
-const TERMINAL = new Set(['completed', 'failed', 'cancelled', 'interrupted', 'awaiting_approval']);
 
 const PROVIDER_KEY: Record<string, string> = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY' };
 const PROVIDER_NAME: Record<string, string> = { anthropic: 'Anthropic', openai: 'OpenAI' };
@@ -900,6 +903,9 @@ function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Stat
     brand_kit_folder_id: status.brand_kit.folder_id ?? '',
   });
   const [applyToAgents, setApplyToAgents] = useState(false);
+  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({ anthropic: '', openai: '' });
+  const [providerKeyBusy, setProviderKeyBusy] = useState<string | null>(null);
+  const [providerKeyNotice, setProviderKeyNotice] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const folders = useQuery({
@@ -920,6 +926,21 @@ function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Stat
       const allowed = on ? [...new Set([...f.allowed_models, id])] : f.allowed_models.filter((m) => m !== id);
       return { ...f, allowed_models: allowed, default_model: allowed.includes(f.default_model) ? f.default_model : (allowed[0] ?? f.default_model) };
     });
+  }
+  async function updateProviderKey(provider: 'anthropic' | 'openai', remove = false) {
+    setProviderKeyBusy(provider);
+    setProviderKeyNotice('');
+    setError('');
+    try {
+      await api('ai/provider-keys', { provider, api_key: remove ? null : providerKeys[provider] });
+      setProviderKeys((keys) => ({ ...keys, [provider]: '' }));
+      setProviderKeyNotice(`${PROVIDER_NAME[provider]} API key ${remove ? 'removed' : 'saved securely on the server'}.`);
+      onSaved();
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setProviderKeyBusy(null);
+    }
   }
   function save(e: React.FormEvent) {
     e.preventDefault();
@@ -960,7 +981,50 @@ function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Stat
               </li>
             ))}
           </ul>
-          <p className={s.muted}>API keys are server settings and never reach the browser. Choose which models agents in this workspace may use.</p>
+          <p className={s.muted}>API keys are sent once to this server, encrypted at rest, and never returned to the browser. Choose which models agents in this workspace may use.</p>
+          {status.provider_key_management?.allowed && (
+            <div className={s.stack} style={{ marginTop: 12 }}>
+              {(['anthropic', 'openai'] as const).map((provider) => {
+                const state = status.provider_key_management?.providers.find((p) => p.name === provider);
+                const configured = state?.source === 'saved' || state?.source === 'environment';
+                return (
+                  <div className={s.card} key={provider}>
+                    <label>
+                      {PROVIDER_NAME[provider]} API key
+                      <input
+                        className={s.input}
+                        type="password"
+                        autoComplete="off"
+                        spellCheck={false}
+                        placeholder={configured ? 'Configured — paste a new key to replace it' : `Paste ${PROVIDER_KEY[provider]}`}
+                        value={providerKeys[provider]}
+                        onChange={(e) => setProviderKeys((keys) => ({ ...keys, [provider]: e.target.value }))}
+                      />
+                    </label>
+                    <div className={s.actions}>
+                      <button
+                        type="button"
+                        className={s.button}
+                        disabled={providerKeyBusy !== null || providerKeys[provider].trim().length < 20}
+                        onClick={() => void updateProviderKey(provider)}
+                      >
+                        {providerKeyBusy === provider ? 'Saving…' : configured ? 'Replace key' : 'Save key'}
+                      </button>
+                      {state?.source === 'saved' && (
+                        <button type="button" className={s.button} disabled={providerKeyBusy !== null} onClick={() => void updateProviderKey(provider, true)}>
+                          Remove saved key
+                        </button>
+                      )}
+                    </div>
+                    <p className={s.muted}>
+                      {state?.source === 'saved' ? 'Managed here and encrypted on the server.' : state?.source === 'environment' ? 'Currently supplied by the server environment; saving here overrides it.' : 'Not configured.'}
+                    </p>
+                  </div>
+                );
+              })}
+              {providerKeyNotice && <p role="status" className={s.notice}>{providerKeyNotice}</p>}
+            </div>
+          )}
         </div>
         <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
           <legend className={s.eyebrow}>Allowed models</legend>

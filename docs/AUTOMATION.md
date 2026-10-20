@@ -30,7 +30,7 @@ app's jobs. Every request carries a `request_id`, and the app starts at most one
 6. On the Dromanian Space application resource, set `N8N_BASE_URL=https://n8n.digitalromanian.com`
    and redeploy. Callbacks are only ever sent to this host.
 
-n8n has its own PostgreSQL (never the Supabase database), keeps 14 days of execution data, and has
+n8n has its own PostgreSQL (never the application database), keeps 14 days of execution data, and has
 execution timeouts (5 minutes by default, 1 hour at most). Its database is included in backups when
 `N8N_DB_CONTAINER` is set in `backup.env`.
 

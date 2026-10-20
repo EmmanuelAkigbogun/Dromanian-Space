@@ -74,6 +74,7 @@ export function TaskDetail({
   const dueDateInputRef = useRef<HTMLInputElement>(null);
   const startDateInputRef = useRef<HTMLInputElement>(null);
   const localUpdateRef = useRef(false);
+  const notifyCustomStatusChangeRef = useRef<(taskId: string, statusId: string) => Promise<void>>(async () => undefined);
 
   useEffect(() => {
     if (localUpdateRef.current) {
@@ -190,7 +191,7 @@ export function TaskDetail({
         setCurrentTask(currentTask);
         return;
       }
-      notifyCustomStatusChange(currentTask.id, statusId).catch(() => {});
+      notifyCustomStatusChangeRef.current(currentTask.id, statusId).catch(() => {});
     }
     onTaskUpdated?.(updated);
   }, [currentTask, onStatusChange, onTaskUpdated, toast]);
@@ -230,6 +231,7 @@ export function TaskDetail({
       ),
     );
   }
+  notifyCustomStatusChangeRef.current = notifyCustomStatusChange;
 
   const handleStatusChange = useCallback(
     async (statusId: string) => {
@@ -408,7 +410,7 @@ export function TaskDetail({
     }
     setStatusColumns([...visibleDefaults, ...customs]);
     setStatusesLoaded(true);
-  }, [task.id]);
+  }, [task.id, task.status_order]);
 
   const getStatusName = useCallback((statusId: string): string => {
     const col = statusColumns.find((c) => c.id === statusId);
@@ -428,7 +430,7 @@ export function TaskDetail({
     const updated = { ...currentTask, status_order: order };
     setCurrentTask(updated);
     onTaskUpdated?.(updated);
-  }, [currentTask.id, onTaskUpdated]);
+  }, [currentTask, onTaskUpdated]);
 
   const handleStatusDragOver = useCallback((e: React.DragEvent, statusId: string) => {
     e.preventDefault();
@@ -500,7 +502,7 @@ export function TaskDetail({
     );
     onCustomStatusesChange?.();
     setDraggingColumn(null);
-  }, [draggingColumn, statusColumns, onCustomStatusesChange]);
+  }, [draggingColumn, statusColumns, onCustomStatusesChange, persistStatusOrder]);
 
   const handleAddCustomStatus = useCallback(async () => {
     if (!newStatusName.trim()) return;
@@ -518,7 +520,7 @@ export function TaskDetail({
     }
     setNewStatusName('');
     setIsAddingStatus(false);
-  }, [newStatusName, statusColumns, currentTask.id, onCustomStatusesChange]);
+  }, [newStatusName, statusColumns, currentTask.id, onCustomStatusesChange, persistStatusOrder]);
 
   const handleDeleteCustomStatus = useCallback(async (columnId: string) => {
     const col = statusColumns.find((c) => c.id === columnId);

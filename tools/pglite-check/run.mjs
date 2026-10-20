@@ -22,7 +22,7 @@ const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const db = await PGlite.create({ extensions: { vector, pgcrypto, pg_trgm, uuid_ossp } });
 console.log((await db.query('SELECT version()')).rows[0].version.split(' on ')[0]);
 
-// The bootstrap emulates Supabase's roles, auth and storage schemas (psql meta-commands removed).
+// The bootstrap provides the standalone roles, auth and storage schemas (psql meta-commands removed).
 await db.exec(readFileSync(path.join(repo, 'tools/local-database/bootstrap.sql'), 'utf8').replace(/^\\set .*$/gm, ''));
 
 const dir = path.join(repo, 'database/migrations');

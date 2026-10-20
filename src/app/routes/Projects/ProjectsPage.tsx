@@ -16,7 +16,6 @@ export function ProjectsPage() {
     projects,
     isLoading,
     createProject,
-    archiveProject,
     refetch,
   } = useProjects();
 

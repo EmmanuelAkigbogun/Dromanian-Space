@@ -12,7 +12,6 @@ import type {
   CalendarReminder,
   ScheduledMessage,
   ScheduledMessageAttachment,
-  UUID,
 } from '@/types';
 
 interface UseCalendarReturn {

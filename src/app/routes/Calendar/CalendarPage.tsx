@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { CalendarView } from '@/components/calendar/CalendarView/CalendarView';
 import { PersonalPlanner } from '@/components/calendar/PersonalPlanner/PersonalPlanner';
 import { ScheduledMessages } from '@/components/calendar/ScheduledMessages/ScheduledMessages';
@@ -14,7 +13,6 @@ export function CalendarPage() {
     reminders,
     pendingReminders,
     scheduledMessages,
-    planner,
     createReminder,
     createEvent,
     updateEvent,
@@ -27,10 +25,9 @@ export function CalendarPage() {
     refetch,
     isLoading,
   } = useCalendar();
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-
   const handleEventClick = (event: CalendarEvent) => {
-    setSelectedEvent(event);
+    // Event details are handled by CalendarView; the planner shares this hook.
+    void event;
   };
 
   const handleDismissReminder = async (id: string) => {
@@ -81,7 +78,6 @@ export function CalendarPage() {
         <div className={styles.sidebarContent}>
           <PersonalPlanner
             events={events}
-            reminders={reminders}
             pendingReminders={pendingReminders}
             onEventClick={handleEventClick}
           />

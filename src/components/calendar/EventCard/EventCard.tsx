@@ -17,10 +17,6 @@ export function EventCard({ event, participants = [], onClick, compact = false, 
     return new Date(dateStr).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   };
 
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
-
   return (
     <button
       type="button"

@@ -1,6 +1,4 @@
 import { useState, useCallback } from 'react';
-import { useToast } from '@/components/ui/Toast';
-import { useTasks } from '@/hooks/useTasks';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
 import type { Message } from '@/types';
 import styles from './MessageToTaskButton.module.css';
@@ -12,8 +10,6 @@ interface MessageToTaskButtonProps {
 }
 
 export function MessageToTaskButton({ message, workspaceId, onClose }: MessageToTaskButtonProps) {
-  const { toast } = useToast();
-  const { convertMessageToTask } = useTasks();
   const [showDialog, setShowDialog] = useState(false);
 
   const handleClick = useCallback(() => {

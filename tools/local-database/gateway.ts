@@ -1,12 +1,12 @@
 /**
- * Local stand-in for the Supabase API gateway (development and tests only).
+ * Legacy-compatible local API gateway (development and tests only).
  *
  *   /rest/v1/*     -> PostgREST (real)
- *   /auth/v1/*     -> minimal GoTrue-compatible endpoints used by supabase-js
+ *   /auth/v1/*     -> legacy-compatible local authentication endpoints
  *   /storage/v1/*  -> minimal Storage API; every object read/write runs as the
  *                     caller's database role with its JWT claims, so the
  *                     storage.objects RLS policies from the migrations decide
- *                     access exactly as hosted Supabase Storage does
+ *                     access exactly as the production storage RLS layer does
  *   /realtime/v1/* -> not emulated (clients degrade to polling/refresh)
  */
 import http from 'node:http';
@@ -52,8 +52,8 @@ const CORS_HEADERS: Record<string, string> = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD',
   'access-control-allow-headers':
-    'authorization,apikey,x-client-info,content-type,prefer,range,accept-profile,content-profile,x-upsert,cache-control,x-supabase-api-version,x-request-id',
-  'access-control-expose-headers': 'content-range,content-length,x-supabase-api-version,location',
+    'authorization,apikey,x-client-info,content-type,prefer,range,accept-profile,content-profile,x-upsert,cache-control,x-request-id',
+  'access-control-expose-headers': 'content-range,content-length,location',
   'access-control-max-age': '86400',
 };
 

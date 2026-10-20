@@ -8,8 +8,8 @@ import { REPO_ROOT } from '../tools/local-database/lib.ts';
  */
 export default function setup(): void {
   const result = spawnSync(
-    path.join(REPO_ROOT, 'node_modules', '.bin', 'tsx'),
-    [path.join(REPO_ROOT, 'tools', 'local-database', 'cli.ts'), 'start'],
+    process.execPath,
+    [path.join(REPO_ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs'), path.join(REPO_ROOT, 'tools', 'local-database', 'cli.ts'), 'start'],
     { cwd: REPO_ROOT, encoding: 'utf8' },
   );
   if (result.status !== 0) {

@@ -1,6 +1,6 @@
 # Permissions
 
-The workspace is the tenant boundary. Browser data operations use the signed-in Supabase token and RLS. API handlers verify that token and current membership before calling server-only functions. Service keys and provider keys belong only in server environment variables.
+The workspace is the tenant boundary. Browser data operations use the same-origin API and a server-issued session; PostgreSQL RLS remains the final data boundary. API handlers verify the session and current membership before privileged operations. Provider keys remain encrypted on the server and are never returned to browsers.
 
 | Resource | Access rules |
 | --- | --- |
@@ -22,4 +22,4 @@ The workspace is the tenant boundary. Browser data operations use the signed-in 
 
 Workspace switches and sign-out clear query/signed-URL caches. Workspace-bound providers remount, thread panels reset, and thread message content is no longer persisted in localStorage. Message drafts use user/channel/thread keys. Authorization is still enforced by the database, not by cache cleanup.
 
-The local permission suite covers multiple identities/workspaces, revocation, private channels/files, ownership, grant changes, proposal retries and membership removal. Hosted Realtime revocation timing and real Storage signed-URL behavior still require deployment verification.
+The local permission suite covers multiple identities/workspaces, revocation, private channels/files, ownership, grant changes, proposal retries and membership removal. Production SSE revocation timing, expiring signed URLs and TURN relay behavior also require deployment acceptance.

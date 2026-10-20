@@ -48,7 +48,7 @@ export function useMentions(): UseMentionsReturn {
         const from = pageNum * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
 
-        const { data, error: fetchError, count } = await platform
+        const { data, error: fetchError } = await platform
           .from('user_mentions' as any)
           .select('*', { count: 'exact' })
           .eq('user_id', userId)

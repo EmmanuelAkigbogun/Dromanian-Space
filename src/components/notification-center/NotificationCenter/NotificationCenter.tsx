@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useNotifications } from '@/hooks/useNotifications';
-import { useAuth } from '@/hooks/useAuth';
 import { Avatar } from '@/components/ui/Avatar';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Spinner } from '@/components/ui/Spinner';
@@ -35,7 +34,6 @@ const CATEGORY_TABS: Array<{ id: NotificationCategory | 'all'; label: string }> 
 
 export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
   const navigate = useNavigate();
-  const { userId } = useAuth();
   const {
     notifications,
     loading,

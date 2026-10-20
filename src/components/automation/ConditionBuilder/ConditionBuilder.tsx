@@ -6,7 +6,6 @@ import styles from './ConditionBuilder.module.css';
 interface ConditionBuilderProps {
   conditions: AutomationCondition[];
   onChange: (conditions: AutomationCondition[]) => void;
-  triggerTypes?: string[];
 }
 
 const FIELD_PLACEHOLDERS: Record<string, string> = {
@@ -68,7 +67,7 @@ const FIELD_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'updated_at', label: 'Updated At' },
 ];
 
-export function ConditionBuilder({ conditions, onChange, triggerTypes }: ConditionBuilderProps) {
+export function ConditionBuilder({ conditions, onChange }: ConditionBuilderProps) {
   const addCondition = () => {
     onChange([
       ...conditions,

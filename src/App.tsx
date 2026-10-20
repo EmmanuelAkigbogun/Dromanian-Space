@@ -23,41 +23,42 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { PublicRoute } from '@/components/auth/PublicRoute';
 import { OnboardingWrapper } from '@/components/auth/OnboardingWrapper';
 import { WorkspaceGuard } from '@/components/workspace';
-import { ThreadPanel } from '@/components/message/ThreadPanel';
-import { DmConversationView } from '@/components/dm';
-import { CommandPalette } from '@/components/command-palette/CommandPalette';
-import { CallOverlay } from '@/components/call';
-import { Home } from '@/app/routes/Home';
-import { Messages } from '@/app/routes/Messages';
-import { Channels } from '@/app/routes/Channels';
-import { ChannelView } from '@/app/routes/Channels/ChannelView';
-import { Notifications } from '@/app/routes/Notifications';
-import { Invitations } from '@/app/routes/Invitations';
-import { Settings } from '@/app/routes/Settings';
-import { Profile } from '@/app/routes/Profile';
-import { SignIn } from '@/app/routes/auth/SignIn';
-import { SignUp } from '@/app/routes/auth/SignUp';
-import { ForgotPassword } from '@/app/routes/auth/ForgotPassword';
-import { ResetPassword } from '@/app/routes/auth/ResetPassword';
-import { EmailVerification } from '@/app/routes/auth/EmailVerification';
-import { Unauthorized } from '@/app/routes/auth/Unauthorized';
-import { AcceptInvite } from '@/app/routes/auth/AcceptInvite';
-import { JoinWorkspace } from '@/app/routes/JoinWorkspace';
-import { TaskPage } from '@/app/routes/Tasks/TaskPage';
-import { ProjectsPage, ProjectViewPage } from '@/app/routes/Projects';
-import { CalendarPage } from '@/app/routes/Calendar';
-import { AutomationPage } from '@/app/routes/Automation';
-import { SavedPinnedPage } from '@/app/routes/SavedPinned';
-import { CallsPage } from '@/app/routes/Calls';
 import { HomeIcon, MessageIcon, UsersIcon, BellIcon, SettingsIcon, UserIcon, FolderIcon, MailIcon, TaskIcon, ProjectIcon, CalendarIcon, AutomationIcon, AiIcon, BookmarkIcon, PhoneIcon } from '@/components/shared/Icons';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useAuth } from '@/hooks/useAuth';
-import { platform } from '@/lib/platform';
+
 
 const CRMPage = lazy(() => import('@/app/routes/CRM/CRMPage'));
 const ThreadsPage = lazy(() => import('@/app/routes/Threads/ThreadsPage'));
 const DrivePage = lazy(() => import('@/app/routes/Drive/DrivePage'));
 const AgentsPage = lazy(() => import('@/app/routes/Agents/AgentsPage'));
+const ThreadPanel = lazy(() => import('@/components/message/ThreadPanel').then((m) => ({ default: m.ThreadPanel })));
+const DmConversationView = lazy(() => import('@/components/dm').then((m) => ({ default: m.DmConversationView })));
+const CommandPalette = lazy(() => import('@/components/command-palette/CommandPalette').then((m) => ({ default: m.CommandPalette })));
+const CallOverlay = lazy(() => import('@/components/call').then((m) => ({ default: m.CallOverlay })));
+const Home = lazy(() => import('@/app/routes/Home').then((m) => ({ default: m.Home })));
+const Messages = lazy(() => import('@/app/routes/Messages').then((m) => ({ default: m.Messages })));
+const Channels = lazy(() => import('@/app/routes/Channels').then((m) => ({ default: m.Channels })));
+const ChannelView = lazy(() => import('@/app/routes/Channels/ChannelView').then((m) => ({ default: m.ChannelView })));
+const Notifications = lazy(() => import('@/app/routes/Notifications').then((m) => ({ default: m.Notifications })));
+const Invitations = lazy(() => import('@/app/routes/Invitations').then((m) => ({ default: m.Invitations })));
+const Settings = lazy(() => import('@/app/routes/Settings').then((m) => ({ default: m.Settings })));
+const Profile = lazy(() => import('@/app/routes/Profile').then((m) => ({ default: m.Profile })));
+const SignIn = lazy(() => import('@/app/routes/auth/SignIn').then((m) => ({ default: m.SignIn })));
+const SignUp = lazy(() => import('@/app/routes/auth/SignUp').then((m) => ({ default: m.SignUp })));
+const ForgotPassword = lazy(() => import('@/app/routes/auth/ForgotPassword').then((m) => ({ default: m.ForgotPassword })));
+const ResetPassword = lazy(() => import('@/app/routes/auth/ResetPassword').then((m) => ({ default: m.ResetPassword })));
+const EmailVerification = lazy(() => import('@/app/routes/auth/EmailVerification').then((m) => ({ default: m.EmailVerification })));
+const Unauthorized = lazy(() => import('@/app/routes/auth/Unauthorized').then((m) => ({ default: m.Unauthorized })));
+const AcceptInvite = lazy(() => import('@/app/routes/auth/AcceptInvite').then((m) => ({ default: m.AcceptInvite })));
+const JoinWorkspace = lazy(() => import('@/app/routes/JoinWorkspace').then((m) => ({ default: m.JoinWorkspace })));
+const TaskPage = lazy(() => import('@/app/routes/Tasks/TaskPage').then((m) => ({ default: m.TaskPage })));
+const ProjectsPage = lazy(() => import('@/app/routes/Projects').then((m) => ({ default: m.ProjectsPage })));
+const ProjectViewPage = lazy(() => import('@/app/routes/Projects').then((m) => ({ default: m.ProjectViewPage })));
+const CalendarPage = lazy(() => import('@/app/routes/Calendar').then((m) => ({ default: m.CalendarPage })));
+const AutomationPage = lazy(() => import('@/app/routes/Automation').then((m) => ({ default: m.AutomationPage })));
+const SavedPinnedPage = lazy(() => import('@/app/routes/SavedPinned').then((m) => ({ default: m.SavedPinnedPage })));
+const CallsPage = lazy(() => import('@/app/routes/Calls').then((m) => ({ default: m.CallsPage })));
 
 function TenantBoundary({children}: {children: ReactNode}) {
   const {currentWorkspace} = useWorkspaceContext();
@@ -111,12 +112,12 @@ function AppLayoutWithThread() {
 
   return (
     <>
-    <CommandPalette />
-    <CallOverlay />
+    <Suspense fallback={null}><CommandPalette /></Suspense>
+    <Suspense fallback={null}><CallOverlay /></Suspense>
     <AppLayout
       primaryNavigation={primaryNavigation}
       secondaryNavigation={secondaryNavigation}
-      headerTitle="Δαρκ space"
+      headerTitle="Darkspace"
       rightPanelTitle={activeThread ? 'Thread' : undefined}
       rightPanelContent={activeThread ? <MessageProvider><ThreadPanel /></MessageProvider> : undefined}
       onRightPanelClose={closeThread}
@@ -203,7 +204,7 @@ function App() {
                     <NotificationProvider>
                     <CallProvider>
                       <MessageSelectionProvider>
-                                      <AppLayoutWithThread />
+                                      <Suspense fallback={<p role="status">Loading workspace…</p>}><AppLayoutWithThread /></Suspense>
                       </MessageSelectionProvider>
                     </CallProvider>
                     </NotificationProvider>

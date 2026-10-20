@@ -270,6 +270,15 @@ class AuthClient {
 
 interface LiveHandler { kind: string; filter: Record<string, unknown>; callback: (payload: any) => void }
 
+function matchesPostgresFilter(expression: unknown, payload: any): boolean {
+  if (typeof expression !== 'string' || !expression) return true;
+  const match = /^([a-zA-Z_][a-zA-Z0-9_]*)=(eq|neq)\.(.*)$/.exec(expression);
+  if (!match) return false;
+  const row = payload?.new && Object.keys(payload.new).length ? payload.new : payload?.old;
+  const actual = row?.[match[1]];
+  return match[2] === 'eq' ? String(actual) === match[3] : String(actual) !== match[3];
+}
+
 class LiveChannel {
   private handlers: LiveHandler[] = [];
   readonly topic: string;
@@ -308,6 +317,7 @@ class LiveChannel {
       if (handler.kind === 'postgres_changes') {
         if (handler.filter.table && handler.filter.table !== event.table) continue;
         if (handler.filter.event && handler.filter.event !== '*' && handler.filter.event !== event.event) continue;
+        if (!matchesPostgresFilter(handler.filter.filter, event.payload)) continue;
       }
       handler.callback(event.payload);
     }

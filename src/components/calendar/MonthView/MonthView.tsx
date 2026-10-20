@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { EventCard } from '../EventCard/EventCard';
+
 import type { CalendarEvent } from '@/types';
 import styles from './MonthView.module.css';
 

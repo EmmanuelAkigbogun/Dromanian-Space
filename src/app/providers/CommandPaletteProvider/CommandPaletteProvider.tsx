@@ -92,6 +92,7 @@ export function CommandPaletteProvider({ children }: CommandPaletteProviderProps
   );
 
   const commands = useMemo(() => {
+    void commandsVersion;
     return Array.from(commandsRef.current.values());
   }, [commandsVersion]);
 
