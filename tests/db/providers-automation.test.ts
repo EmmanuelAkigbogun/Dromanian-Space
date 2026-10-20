@@ -115,6 +115,18 @@ describe('switching agent models', () => {
 });
 
 describe('expanded roster', () => {
+  it('adds the general Gemini assistant to every workspace', async () => {
+    const rows = await admin<{ handle: string; job: string; tools: string[] }>(
+      `SELECT a.handle, t.job, v.tools
+       FROM workspace_agents a
+       JOIN agent_templates t ON t.key = a.template_key
+       JOIN workspace_agent_versions v ON v.id = a.current_version_id
+       WHERE a.workspace_id = $1 AND a.template_key = 'gemini_assistant'`, [wsA]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ handle: 'gemini', job: 'General AI Assistant' });
+    expect(rows[0].tools).toEqual(expect.arrayContaining(['search_workspace', 'read_file', 'web_search', 'propose_document']));
+  });
+
   it('adds the researcher, creative director and engineer with their tools', async () => {
     const rows = await admin<{ template_key: string; handle: string; tools: string[] }>(
       `SELECT a.template_key, a.handle, v.tools FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id

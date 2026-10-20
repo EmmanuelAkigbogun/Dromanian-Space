@@ -39,8 +39,31 @@ type InteractionTool =
 
 let client: GoogleGenAI | null = null;
 let clientKey: string | null = null;
+let clientInjectedForTests = false;
+
+const RESILIENT_FLASH_MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'] as const;
+
+/**
+ * Gemini capacity and free-tier quotas are model-specific. Keep every retry on
+ * Google, but move down the Flash line when the requested model is overloaded
+ * or temporarily rate limited. The next conversation starts at the requested
+ * model again, so a transient fallback never changes an agent's configuration.
+ */
+export function geminiModelCandidates(requested: string): string[] {
+  const start = RESILIENT_FLASH_MODELS.indexOf(requested as (typeof RESILIENT_FLASH_MODELS)[number]);
+  if (start >= 0) return [...RESILIENT_FLASH_MODELS.slice(start)];
+  return [requested, 'gemini-3.6-flash', 'gemini-3.5-flash-lite'].filter((model, index, all) => all.indexOf(model) === index);
+}
+
+/** For adapter tests; production always constructs the SDK client from the server-side key. */
+export function setGeminiClientForTests(value: GoogleGenAI | null): void {
+  client = value;
+  clientInjectedForTests = value !== null;
+  clientKey = null;
+}
 
 function getClient(): GoogleGenAI {
+  if (clientInjectedForTests && client) return client;
   const key = env().geminiApiKey;
   if (!key) throw new ProviderError('not_configured', 'Google Gemini is not configured on the server (GEMINI_API or GEMINI_API_KEY).');
   if (!client || clientKey !== key) {
@@ -48,6 +71,13 @@ function getClient(): GoogleGenAI {
     clientKey = key;
   }
   return client;
+}
+
+function canTryAnotherModel(error: ProviderError): boolean {
+  return error.code === 'overloaded'
+    || error.code === 'rate_limited'
+    || error.code === 'unavailable'
+    || error.code === 'model_unavailable';
 }
 
 function mapError(error: unknown): ProviderError {
@@ -104,10 +134,12 @@ class GeminiSession implements ModelSession {
   private readonly tools: InteractionTool[] = [];
   private readonly input: SessionInput;
   private readonly pendingCallNames = new Map<string, string>();
+  private activeModel: string;
   private turn = 0;
 
   constructor(input: SessionInput) {
     this.input = input;
+    this.activeModel = input.model;
     for (const turn of input.history) {
       this.transcript.push({
         type: turn.role === 'assistant' ? 'model_output' : 'user_input',
@@ -126,106 +158,126 @@ class GeminiSession implements ModelSession {
     let text = '';
     let status: string | undefined;
     let usage: InteractionUsage | undefined;
-    let model = this.input.model;
-    const pendingCalls = new Map<number, PendingCall>();
-    const webSearches: string[] = [];
-    const webSources: WebSource[] = [];
-    const seenSources = new Set<string>();
+    let model = this.activeModel;
+    let pendingCalls = new Map<number, PendingCall>();
+    let webSearches: string[] = [];
+    let webSources: WebSource[] = [];
 
-    const addSources = (annotations: TextAnnotation[] | undefined): void => {
-      for (const annotation of annotations ?? []) {
-        if (annotation.type !== 'url_citation' || !annotation.url || seenSources.has(annotation.url)) continue;
-        seenSources.add(annotation.url);
-        webSources.push({ url: annotation.url, title: annotation.title ?? null });
-      }
-    };
+    const candidates = geminiModelCandidates(this.activeModel);
+    for (let attempt = 0; attempt < candidates.length; attempt++) {
+      const requestedModel = candidates[attempt];
+      text = '';
+      status = undefined;
+      usage = undefined;
+      model = requestedModel;
+      pendingCalls = new Map<number, PendingCall>();
+      webSearches = [];
+      webSources = [];
+      const seenSources = new Set<string>();
+      let madeVisibleProgress = false;
+      const addSources = (annotations: TextAnnotation[] | undefined): void => {
+        for (const annotation of annotations ?? []) {
+          if (annotation.type !== 'url_citation' || !annotation.url || seenSources.has(annotation.url)) continue;
+          seenSources.add(annotation.url);
+          webSources.push({ url: annotation.url, title: annotation.title ?? null });
+        }
+      };
 
-    try {
-      const stream = await getClient().interactions.create(
-        {
-          model: this.input.model,
-          input: this.transcript,
-          system_instruction: this.input.system,
-          generation_config: {
-            max_output_tokens: this.input.maxTokens,
-            thinking_level: thinkingLevel(this.input.effort),
+      try {
+        const stream = await getClient().interactions.create(
+          {
+            model: requestedModel,
+            input: this.transcript,
+            system_instruction: this.input.system,
+            generation_config: {
+              max_output_tokens: this.input.maxTokens,
+              thinking_level: thinkingLevel(this.input.effort),
+            },
+            ...(this.tools.length > 0 ? { tools: this.tools } : {}),
+            stream: true,
+            store: false,
           },
-          ...(this.tools.length > 0 ? { tools: this.tools } : {}),
-          stream: true,
-          store: false,
-        },
-        { signal: callbacks.signal, timeout_ms: 10 * 60 * 1000 },
-      );
+          { signal: callbacks.signal, timeout_ms: 10 * 60 * 1000 },
+        );
 
-      for await (const event of stream) {
-        if (event.event_type === 'interaction.created') {
-          model = event.interaction.model ?? model;
-          status = event.interaction.status;
-          continue;
-        }
-        if (event.event_type === 'interaction.status_update') {
-          status = event.status;
-          usage = event.usage ?? usage;
-          continue;
-        }
-        if (event.event_type === 'step.start') {
-          if (event.step.type === 'function_call') {
-            pendingCalls.set(event.index, {
-              id: event.step.id || `gemini-${this.turn}-${event.index + 1}`,
-              name: event.step.name,
-              initialArguments: event.step.arguments ?? {},
-              argumentDelta: '',
-            });
+        for await (const event of stream) {
+          if (event.event_type === 'interaction.created') {
+            model = event.interaction.model ?? model;
+            status = event.interaction.status;
+            continue;
           }
-          if (event.step.type === 'google_search_call') {
-            for (const query of event.step.arguments.queries ?? []) {
-              if (webSearches.includes(query)) continue;
-              webSearches.push(query);
-              callbacks.onWebSearch?.(query);
+          if (event.event_type === 'interaction.status_update') {
+            status = event.status;
+            usage = event.usage ?? usage;
+            continue;
+          }
+          if (event.event_type === 'step.start') {
+            if (event.step.type === 'function_call') {
+              madeVisibleProgress = true;
+              pendingCalls.set(event.index, {
+                id: event.step.id || `gemini-${this.turn}-${event.index + 1}`,
+                name: event.step.name,
+                initialArguments: event.step.arguments ?? {},
+                argumentDelta: '',
+              });
             }
-          }
-          if (event.step.type === 'model_output') {
-            for (const content of event.step.content ?? []) {
-              if (content.type === 'text') addSources(content.annotations);
+            if (event.step.type === 'google_search_call') {
+              madeVisibleProgress = true;
+              for (const query of event.step.arguments.queries ?? []) {
+                if (webSearches.includes(query)) continue;
+                webSearches.push(query);
+                callbacks.onWebSearch?.(query);
+              }
             }
-          }
-          continue;
-        }
-        if (event.event_type === 'step.delta') {
-          if (event.delta.type === 'text') {
-            text += event.delta.text;
-            callbacks.onText(event.delta.text);
-          } else if (event.delta.type === 'arguments_delta') {
-            const call = pendingCalls.get(event.index);
-            if (call) call.argumentDelta += event.delta.arguments ?? '';
-          } else if (event.delta.type === 'google_search_call') {
-            for (const query of event.delta.arguments.queries ?? []) {
-              if (webSearches.includes(query)) continue;
-              webSearches.push(query);
-              callbacks.onWebSearch?.(query);
+            if (event.step.type === 'model_output') {
+              for (const content of event.step.content ?? []) {
+                if (content.type === 'text') addSources(content.annotations);
+              }
             }
-          } else if (event.delta.type === 'text_annotation_delta') {
-            addSources(event.delta.annotations);
+            continue;
           }
-          usage = event.metadata?.total_usage ?? usage;
-          continue;
+          if (event.event_type === 'step.delta') {
+            if (event.delta.type === 'text') {
+              madeVisibleProgress = true;
+              text += event.delta.text;
+              callbacks.onText(event.delta.text);
+            } else if (event.delta.type === 'arguments_delta') {
+              const call = pendingCalls.get(event.index);
+              if (call) call.argumentDelta += event.delta.arguments ?? '';
+            } else if (event.delta.type === 'google_search_call') {
+              madeVisibleProgress = true;
+              for (const query of event.delta.arguments.queries ?? []) {
+                if (webSearches.includes(query)) continue;
+                webSearches.push(query);
+                callbacks.onWebSearch?.(query);
+              }
+            } else if (event.delta.type === 'text_annotation_delta') {
+              addSources(event.delta.annotations);
+            }
+            usage = event.metadata?.total_usage ?? usage;
+            continue;
+          }
+          if (event.event_type === 'step.stop') {
+            usage = event.usage ?? event.step_usage ?? usage;
+            continue;
+          }
+          if (event.event_type === 'interaction.completed') {
+            status = event.interaction.status;
+            model = event.interaction.model ?? model;
+            usage = event.interaction.usage ?? usage;
+            continue;
+          }
+          if (event.event_type === 'error') {
+            throw new ProviderError('unavailable', event.error?.message?.slice(0, 200) || 'Google Gemini returned a streaming error.');
+          }
         }
-        if (event.event_type === 'step.stop') {
-          usage = event.usage ?? event.step_usage ?? usage;
-          continue;
-        }
-        if (event.event_type === 'interaction.completed') {
-          status = event.interaction.status;
-          model = event.interaction.model ?? model;
-          usage = event.interaction.usage ?? usage;
-          continue;
-        }
-        if (event.event_type === 'error') {
-          throw new ProviderError('unavailable', event.error?.message?.slice(0, 200) || 'Google Gemini returned a streaming error.');
-        }
+        this.activeModel = requestedModel;
+        break;
+      } catch (error) {
+        const mapped = mapError(error);
+        const hasAnother = attempt + 1 < candidates.length;
+        if (madeVisibleProgress || !hasAnother || !canTryAnotherModel(mapped)) throw mapped;
       }
-    } catch (error) {
-      throw mapError(error);
     }
 
     const toolCalls = [...pendingCalls.values()].map((call) => ({ id: call.id, name: call.name, input: parseArguments(call) }));
@@ -242,7 +294,7 @@ class GeminiSession implements ModelSession {
       refusalCategory: null,
       usage: usageOf(usage),
       model,
-      fallbackUsed: false,
+      fallbackUsed: this.activeModel !== this.input.model,
       webSearches,
       webSources,
     };

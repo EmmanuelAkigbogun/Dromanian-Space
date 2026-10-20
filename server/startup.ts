@@ -32,7 +32,7 @@ export function checkEnv(): EnvProblem[] {
   }
   const states = providerStates();
   if (!states.some((s) => s.configured)) {
-    warn('No AI provider key is set (ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY); agents will show a setup state.');
+    warn('No AI provider key is set (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or GEMINI_API); agents will show a setup state.');
   } else if (!states.find((s) => s.name === e.defaultProvider)?.configured) {
     warn(`AI_DEFAULT_PROVIDER is ${e.defaultProvider} but its key is missing; new workspaces default to the configured provider.`);
   }

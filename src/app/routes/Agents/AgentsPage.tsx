@@ -293,9 +293,9 @@ function Directory(props: {
     <>
       <header className={s.header}>
         <div>
-          <div className={s.eyebrow}>Your AI team</div>
-          <h1>Twelve specialists, one team.</h1>
-          <p className={s.muted}>Each works only with what you can access. Anything that changes data waits for your review.</p>
+          <div className={s.eyebrow}>Your Gemini team</div>
+          <h1>A general assistant and a full team of specialists.</h1>
+          <p className={s.muted}>Every agent runs on Gemini and works only with what you can access. Anything that changes data waits for your review.</p>
         </div>
         {props.admin && (
           <div className={s.actions}>
@@ -316,7 +316,7 @@ function Directory(props: {
         </section>
       )}
       <div className={s.toolbar}>
-        <input className={s.input} aria-label="Search agents" placeholder="Find a specialist by name or role…" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <input className={s.input} aria-label="Search agents" placeholder="Find an assistant by name or role…" value={filter} onChange={(e) => setFilter(e.target.value)} />
       </div>
       {props.loading ? (
         <p className={s.muted}>Loading agents…</p>

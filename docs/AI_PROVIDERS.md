@@ -5,6 +5,8 @@ once. Each agent version stores a model id, and the provider follows from it (`c
 Anthropic; `gpt-…`, `o…` and `chatgpt-…` are OpenAI). So specialists in one Team Chat run can use
 different providers. Model ids beginning with `gemini-` use Google Gemini. No GPU and no local model server are needed.
 
+The current production policy is Gemini-only: every built-in agent uses `gemini-3.8-flash`, and workspace model choices are restricted to Gemini Flash models. The other adapters remain in the codebase for compatibility, but they are not assigned to the built-in roster.
+
 ## Server configuration (api and worker)
 
 | Variable | Purpose |
@@ -76,6 +78,8 @@ concurrency limit apply to every provider.
 
 ## How each provider is called
 
+Gemini uses the streaming Interactions API from `@google/genai`, sends the stateless transcript on every turn, exposes workspace actions as function tools, and uses Google's search tool when web research is enabled. Agent effort maps to Gemini's thinking level.
+
 | | Anthropic | OpenAI |
 | --- | --- | --- |
 | API | Messages API, streaming (`@anthropic-ai/sdk`) | Responses API, streaming (`openai`) |
@@ -99,8 +103,7 @@ persisted input.
 
 ## Errors, retries and rate limits
 
-- **Retries:** each SDK retries connection errors, 429 and 5xx twice with backoff, and times out
-  after 10 minutes per request.
+- **Retries and Gemini capacity fallback:** Anthropic and OpenAI use their SDK retry policies. Gemini starts with `gemini-3.8-flash`, then tries `gemini-3.6-flash` and `gemini-3.5-flash-lite` only when Google returns overload, temporary unavailability, a model-specific rate limit, or model unavailability. It never switches provider, and it never replays a request after text, a tool call, or a search became visible.
 - **Errors after retries** are mapped to clear messages on the run (`auth`, `model_unavailable`,
   `rate_limited`, `overloaded`, `bad_request`, `unavailable`). OpenAI's "insufficient quota" is
   reported as a billing problem, not as rate limiting.
@@ -122,6 +125,4 @@ Everything else stays in this deployment's database and storage.
 The OpenAI adapter is covered by deterministic tests against a scripted Responses API stream
 (`tests/unit/openai-adapter.test.ts`): tool loop, reasoning replay, usage mapping, citations,
 truncation, refusals, domain-filtered search, error mapping and cancellation. The Anthropic adapter
-and the engine are covered by provider-double tests. **No live request to Anthropic, OpenAI, or Gemini has
-been made** while building this. After deployment, run one agent per configured provider (checklist
-in the [COOLIFY_SETUP.md](COOLIFY_SETUP.md) acceptance checklist) to confirm keys, model access and streaming.
+and the engine are covered by provider-double tests. The Gemini adapter has deterministic tests for model fallback and duplicate-stream prevention. On 2026-10-20, the production key was verified without exposing it: model listing succeeded, `gemini-3.6-flash` and `gemini-3.5-flash-lite` passed both Generate Content and Interactions requests, and `gemini-3.8-flash` correctly reported a temporary high-demand 503 that the fallback path now handles.
