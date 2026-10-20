@@ -93,13 +93,13 @@ describe('upload, ownership and sharing', () => {
     await expectDenied(q(teammate, `SELECT drive_share($1, 'user', $2, 'editor')`, [f.itemId, teammate.id]), /cannot change sharing|permission/i);
   });
 
-  it('only lets editors reshare when the owner allows it', async () => {
+  it('lets editors reshare by default and lets the owner disable it', async () => {
     const f = await upload(owner, ws, 'Reshare.pdf');
     await q(owner, `SELECT drive_share($1, 'user', $2, 'editor')`, [f.itemId, teammate.id]);
-    await expectDenied(q(teammate, `SELECT drive_share($1, 'user', $2, 'viewer')`, [f.itemId, channelMate.id]), /cannot change sharing/i);
-    await q(owner, 'SELECT drive_set_sharing_options($1, NULL, true)', [f.itemId]);
     await q(teammate, `SELECT drive_share($1, 'user', $2, 'viewer')`, [f.itemId, channelMate.id]);
     expect(await canSee(channelMate, f.itemId)).toBe(true);
+    await q(owner, 'SELECT drive_set_sharing_options($1, NULL, false)', [f.itemId]);
+    await expectDenied(q(teammate, `SELECT drive_share($1, 'user', $2, 'viewer')`, [f.itemId, channelMate.id]), /cannot change sharing/i);
   });
 
   it('does not let anyone probe other people\'s access', async () => {

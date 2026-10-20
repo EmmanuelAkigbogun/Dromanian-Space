@@ -150,6 +150,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
       const s = await getCallSession(currentCall.id);
       if (!s) return;
       if (s.status === 'active') {
+        currentCallRef.current = s;
+        callScreenRef.current = 'active';
         setCurrentCall(s);
         setCallScreen('active');
       } else if (s.status !== 'ringing') {
@@ -166,6 +168,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (currentCallRef.current) {
       outgoingCallIdsRef.current.delete(currentCallRef.current.id);
     }
+    currentCallRef.current = null;
+    callScreenRef.current = 'none';
     setCurrentCall(null);
     setParticipants([]);
     setCallScreen('none');
@@ -197,14 +201,16 @@ export function CallProvider({ children }: { children: ReactNode }) {
           if (currentCallRef.current?.id === participant.call_id) return;
           if (!myUserId) return;
 
-          engineRef.current.setupSignaling(participant.call_id, myUserId);
-
           const [session, parts] = await Promise.all([
             getCallSession(participant.call_id),
             getCallParticipants(participant.call_id),
           ]);
           if (!session || session.created_by === myUserId || session.status !== 'ringing') return;
+          if (currentCallRef.current && currentCallRef.current.id !== session.id) return;
 
+          engineRef.current.setupSignaling(participant.call_id, myUserId);
+          currentCallRef.current = session;
+          callScreenRef.current = 'incoming';
           setCurrentCall(session);
           setParticipants(parts);
           setCallScreen('incoming');
@@ -222,9 +228,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
           // Refresh the session so fields the server/callee wrote are visible
           // here - without this, started_at stays null after the callee answers
           // and the call duration counter never ticks.
+          currentCallRef.current = updated;
           setCurrentCall(updated);
 
           if (updated.status === 'active' && (screen === 'outgoing' || screen === 'incoming')) {
+            callScreenRef.current = 'active';
             setCallScreen('active');
             void getCallParticipants(updated.id).then((freshParticipants) => {
               if (currentCallRef.current?.id === updated.id) setParticipants(freshParticipants);
@@ -272,6 +280,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       const screen = callScreenRef.current;
       if (screen === 'outgoing') {
         console.log('[call] remote stream received - transitioning to active');
+        callScreenRef.current = 'active';
         setCallScreen('active');
       }
     });
@@ -279,6 +288,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       const screen = callScreenRef.current;
       if (screen === 'outgoing') {
         console.log('[call] peer connected - transitioning to active');
+        callScreenRef.current = 'active';
         setCallScreen('active');
       }
     });
@@ -328,16 +338,29 @@ export function CallProvider({ children }: { children: ReactNode }) {
         if (!createdCall) { engine.stopLocalMedia(); return; }
         const { session, participants: createdParticipants } = createdCall;
 
-        // FIX: mark this call as "ours" the instant it exists - synchronously,
-        // before any participant row (including our own) is inserted. This is
-        // what makes the race-guard above deterministic instead of timing-dependent.
-        outgoingCallIdsRef.current.add(session.id);
+        engine.setupSignaling(session.id, userId);
 
+        // A crossed call returns the already-created canonical session. Join
+        // it as the callee instead of leaving each browser in a separate room.
+        if (session.created_by !== userId) {
+          currentCallRef.current = session;
+          callScreenRef.current = 'active';
+          setCurrentCall(session);
+          setParticipants(createdParticipants);
+          const answered = session.status === 'active' || await answerCall(session.id);
+          if (!answered) throw new Error('The crossed call could not be answered');
+          await engine.createOffer(allParticipants[0] ?? userId, stream);
+          callScreenRef.current = 'active';
+          setCallScreen('active');
+          return;
+        }
+
+        outgoingCallIdsRef.current.add(session.id);
+        currentCallRef.current = session;
+        callScreenRef.current = session.status === 'active' ? 'active' : 'outgoing';
         setCurrentCall(session);
         setParticipants(createdParticipants);
-        setCallScreen('outgoing');
-
-        engine.setupSignaling(session.id, userId);
+        setCallScreen(session.status === 'active' ? 'active' : 'outgoing');
 
         // LiveKit joins one SFU room per call. A single connection publishes
         // to every participant; there is no per-user offer loop anymore.
@@ -376,15 +399,14 @@ export function CallProvider({ children }: { children: ReactNode }) {
           console.warn('[call] startLocalMedia returned null - proceeding without local media');
         }
 
+        const answered = await answerCall(currentCall.id);
+        if (!answered) throw new Error('The call could not be answered');
         await engine.processPendingOffers();
-
-        answerCall(currentCall.id).catch((err) => {
-          console.error('[call] answerCall DB update failed (non-fatal):', err);
-        });
 
         void engine.resumeAllAudio().then((playing) => setIsAudioPlaybackBlocked(!playing));
 
         setIsAccepting(false);
+        callScreenRef.current = 'active';
         setCallScreen('active');
       } catch (err) {
         console.error('[call] acceptCall failed:', err);

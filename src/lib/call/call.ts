@@ -14,7 +14,7 @@ export async function createCallSession(
     body: JSON.stringify({ workspaceId, callType, channelId: options?.channelId, conversationId: options?.conversationId, withVideo: options?.withVideo ?? false, targetUserIds: options?.targetUserIds ?? [] }),
   });
   if (!response.ok) return null;
-  const payload = await response.json() as { session: CallSession; participants: CallParticipant[] };
+  const payload = await response.json() as { session: CallSession; participants: CallParticipant[]; reused?: boolean };
   return payload;
 }
 

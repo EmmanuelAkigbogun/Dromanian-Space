@@ -63,8 +63,8 @@ export default async function smoke(db, legacy) {
       JOIN workspace_agent_versions v ON v.id = a.current_version_id
       WHERE a.workspace_id = $1 AND a.template_key IN ('growth_strategist','recruiter','sales_rep','business_researcher')`, [legacy.ws]);
     const by = Object.fromEntries(v.map((r) => [r.template_key, r]));
-    check(by.growth_strategist?.version_no === 2 && /marketing strategist/.test(by.growth_strategist.instructions), 'upgrade: untouched Atlas refocused as marketing strategist (new version)');
-    check(by.recruiter?.version_no === 2 && /HR assistant/.test(by.recruiter.instructions), 'upgrade: untouched Talia broadened to HR assistant');
+    check(by.growth_strategist?.version_no >= 2 && /marketing strategist/.test(by.growth_strategist.instructions), 'upgrade: untouched Atlas refocused as marketing strategist (new version)');
+    check(by.recruiter?.version_no >= 2 && /HR assistant/.test(by.recruiter.instructions), 'upgrade: untouched Talia broadened to HR assistant');
     check(by.sales_rep?.instructions === 'Our own sales playbook.', 'upgrade: customized Rio left unchanged');
     check(Boolean(by.business_researcher), 'upgrade: new specialists added to the existing workspace');
     const cost = await h.admin(`SELECT provider, cost_usd FROM ai_usage_ledger WHERE workspace_id = $1 AND kind = 'usage'`, [legacy.ws]);

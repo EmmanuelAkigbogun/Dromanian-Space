@@ -92,6 +92,37 @@ export async function create(request: Request): Promise<Response> {
       [body.workspaceId, targets],
     );
     if (validTargets.rowCount !== targets.length) throw new HttpError(400, 'invalid_participants', 'Every participant must belong to the same workspace.');
+    // If both people press Call before either browser sees the incoming event,
+    // serialize creation for this pair so both requests join one media room.
+    if (body.callType === 'direct' && targets.length === 1) {
+      const callUsers = [user.id, targets[0]].sort();
+      const lockKey = `direct-call:${body.workspaceId}:${callUsers.join(':')}`;
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))', [lockKey]);
+      const existing = await client.query(
+        `SELECT cs.*
+         FROM public.call_sessions cs
+         WHERE cs.workspace_id = $1::uuid
+           AND cs.call_type = 'direct'
+           AND (
+             (cs.status = 'ringing' AND cs.created_at > now() - interval '60 seconds')
+             OR (cs.status = 'active' AND cs.answered_at > now() - interval '2 minutes')
+           )
+           AND (SELECT array_agg(cp.user_id ORDER BY cp.user_id)
+                FROM public.call_participants cp WHERE cp.call_id = cs.id) = $2::uuid[]
+         ORDER BY cs.created_at DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [body.workspaceId, callUsers],
+      );
+      if (existing.rowCount) {
+        const participants = await client.query(
+          'SELECT * FROM public.call_participants WHERE call_id = $1::uuid ORDER BY created_at',
+          [existing.rows[0].id],
+        );
+        await client.query('COMMIT');
+        return json({ session: existing.rows[0], participants: participants.rows, reused: true });
+      }
+    }
     if (body.callType === 'channel') {
       if (!body.channelId) throw new HttpError(400, 'channel_required', 'A channel call requires a channel.');
       const channelMembers = await client.query(
