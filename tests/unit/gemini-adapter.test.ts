@@ -28,7 +28,10 @@ function successfulStream(model: string): AsyncIterable<unknown> {
   };
 }
 
-afterEach(() => setGeminiClientForTests(null));
+afterEach(() => {
+  setGeminiClientForTests(null);
+  vi.useRealTimers();
+});
 
 describe('Gemini adapter', () => {
   it('keeps fallbacks on supported Gemini Flash models', () => {
@@ -56,6 +59,25 @@ describe('Gemini adapter', () => {
     expect(create.mock.calls.map(([request]) => request.model)).toEqual(['gemini-3.8-flash', 'gemini-3.6-flash']);
     expect(result).toMatchObject({ text: 'Hello from Gemini', model: 'gemini-3.6-flash', fallbackUsed: true, stop: 'end' });
     expect(deltas).toEqual(['Hello from Gemini']);
+  });
+
+  it('falls back when a Gemini model does not start producing output', async () => {
+    vi.useFakeTimers();
+    const create = vi.fn()
+      .mockImplementationOnce((_request: unknown, options: { signal: AbortSignal }) => new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
+      }))
+      .mockResolvedValueOnce(successfulStream('gemini-3.6-flash'));
+    setGeminiClientForTests({ interactions: { create } } as unknown as GoogleGenAI);
+
+    const response = geminiProvider.startSession(input).next({
+      signal: new AbortController().signal,
+      onText: () => undefined,
+    });
+    await vi.advanceTimersByTimeAsync(45_000);
+
+    await expect(response).resolves.toMatchObject({ model: 'gemini-3.6-flash', fallbackUsed: true });
+    expect(create).toHaveBeenCalledTimes(2);
   });
 
   it('does not replay a request after streamed output has become visible', async () => {

@@ -42,6 +42,7 @@ let clientKey: string | null = null;
 let clientInjectedForTests = false;
 
 const RESILIENT_FLASH_MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'] as const;
+const GEMINI_FIRST_OUTPUT_TIMEOUT_MS = 45_000;
 
 /**
  * Gemini capacity and free-tier quotas are model-specific. Keep every retry on
@@ -175,6 +176,20 @@ class GeminiSession implements ModelSession {
       webSources = [];
       const seenSources = new Set<string>();
       let madeVisibleProgress = false;
+      let firstOutputTimedOut = false;
+      const attemptController = new AbortController();
+      const abortAttempt = (): void => attemptController.abort(callbacks.signal.reason);
+      if (callbacks.signal.aborted) abortAttempt();
+      else callbacks.signal.addEventListener('abort', abortAttempt, { once: true });
+      const firstOutputTimeout = setTimeout(() => {
+        firstOutputTimedOut = true;
+        attemptController.abort(new Error('Gemini did not start responding in time.'));
+      }, GEMINI_FIRST_OUTPUT_TIMEOUT_MS);
+      const markVisibleProgress = (): void => {
+        if (madeVisibleProgress) return;
+        madeVisibleProgress = true;
+        clearTimeout(firstOutputTimeout);
+      };
       const addSources = (annotations: TextAnnotation[] | undefined): void => {
         for (const annotation of annotations ?? []) {
           if (annotation.type !== 'url_citation' || !annotation.url || seenSources.has(annotation.url)) continue;
@@ -197,7 +212,7 @@ class GeminiSession implements ModelSession {
             stream: true,
             store: false,
           },
-          { signal: callbacks.signal, timeout_ms: 10 * 60 * 1000 },
+          { signal: attemptController.signal, timeout_ms: 10 * 60 * 1000 },
         );
 
         for await (const event of stream) {
@@ -213,7 +228,7 @@ class GeminiSession implements ModelSession {
           }
           if (event.event_type === 'step.start') {
             if (event.step.type === 'function_call') {
-              madeVisibleProgress = true;
+              markVisibleProgress();
               pendingCalls.set(event.index, {
                 id: event.step.id || `gemini-${this.turn}-${event.index + 1}`,
                 name: event.step.name,
@@ -222,7 +237,7 @@ class GeminiSession implements ModelSession {
               });
             }
             if (event.step.type === 'google_search_call') {
-              madeVisibleProgress = true;
+              markVisibleProgress();
               for (const query of event.step.arguments.queries ?? []) {
                 if (webSearches.includes(query)) continue;
                 webSearches.push(query);
@@ -238,14 +253,14 @@ class GeminiSession implements ModelSession {
           }
           if (event.event_type === 'step.delta') {
             if (event.delta.type === 'text') {
-              madeVisibleProgress = true;
+              markVisibleProgress();
               text += event.delta.text;
               callbacks.onText(event.delta.text);
             } else if (event.delta.type === 'arguments_delta') {
               const call = pendingCalls.get(event.index);
               if (call) call.argumentDelta += event.delta.arguments ?? '';
             } else if (event.delta.type === 'google_search_call') {
-              madeVisibleProgress = true;
+              markVisibleProgress();
               for (const query of event.delta.arguments.queries ?? []) {
                 if (webSearches.includes(query)) continue;
                 webSearches.push(query);
@@ -274,9 +289,14 @@ class GeminiSession implements ModelSession {
         this.activeModel = requestedModel;
         break;
       } catch (error) {
-        const mapped = mapError(error);
+        const mapped = firstOutputTimedOut && !callbacks.signal.aborted
+          ? new ProviderError('unavailable', 'Google Gemini did not start responding in time.')
+          : mapError(error);
         const hasAnother = attempt + 1 < candidates.length;
         if (madeVisibleProgress || !hasAnother || !canTryAnotherModel(mapped)) throw mapped;
+      } finally {
+        clearTimeout(firstOutputTimeout);
+        callbacks.signal.removeEventListener('abort', abortAttempt);
       }
     }
 
