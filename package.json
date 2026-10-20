@@ -1,8 +1,11 @@
 {
   "name": "dark-space",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Darkspace — the self-hosted Digital Romanian workspace",
+  "author": "Digital Romanian",
   "type": "module",
+  "main": "desktop/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -17,10 +20,15 @@
     "start:api": "node --enable-source-maps dist-server/main.mjs",
     "start:worker": "node --enable-source-maps dist-server/worker-main.mjs",
     "test:unit": "vitest run --config vitest.unit.config.ts",
-    "db:check": "node tools/pglite-check/run.mjs"
+    "db:check": "node tools/pglite-check/run.mjs",
+    "desktop:icons": "node scripts/build-desktop-icons.mjs",
+    "desktop:dev": "electron desktop/main.cjs",
+    "desktop:build": "npm run desktop:icons && electron-builder --win nsis portable",
+    "desktop:build:installer": "npm run desktop:icons && electron-builder --win nsis"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
+    "@google/genai": "^2.30.0",
     "@tanstack/react-query": "^5.101.2",
     "@tanstack/react-virtual": "^3.14.6",
     "mammoth": "^1.13.0",
@@ -35,14 +43,18 @@
   "devDependencies": {
     "@electric-sql/pglite": "0.5.10",
     "@electric-sql/pglite-pgvector": "0.0.11",
+    "@resvg/resvg-js": "^2.6.2",
     "@types/node": "^24.13.2",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "electron": "^44.9.1",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
     "jose": "^6.2.12",
     "oxlint": "^1.71.0",
+    "png-to-ico": "^3.0.2",
     "tsx": "^4.23.15",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
@@ -54,6 +66,49 @@
   "overrides": {
     "mammoth": {
       "argparse": "3.0.0"
+    }
+  },
+  "build": {
+    "appId": "pro.purplehive.darkspace",
+    "productName": "Darkspace",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "desktop/assets"
+    },
+    "files": [
+      "desktop/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "desktop/assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "artifactName": "Darkspace-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "shortcutName": "Darkspace"
+    },
+    "portable": {
+      "artifactName": "Darkspace-Portable-${version}-${arch}.${ext}"
     }
   }
 }

@@ -4,11 +4,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { platformDefaultModel, providerNameFor } from '../../server/ai/registry.js';
 import { resetEnvCache } from '../../server/env.js';
 import { checkEnv } from '../../server/startup.js';
+import { providerApiKey } from '../../server/provider-secrets.js';
 import { clientAddress, limitFor, RateLimiter } from '../../server/rate-limit.js';
 import { checkCallbackUrl, sign } from '../../server/integrations/n8n.js';
 
-const VARS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'AI_DEFAULT_PROVIDER', 'AI_DEFAULT_ANTHROPIC_MODEL', 'AI_DEFAULT_OPENAI_MODEL',
-  'DATABASE_URL', 'DATABASE_REST_URL', 'APP_JWT_SECRET', 'N8N_BASE_URL', 'VITE_OPENAI_API_KEY'];
+const VARS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GEMINI_API', 'AI_DEFAULT_PROVIDER', 'AI_DEFAULT_ANTHROPIC_MODEL', 'AI_DEFAULT_OPENAI_MODEL', 'AI_DEFAULT_GEMINI_MODEL',
+  'DATABASE_URL', 'DATABASE_REST_URL', 'APP_JWT_SECRET', 'N8N_BASE_URL', 'VITE_OPENAI_API_KEY', 'VITE_GEMINI_API_KEY', 'VITE_GEMINI_API'];
 const saved = Object.fromEntries(VARS.map((v) => [v, process.env[v]]));
 function setEnv(vars: Record<string, string | undefined>) {
   for (const v of VARS) delete process.env[v];
@@ -28,6 +29,7 @@ describe('provider routing', () => {
     expect(providerNameFor('claude-opus-5-5')).toBe('anthropic');
     expect(providerNameFor('gpt-5.4-mini')).toBe('openai');
     expect(providerNameFor('o4-mini')).toBe('openai');
+    expect(providerNameFor('gemini-flash-latest')).toBe('gemini');
     expect(providerNameFor('llama3')).toBeNull();
   });
 
@@ -38,6 +40,9 @@ describe('provider routing', () => {
     expect(platformDefaultModel()).toBe('gpt-5.6-sol');
     setEnv({ ANTHROPIC_API_KEY: 'sk' });
     expect(platformDefaultModel()).toBe('claude-opus-5-5');
+    setEnv({ GEMINI_API: 'AIza-compatibility-key', AI_DEFAULT_PROVIDER: 'gemini' });
+    expect(providerApiKey('gemini')).toBe('AIza-compatibility-key');
+    expect(platformDefaultModel()).toBe('gemini-flash-latest');
   });
 });
 

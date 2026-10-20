@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, lazy, Suspense, Fragment, type ReactNode } from 'react';
 import { useWorkspaceContext } from '@/app/providers/WorkspaceProvider';
@@ -59,6 +59,18 @@ const CalendarPage = lazy(() => import('@/app/routes/Calendar').then((m) => ({ d
 const AutomationPage = lazy(() => import('@/app/routes/Automation').then((m) => ({ default: m.AutomationPage })));
 const SavedPinnedPage = lazy(() => import('@/app/routes/SavedPinned').then((m) => ({ default: m.SavedPinnedPage })));
 const CallsPage = lazy(() => import('@/app/routes/Calls').then((m) => ({ default: m.CallsPage })));
+
+function DesktopIntegration() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    const desktop = window.darkspaceDesktop;
+    if (!desktop) return;
+    return desktop.onNotificationClick(({ route }) => {
+      if (route.startsWith('/') && !route.startsWith('//')) navigate(route);
+    });
+  }, [navigate]);
+  return null;
+}
 
 function TenantBoundary({children}: {children: ReactNode}) {
   const {currentWorkspace} = useWorkspaceContext();
@@ -174,6 +186,7 @@ function App() {
     <ThemeProvider>
       <ToastProvider>
         <BrowserRouter>
+          <DesktopIntegration />
           <AuthProvider>
             <Routes>
               {/* Public auth routes - redirect to / if already authenticated */}

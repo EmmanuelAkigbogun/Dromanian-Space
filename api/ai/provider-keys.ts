@@ -7,7 +7,7 @@ import { providerKeySource, removeProviderKey, saveProviderKey } from '../../ser
 import { reportPlatform } from '../../server/startup.js';
 
 const bodySchema = z.object({
-  provider: z.enum(['anthropic', 'openai']),
+  provider: z.enum(['anthropic', 'openai', 'gemini']),
   api_key: z.string().trim().min(20).max(500).nullable(),
 });
 

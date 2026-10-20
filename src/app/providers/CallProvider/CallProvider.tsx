@@ -96,10 +96,29 @@ export function CallProvider({ children }: { children: ReactNode }) {
   // session id synchronously the instant it's created (well before any
   // participant row exists) removes the race entirely - no timing dependency.
   const outgoingCallIdsRef = useRef<Set<string>>(new Set());
+  const notifiedIncomingCallRef = useRef<string | null>(null);
   const resetStateRef = useRef<() => void>(() => undefined);
 
   useEffect(() => { currentCallRef.current = currentCall; }, [currentCall]);
   useEffect(() => { callScreenRef.current = callScreen; }, [callScreen]);
+
+  useEffect(() => {
+    const desktop = window.darkspaceDesktop;
+    if (!desktop) return;
+    desktop.setRinging(callScreen === 'incoming');
+    if (callScreen === 'incoming' && currentCall && notifiedIncomingCallRef.current !== currentCall.id) {
+      notifiedIncomingCallRef.current = currentCall.id;
+      void desktop.notify({
+        title: currentCall.with_video ? 'Incoming video call' : 'Incoming voice call',
+        body: 'Open Darkspace to answer or decline.',
+        route: '/calls',
+        kind: 'call',
+      });
+    }
+    if (callScreen === 'none') notifiedIncomingCallRef.current = null;
+  }, [callScreen, currentCall]);
+
+  useEffect(() => () => window.darkspaceDesktop?.setRinging(false), []);
 
   useEffect(() => {
     if (callScreen === 'active' && currentCall?.started_at) {

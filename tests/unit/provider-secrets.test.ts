@@ -21,4 +21,11 @@ describe('provider secret encryption', () => {
     const sealed = sealProviderKey('anthropic', 'sk-ant-test-provider-secret-value');
     expect(() => openProviderKey('openai', sealed)).toThrow();
   });
+
+  it('encrypts and decrypts Gemini keys without exposing plaintext', () => {
+    const value = 'AIza-test-gemini-provider-secret-value';
+    const sealed = sealProviderKey('gemini', value);
+    expect(JSON.stringify(sealed)).not.toContain(value);
+    expect(openProviderKey('gemini', sealed)).toBe(value);
+  });
 });

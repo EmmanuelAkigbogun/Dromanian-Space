@@ -101,9 +101,23 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       seenNotificationIdsRef.current.add(notification.id);
       setNotifications((prev) => [notification, ...prev]);
       setUnreadCount((prev) => prev + 1);
+      // CallProvider raises the actionable incoming-call notification. Avoid a
+      // second Windows toast from the accompanying persisted notification.
+      if (!/^Incoming (voice|video) call$/i.test(notification.title)) {
+        void window.darkspaceDesktop?.notify({
+          title: notification.title,
+          body: notification.message,
+          route: notification.link ?? '/notifications',
+          kind: notification.type === 'message' || notification.type === 'mention' ? 'message' : 'system',
+        });
+      }
     });
     return unsubscribe;
   }, [userId, quietHours]);
+
+  useEffect(() => {
+    window.darkspaceDesktop?.setUnreadCount(unreadCount);
+  }, [unreadCount]);
 
   const handleMarkAsRead = useCallback(async (notificationId: string): Promise<boolean> => {
     const target = notifications.find((n) => n.id === notificationId);

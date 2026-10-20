@@ -1,9 +1,9 @@
 # AI providers
 
-Agents run on external model APIs: **Anthropic (Claude)** and **OpenAI**. Both can be configured at
+Agents run on external model APIs: **Anthropic (Claude)**, **OpenAI**, and **Google Gemini**. All can be configured at
 once. Each agent version stores a model id, and the provider follows from it (`claude-…` is
 Anthropic; `gpt-…`, `o…` and `chatgpt-…` are OpenAI). So specialists in one Team Chat run can use
-different providers. No GPU and no local model server are needed.
+different providers. Model ids beginning with `gemini-` use Google Gemini. No GPU and no local model server are needed.
 
 ## Server configuration (api and worker)
 
@@ -15,7 +15,10 @@ different providers. No GPU and no local model server are needed.
 | `OPENAI_API_KEY` | Enables OpenAI models. |
 | `AI_DEFAULT_OPENAI_MODEL` | Default OpenAI model for new workspaces (`gpt-5.4`). |
 | `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID` | Optional OpenAI client settings. |
-| `AI_DEFAULT_PROVIDER` | `anthropic` or `openai`: which default applies to new workspaces. If only the other provider has a key, its default is used. |
+| `GEMINI_API_KEY` | Enables Google Gemini models. |
+| `GEMINI_API` | Compatibility alias for `GEMINI_API_KEY` (accepted for existing Coolify setups). |
+| `AI_DEFAULT_GEMINI_MODEL` | Default Gemini model for new workspaces (`gemini-flash-latest`). |
+| `AI_DEFAULT_PROVIDER` | `anthropic`, `openai`, or `gemini`: which default applies to new workspaces. If it has no key, another configured provider is used. |
 
 Keys are server-only. The platform administrator can enter or replace them in **Agents → AI
 settings**. The browser submits a key once over the authenticated same-origin API; the key is
@@ -24,7 +27,7 @@ never returned to the browser, logged, or stored as plaintext. Both the API and 
 replacement without a redeploy.
 
 Coolify runtime secrets remain supported as a fallback. A key saved through AI settings overrides
-the matching `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` environment variable. At startup the server
+the matching `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY` environment variable. At startup the server
 records only which providers are configured (booleans) and the platform default model.
 `GET /api/health` and `/api/ready` report the same booleans.
 
@@ -69,7 +72,7 @@ VALUES ('gpt-6', 'openai', 'GPT-6', 'frontier', 5, 20, 45);   -- a model release
 
 Admins see this month's estimated spend per model under AI settings. Your provider invoice is
 authoritative. Token budgets (`monthly_token_budget`, `per_user_daily_token_budget`) and the
-concurrency limit apply to both providers.
+concurrency limit apply to every provider.
 
 ## How each provider is called
 
@@ -83,7 +86,7 @@ concurrency limit apply to both providers.
 | Reading the workspace site (SEO) | `web_fetch` restricted to the site's domain | `web_search` filtered to the site's domain |
 | Refusals | `stop_reason: refusal`; optional server-side fallback | refusal content or content filter |
 
-The engine is the same for both. It handles:
+The engine is the same for all three. It handles:
 
 - **Tool approval:** proposed actions become review cards and never execute without approval.
 - **Validation:** every tool input is checked against its schema, and unreadable arguments are
@@ -119,6 +122,6 @@ Everything else stays in this deployment's database and storage.
 The OpenAI adapter is covered by deterministic tests against a scripted Responses API stream
 (`tests/unit/openai-adapter.test.ts`): tool loop, reasoning replay, usage mapping, citations,
 truncation, refusals, domain-filtered search, error mapping and cancellation. The Anthropic adapter
-and the engine are covered by provider-double tests. **No live request to Anthropic or OpenAI has
+and the engine are covered by provider-double tests. **No live request to Anthropic, OpenAI, or Gemini has
 been made** while building this. After deployment, run one agent per configured provider (checklist
 in the [COOLIFY_SETUP.md](COOLIFY_SETUP.md) acceptance checklist) to confirm keys, model access and streaming.

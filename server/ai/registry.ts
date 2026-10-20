@@ -5,27 +5,32 @@
 import { env, type ProviderName } from '../env.js';
 import { anthropicProvider } from './anthropic.js';
 import { openaiProvider } from './openai.js';
+import { geminiProvider } from './gemini.js';
 import type { ModelProvider } from './provider.js';
 
 const PROVIDERS: Record<ProviderName, ModelProvider> = {
   anthropic: anthropicProvider,
   openai: openaiProvider,
+  gemini: geminiProvider,
 };
 
 export const PROVIDER_LABELS: Record<ProviderName, string> = {
   anthropic: 'Anthropic (Claude)',
   openai: 'OpenAI',
+  gemini: 'Google Gemini',
 };
 
 /** Server variable that enables each provider (for setup messages). */
 export const PROVIDER_KEYS: Record<ProviderName, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
+  gemini: 'GEMINI_API_KEY',
 };
 
 export function providerNameFor(model: string): ProviderName | null {
   if (/^claude-/.test(model)) return 'anthropic';
   if (/^(gpt-|o\d|chatgpt-)/.test(model)) return 'openai';
+  if (/^gemini-/.test(model)) return 'gemini';
   return null;
 }
 

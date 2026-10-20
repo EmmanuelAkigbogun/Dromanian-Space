@@ -89,8 +89,8 @@ const CONNECTED_ACTIONS: Record<string, string> = {
 };
 
 
-const PROVIDER_KEY: Record<string, string> = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY' };
-const PROVIDER_NAME: Record<string, string> = { anthropic: 'Anthropic', openai: 'OpenAI' };
+const PROVIDER_KEY: Record<string, string> = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY' };
+const PROVIDER_NAME: Record<string, string> = { anthropic: 'Anthropic', openai: 'OpenAI', gemini: 'Google Gemini' };
 
 function modelLabel(id: string, status: Status | undefined): string {
   const m = status?.models?.find((x) => x.id === id);
@@ -102,7 +102,7 @@ function modelLabel(id: string, status: Status | undefined): string {
 /** Why an agent's model cannot run on this server, if it cannot. */
 function modelBlocker(model: string, status: Status): string | null {
   const m = status.models?.find((x) => x.id === model);
-  if (!m) return status.provider.configured ? null : 'No AI provider is configured on the server (an administrator sets ANTHROPIC_API_KEY or OPENAI_API_KEY).';
+  if (!m) return status.provider.configured ? null : 'No AI provider is configured on the server (an administrator adds an Anthropic, OpenAI, or Gemini API key).';
   if (m.available) return null;
   const key = m.provider ? PROVIDER_KEY[m.provider] : null;
   return `Uses ${m.label}, but ${m.provider ? PROVIDER_NAME[m.provider] : 'its provider'} is not configured on the server${key ? ` (an administrator sets ${key}, or picks another model)` : ''}.`;
@@ -221,7 +221,7 @@ function Agents({ ws, userId, admin }: { ws: string; userId: string; admin: bool
     <div className={s.notice}>
       <strong>Connect an AI provider to start conversations.</strong>
       <br />
-      An administrator sets ANTHROPIC_API_KEY or OPENAI_API_KEY on the server. Agents, files and earlier conversations stay available.
+      An administrator adds an Anthropic, OpenAI, or Gemini API key in AI settings. Agents, files and earlier conversations stay available.
     </div>
   ) : !status.data.settings.enabled ? (
     <div className={s.notice}>AI is turned off for this workspace.</div>
@@ -903,7 +903,7 @@ function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Stat
     brand_kit_folder_id: status.brand_kit.folder_id ?? '',
   });
   const [applyToAgents, setApplyToAgents] = useState(false);
-  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({ anthropic: '', openai: '' });
+  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({ anthropic: '', openai: '', gemini: '' });
   const [providerKeyBusy, setProviderKeyBusy] = useState<string | null>(null);
   const [providerKeyNotice, setProviderKeyNotice] = useState('');
   const [error, setError] = useState('');
@@ -927,7 +927,7 @@ function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Stat
       return { ...f, allowed_models: allowed, default_model: allowed.includes(f.default_model) ? f.default_model : (allowed[0] ?? f.default_model) };
     });
   }
-  async function updateProviderKey(provider: 'anthropic' | 'openai', remove = false) {
+  async function updateProviderKey(provider: 'anthropic' | 'openai' | 'gemini', remove = false) {
     setProviderKeyBusy(provider);
     setProviderKeyNotice('');
     setError('');
@@ -984,7 +984,7 @@ function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Stat
           <p className={s.muted}>API keys are sent once to this server, encrypted at rest, and never returned to the browser. Choose which models agents in this workspace may use.</p>
           {status.provider_key_management?.allowed && (
             <div className={s.stack} style={{ marginTop: 12 }}>
-              {(['anthropic', 'openai'] as const).map((provider) => {
+              {(['anthropic', 'openai', 'gemini'] as const).map((provider) => {
                 const state = status.provider_key_management?.providers.find((p) => p.name === provider);
                 const configured = state?.source === 'saved' || state?.source === 'environment';
                 return (

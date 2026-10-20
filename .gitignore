@@ -37,3 +37,4 @@ dist-ssr
 # Supabase CLI cache
 supabase/.temp/
 dist-server
+release/

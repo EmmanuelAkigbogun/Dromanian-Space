@@ -108,7 +108,7 @@ export async function GET(request: Request): Promise<Response> {
     const models = catalogModels(catalog.error ? null : (catalog.data as CatalogRow[] | null), settings.allowed_models, configured);
     const costs = isAdmin ? await costSummary(workspaceId) : null;
     const usedProviders = [...new Set(settings.allowed_models.map(providerNameFor))].filter(
-      (p): p is 'anthropic' | 'openai' => p !== null && configured.has(p),
+      (p): p is 'anthropic' | 'openai' | 'gemini' => p !== null && configured.has(p),
     );
     return json({
       provider: { name: env().defaultProvider, configured: providerConfigured, refusal_fallback: env().refusalFallback },
