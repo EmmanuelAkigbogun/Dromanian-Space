@@ -17,7 +17,7 @@ different providers. Model ids beginning with `gemini-` use Google Gemini. No GP
 | `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID` | Optional OpenAI client settings. |
 | `GEMINI_API_KEY` | Enables Google Gemini models. |
 | `GEMINI_API` | Compatibility alias for `GEMINI_API_KEY` (accepted for existing Coolify setups). |
-| `AI_DEFAULT_GEMINI_MODEL` | Default Gemini model for new workspaces (`gemini-flash-latest`). |
+| `AI_DEFAULT_GEMINI_MODEL` | Default Gemini model for new workspaces (`gemini-3.8-flash`). |
 | `AI_DEFAULT_PROVIDER` | `anthropic`, `openai`, or `gemini`: which default applies to new workspaces. If it has no key, another configured provider is used. |
 
 Keys are server-only. The platform administrator can enter or replace them in **Agents → AI

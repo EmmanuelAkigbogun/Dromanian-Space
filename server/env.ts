@@ -64,7 +64,7 @@ export function env(): ServerEnv {
     defaultModels: {
       anthropic: read('AI_DEFAULT_ANTHROPIC_MODEL') ?? 'claude-opus-5-5',
       openai: read('AI_DEFAULT_OPENAI_MODEL') ?? 'gpt-5.4',
-      gemini: read('AI_DEFAULT_GEMINI_MODEL') ?? 'gemini-flash-latest',
+      gemini: read('AI_DEFAULT_GEMINI_MODEL') ?? 'gemini-3.8-flash',
     },
     voyageApiKey: read('VOYAGE_API_KEY'),
     embeddingModel: read('EMBEDDING_MODEL') ?? 'voyage-3.5',

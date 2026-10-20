@@ -29,7 +29,7 @@ describe('provider routing', () => {
     expect(providerNameFor('claude-opus-5-5')).toBe('anthropic');
     expect(providerNameFor('gpt-5.4-mini')).toBe('openai');
     expect(providerNameFor('o4-mini')).toBe('openai');
-    expect(providerNameFor('gemini-flash-latest')).toBe('gemini');
+    expect(providerNameFor('gemini-3.8-flash')).toBe('gemini');
     expect(providerNameFor('llama3')).toBeNull();
   });
 
@@ -42,7 +42,7 @@ describe('provider routing', () => {
     expect(platformDefaultModel()).toBe('claude-opus-5-5');
     setEnv({ GEMINI_API: 'AIza-compatibility-key', AI_DEFAULT_PROVIDER: 'gemini' });
     expect(providerApiKey('gemini')).toBe('AIza-compatibility-key');
-    expect(platformDefaultModel()).toBe('gemini-flash-latest');
+    expect(platformDefaultModel()).toBe('gemini-3.8-flash');
   });
 });
 
