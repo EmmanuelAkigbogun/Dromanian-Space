@@ -20,6 +20,23 @@ server {
     # starts even while the API is restarting.
     resolver 127.0.0.11 valid=10s ipv6=off;
     set $api_upstream http://${API_UPSTREAM};
+    set $livekit_upstream http://${LIVEKIT_UPSTREAM};
+
+    # LiveKit room signaling is proxied over the application's TLS origin.
+    # Encrypted RTC media uses the directly exposed LiveKit/Coturn ports.
+    location ~ ^/(rtc|validate|twirp)(/|$) {
+        include /etc/nginx/snippets/security-headers.conf;
+        proxy_pass $livekit_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
 
     # Matched before the SPA fallback: /api/* always reaches the Node API.
     location /api/ {

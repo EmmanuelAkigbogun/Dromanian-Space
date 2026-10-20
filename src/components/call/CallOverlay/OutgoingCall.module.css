@@ -64,6 +64,17 @@
   font-weight: var(--font-weight-medium);
 }
 
+.audioButton {
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  color: var(--color-text);
+  padding: 10px 16px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .cancelButton {
   width: 56px;
   height: 56px;

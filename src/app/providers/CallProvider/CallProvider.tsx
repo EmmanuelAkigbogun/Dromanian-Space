@@ -40,6 +40,7 @@ interface CallContextValue {
   isScreenSharing: boolean;
   isAccepting: boolean;
   isAudioPlaybackBlocked: boolean;
+  isRingtoneBlocked: boolean;
   callDuration: number;
   localStream: MediaStream | null;
   remoteStreams: Map<string, MediaStream>;
@@ -76,7 +77,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const [callDuration, setCallDuration] = useState(0);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
-  const { unlockAudio } = useCallSounds(callScreen);
+  const { unlockAudio, isRingtoneBlocked } = useCallSounds(callScreen);
 
   const currentCallRef = useRef<CallSession | null>(null);
   const callScreenRef = useRef<CallScreen>('none');
@@ -338,9 +339,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
         engine.setupSignaling(session.id, userId);
 
-        for (const pid of allParticipants) {
-          if (userId.localeCompare(pid) < 0) engine.createOffer(pid, stream);
-        }
+        // LiveKit joins one SFU room per call. A single connection publishes
+        // to every participant; there is no per-user offer loop anymore.
+        await engine.createOffer(allParticipants[0] ?? userId, stream);
         engine.startOfferRetry();
 
         const notifCategory = callType === 'channel' ? 'channels' : 'messaging';
@@ -377,14 +378,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
         await engine.processPendingOffers();
 
-        if (stream) {
-          for (const participant of participants) {
-            if (participant.user_id !== userId && userId.localeCompare(participant.user_id) < 0) {
-              await engine.createOffer(participant.user_id, stream);
-            }
-          }
-        }
-
         answerCall(currentCall.id).catch((err) => {
           console.error('[call] answerCall DB update failed (non-fatal):', err);
         });
@@ -399,7 +392,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         resetState();
       }
     },
-    [currentCall, userId, isAccepting, engine, resetState, participants, unlockAudio],
+    [currentCall, userId, isAccepting, engine, resetState, unlockAudio],
   );
 
   const declineIncomingCall = useCallback(async () => {
@@ -488,12 +481,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }, [engine, unlockAudio]);
 
   const value = useMemo<CallContextValue>(() => ({
-    callScreen, currentCall, participants, isMuted, isVideoEnabled, isScreenSharing, isAccepting, isAudioPlaybackBlocked,
+    callScreen, currentCall, participants, isMuted, isVideoEnabled, isScreenSharing, isAccepting, isAudioPlaybackBlocked, isRingtoneBlocked,
     callDuration, localStream, remoteStreams, getPeers: engine.getPeers,
     startCall, acceptCall, declineIncomingCall, cancelOutgoingCall, endActiveCall,
     toggleMute, toggleVideo, toggleScreenShare, getDevices, switchDevice, enableCallAudio, setCallScreen,
   }), [
-    callScreen, currentCall, participants, isMuted, isVideoEnabled, isScreenSharing, isAccepting, isAudioPlaybackBlocked,
+    callScreen, currentCall, participants, isMuted, isVideoEnabled, isScreenSharing, isAccepting, isAudioPlaybackBlocked, isRingtoneBlocked,
     callDuration, localStream, remoteStreams, engine.getPeers,
     startCall, acceptCall, declineIncomingCall, cancelOutgoingCall, endActiveCall,
     toggleMute, toggleVideo, toggleScreenShare, getDevices, switchDevice, enableCallAudio, setCallScreen,

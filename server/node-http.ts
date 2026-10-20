@@ -6,7 +6,7 @@ import { Readable } from 'node:stream';
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web';
 import { errorResponse, HttpError, json, methodNotAllowed } from './http.js';
 import { log } from './log.js';
-import { clientAddress, limitFor, RateLimiter } from './rate-limit.js';
+import { clientAddress, limitFor, rateLimitSubject, RateLimiter } from './rate-limit.js';
 import { ROUTES } from './routes.js';
 import type { ApiMethod, Handler } from './routes.js';
 import { proxyDatabase } from '../api/data.js';
@@ -18,8 +18,9 @@ const MAX_STORAGE_BODY = Number(process.env.STORAGE_MAX_FILE_BYTES ?? 50 * 1024 
 const limiter = new RateLimiter();
 
 function dynamicRoute(pathname: string, method: ApiMethod): Handler | null {
-  const callRoute = /^\/api\/calls\/([0-9a-f-]{36})\/(answer|decline|cancel|end|signals|participant|history)$/i.exec(pathname);
+  const callRoute = /^\/api\/calls\/([0-9a-f-]{36})\/(answer|decline|cancel|end|signals|participant|history|media-token)$/i.exec(pathname);
   if (callRoute) {
+    if (callRoute[2] === 'media-token' && method === 'POST') return (request) => calls.mediaToken(request, callRoute[1]);
     if (callRoute[2] === 'signals' && (method === 'GET' || method === 'POST')) return (request) => calls.signals(request, callRoute[1]);
     if (callRoute[2] === 'participant' && method === 'POST') return (request) => calls.participantState(request, callRoute[1]);
     if (callRoute[2] === 'history' && method === 'DELETE') return (request) => calls.removeHistory(request, callRoute[1]);
@@ -80,9 +81,10 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse): Prom
   const url = new URL(req.url ?? '/', 'http://localhost');
   let status = 500;
   const client = clientAddress(req.headers['x-forwarded-for'] as string | undefined, req.socket.remoteAddress);
+  const limiterSubject = rateLimitSubject(req.headers.cookie, client);
   try {
     const limit = limitFor(req.method ?? 'GET', url.pathname);
-    const retryAfter = limit ? limiter.hit(`${limit.bucket}:${client}`, limit.limit) : 0;
+    const retryAfter = limit ? limiter.hit(`${limit.bucket}:${limiterSubject}`, limit.limit) : 0;
     if (retryAfter > 0) {
       const r = json({ error: { code: 'rate_limited', message: 'Too many requests. Try again shortly.' } }, 429, { 'retry-after': String(retryAfter) });
       status = r.status;

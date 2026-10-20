@@ -4,7 +4,7 @@ import { callProfileName, useCallProfiles } from '@/hooks/useCallProfiles/useCal
 import styles from './IncomingCall.module.css';
 
 export function IncomingCall() {
-  const { currentCall, acceptCall, declineIncomingCall, isAccepting } = useCallContext();
+  const { currentCall, acceptCall, declineIncomingCall, isAccepting, isRingtoneBlocked, enableCallAudio } = useCallContext();
   const isVideo = currentCall?.with_video ?? false;
   const callerIds = currentCall?.created_by ? [currentCall.created_by] : [];
   const profiles = useCallProfiles(callerIds);
@@ -19,6 +19,7 @@ export function IncomingCall() {
         <h2 className={styles.title}>{callerName}</h2>
         <p className={styles.subtitle}>Incoming {isVideo ? 'video' : 'voice'} call · {currentCall?.call_type === 'group' ? 'Group' : currentCall?.call_type === 'channel' ? 'Channel' : 'Direct'}</p>
       </div>
+      {isRingtoneBlocked && <button type="button" className={styles.audioButton} onClick={()=>void enableCallAudio()}>Turn on ring sound</button>}
       <div className={styles.actions}>
         <button type="button" className={styles.declineButton} onClick={declineIncomingCall} disabled={isAccepting} aria-label="Decline call">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

@@ -5,6 +5,7 @@ type BrowserAudioContext = AudioContext & { close: () => Promise<void> };
 
 export function useCallSounds(callScreen: CallScreen) {
   const [soundsEnabled, setSoundsEnabled] = useState(true);
+  const [isRingtoneBlocked, setIsRingtoneBlocked] = useState(false);
   const contextRef = useRef<BrowserAudioContext | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeNodesRef = useRef<Set<AudioScheduledSourceNode>>(new Set());
@@ -25,15 +26,21 @@ export function useCallSounds(callScreen: CallScreen) {
 
   const unlockAudio = useCallback(async (): Promise<boolean> => {
     const context = getContext();
-    if (!context) return false;
+    if (!context) {
+      setIsRingtoneBlocked(true);
+      return false;
+    }
     if (context.state !== 'running') {
       try {
         await context.resume();
       } catch {
+        setIsRingtoneBlocked(true);
         return false;
       }
     }
-    return context.state === 'running';
+    const ready = context.state === 'running';
+    setIsRingtoneBlocked(!ready);
+    return ready;
   }, [getContext]);
 
   const stopSounds = useCallback(() => {
@@ -85,7 +92,11 @@ export function useCallSounds(callScreen: CallScreen) {
     stopSounds();
     desiredToneRef.current = kind;
     const generation = soundGenerationRef.current;
-    if (!(await unlockAudio())) return;
+    if (!(await unlockAudio())) {
+      setIsRingtoneBlocked(true);
+      return;
+    }
+    setIsRingtoneBlocked(false);
     if (generation !== soundGenerationRef.current || desiredToneRef.current !== kind) return;
     // A bright, layered three-step cadence stays audible from across a room
     // without changing the remote participant volume during the call.
@@ -128,7 +139,10 @@ export function useCallSounds(callScreen: CallScreen) {
     previousScreenRef.current = callScreen;
     stopSounds();
 
-    if (!soundsEnabled) return stopSounds;
+    if (!soundsEnabled) {
+      setIsRingtoneBlocked(false);
+      return stopSounds;
+    }
 
     if (callScreen === 'incoming' || callScreen === 'outgoing') {
       void startRepeatingTone(callScreen);
@@ -158,5 +172,5 @@ export function useCallSounds(callScreen: CallScreen) {
     if (context && context.state !== 'closed') void context.close();
   }, [stopSounds]);
 
-  return { unlockAudio };
+  return { unlockAudio, isRingtoneBlocked };
 }

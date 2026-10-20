@@ -5,7 +5,7 @@ import { platformDefaultModel, providerNameFor } from '../../server/ai/registry.
 import { resetEnvCache } from '../../server/env.js';
 import { checkEnv } from '../../server/startup.js';
 import { providerApiKey } from '../../server/provider-secrets.js';
-import { clientAddress, limitFor, RateLimiter } from '../../server/rate-limit.js';
+import { clientAddress, limitFor, rateLimitSubject, RateLimiter } from '../../server/rate-limit.js';
 import { checkCallbackUrl, sign } from '../../server/integrations/n8n.js';
 
 const VARS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GEMINI_API', 'AI_DEFAULT_PROVIDER', 'AI_DEFAULT_ANTHROPIC_MODEL', 'AI_DEFAULT_OPENAI_MODEL', 'AI_DEFAULT_GEMINI_MODEL',
@@ -83,6 +83,11 @@ describe('rate limiting', () => {
     // Only one proxy in front (local Nginx): its single entry is the client.
     expect(clientAddress('198.51.100.4', '10.0.0.3')).toBe('198.51.100.4');
     expect(clientAddress(undefined, '10.0.0.3')).toBe('10.0.0.3');
+    expect(rateLimitSubject(undefined, '10.0.0.3')).toBe('ip:10.0.0.3');
+    expect(rateLimitSubject('theme=dark; dromanian_session=session-a', '10.0.0.3'))
+      .not.toBe(rateLimitSubject('dromanian_session=session-b', '10.0.0.3'));
+    expect(rateLimitSubject('dromanian_session=session-a', '10.0.0.3'))
+      .toBe(rateLimitSubject('dromanian_session=session-a', '203.0.113.2'));
   });
 });
 

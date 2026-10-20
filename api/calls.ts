@@ -1,4 +1,5 @@
 import { createHmac, randomUUID } from 'node:crypto';
+import { AccessToken } from 'livekit-server-sdk';
 import { z } from 'zod';
 import { authenticate, databasePool } from '../server/database.js';
 import { publishToUsers } from '../server/events.js';
@@ -122,6 +123,37 @@ export async function ice(request: Request): Promise<Response> {
     { urls: [`stun:${host}:3478`] },
     { urls: [`turn:${host}:3478?transport=udp`, `turn:${host}:3478?transport=tcp`, `turns:${host}:5349?transport=tcp`], username, credential },
   ], expiresAt: expires });
+}
+
+export async function mediaToken(request: Request, callId: string): Promise<Response> {
+  const user = await authenticate(request);
+  const session = await requireParticipant(callId, user.id);
+  if (!['ringing', 'active'].includes(session.status)) {
+    throw new HttpError(409, 'call_ended', 'This call is no longer active.');
+  }
+  const apiKey = process.env.LIVEKIT_API_KEY?.trim();
+  const apiSecret = process.env.LIVEKIT_API_SECRET?.trim();
+  const url = process.env.LIVEKIT_PUBLIC_URL?.trim();
+  if (!apiKey || !apiSecret || !url) {
+    throw new HttpError(503, 'media_not_configured', 'The self-hosted media server is not configured.');
+  }
+  const profile = await databasePool().query(
+    'SELECT coalesce(display_name, username, email, $2::text) AS name FROM public.profiles WHERE id = $1::uuid',
+    [user.id, user.id.slice(0, 8)],
+  );
+  const token = new AccessToken(apiKey, apiSecret, {
+    identity: user.id,
+    name: profile.rows[0]?.name ?? user.email ?? user.id.slice(0, 8),
+    ttl: '2h',
+  });
+  token.addGrant({
+    roomJoin: true,
+    room: `call-${callId}`,
+    canPublish: true,
+    canSubscribe: true,
+    canPublishData: true,
+  });
+  return json({ token: await token.toJwt(), url, room: `call-${callId}` });
 }
 
 export async function action(request: Request, callId: string, operation: string): Promise<Response> {

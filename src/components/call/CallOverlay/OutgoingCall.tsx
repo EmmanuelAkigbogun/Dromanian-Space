@@ -6,7 +6,7 @@ import styles from './OutgoingCall.module.css';
 
 export function OutgoingCall() {
   const { userId } = useAuth();
-  const { currentCall, participants, cancelOutgoingCall } = useCallContext();
+  const { currentCall, participants, cancelOutgoingCall, isRingtoneBlocked, enableCallAudio } = useCallContext();
   const remoteIds = participants.filter((participant) => participant.user_id !== userId).map((participant) => participant.user_id);
   const profiles = useCallProfiles(remoteIds);
   const names = remoteIds.map((id) => callProfileName(profiles.get(id), 'Connecting…'));
@@ -22,6 +22,7 @@ export function OutgoingCall() {
         <p className={styles.callingStatus}>Calling…</p>
         <p className={styles.subtitle}>{currentCall?.call_type === 'group' ? 'Group Call' : 'Direct Call'}</p>
       </div>
+      {isRingtoneBlocked && <button type="button" className={styles.audioButton} onClick={()=>void enableCallAudio()}>Turn on call sound</button>}
       <button type="button" className={styles.cancelButton} onClick={cancelOutgoingCall} aria-label="Cancel call">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72" />

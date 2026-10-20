@@ -1,13 +1,15 @@
-// Per-client request limits for the API (fixed one-minute windows, in
-// memory). The deployment runs one API container; with several replicas each
-// enforces its own share. Health and readiness probes are never limited.
+// Per-session request limits for the API (fixed one-minute windows, in
+// memory). Authenticated users behind the same office gateway must not consume
+// one shared IP bucket. Anonymous traffic still falls back to the client IP.
+
+import { createHash } from 'node:crypto';
 
 export interface Limit {
   /** Requests per minute. */
   perMinute: number;
 }
 
-const general = Number(process.env.API_RATE_LIMIT_PER_MINUTE ?? 300);
+const general = Number(process.env.API_RATE_LIMIT_PER_MINUTE ?? 600);
 const agentStarts = Number(process.env.API_AGENT_RATE_LIMIT_PER_MINUTE ?? 30);
 
 /** Bucket and limit for a request, or null when it is not limited. */
@@ -57,4 +59,20 @@ export function clientAddress(forwardedFor: string | undefined, socketAddress: s
   const chain = (forwardedFor ?? '').split(',').map((s) => s.trim()).filter(Boolean);
   const client = chain.length ? chain[Math.max(0, chain.length - hops)] : undefined;
   return (client || socketAddress || 'unknown').slice(0, 64);
+}
+
+/**
+ * Stable, privacy-preserving limiter subject. The opaque HttpOnly session is
+ * already present on all same-origin app requests, and unlike an IP address it
+ * identifies one signed-in browser even when many users share a gateway.
+ */
+export function rateLimitSubject(cookieHeader: string | undefined, client: string): string {
+  const session = (cookieHeader ?? '')
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith('dromanian_session='))
+    ?.slice('dromanian_session='.length);
+  if (!session) return `ip:${client}`;
+  const digest = createHash('sha256').update(session).digest('hex').slice(0, 32);
+  return `session:${digest}`;
 }

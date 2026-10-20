@@ -32,6 +32,7 @@ function DriveBrowser({ workspaceId: ws, userId, itemId, folderId }: {workspaceI
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState('');
   const [uploads,setUploads] = useState<Array<{name:string; progress:number; error?:string; file:File}>>([]);
+  const uploadInput = useRef<HTMLInputElement|null>(null);
   const abort = useRef<XMLHttpRequest|null>(null);
   const alive = useRef(true);
   useEffect(() => { alive.current=true; return () => { alive.current=false; abort.current?.abort(); }; }, []);
@@ -75,7 +76,12 @@ function DriveBrowser({ workspaceId: ws, userId, itemId, folderId }: {workspaceI
       if(!alive.current)break;
       try {await upload(file);}catch(e){if(alive.current)setUploads(u=>u.map(x=>x.file===file?{...x,error:errorText(e)}:x));}
     }
-    if(alive.current){setBusy(false);await refresh();void api('jobs/run',{workspace_id:ws}).catch(()=>setError('Upload saved. Indexing will start when the background worker is available.'));}
+    if(alive.current){
+      setBusy(false);
+      await refresh();
+      if(!folderId && view!=='my') navigate('/drive?view=my');
+      void api('jobs/run',{workspace_id:ws}).catch(()=>setError('Upload saved. Indexing will start when the background worker is available.'));
+    }
   }
   async function action(fn:()=>PromiseLike<unknown>) {setError('');try{await fn();await refresh();}catch(e){setError(errorText(e));}}
   if(itemId)return <DriveItem key={itemId} itemId={itemId} workspaceId={ws} userId={userId}/>;
@@ -83,14 +89,18 @@ function DriveBrowser({ workspaceId: ws, userId, itemId, folderId }: {workspaceI
   return <div className={s.page} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(!busy)void uploadFiles([...e.dataTransfer.files]);}}>
     <header className={s.header}><div><div className={s.eyebrow}>Shared knowledge · Drive</div><h1>{folderId ? crumbs.data?.at(-1)?.name ?? 'Folder' : driveViews.find(v=>v[0]===view)?.[1] ?? 'Drive'}</h1><p className={s.muted}>Files are stored on this server. Your files stay private to you until you share them with a person, channel, project, or the workspace.</p></div><div className={s.actions}>
       <button className={s.button} onClick={()=>setCreate('folder')}>New folder</button><button className={s.button} onClick={()=>setCreate('document')}>New document</button>
-      <label className={s.primary}>Upload files<input aria-label="Upload files" type="file" multiple disabled={busy} style={{position:'absolute',width:1,height:1,opacity:0}} onChange={e=>void uploadFiles([...(e.target.files ?? [])])}/></label>
+      <button className={s.primary} type="button" disabled={busy} onClick={()=>uploadInput.current?.click()}>
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 20h14"/></svg>
+        {busy?'Uploading…':'Upload from computer'}
+      </button>
+      <input ref={uploadInput} className={s.fileInput} aria-label="Upload files from computer" type="file" multiple disabled={busy} onChange={e=>{const selected=[...(e.currentTarget.files ?? [])];e.currentTarget.value='';if(selected.length)void uploadFiles(selected);}}/>
     </div></header>
     {folderId && <nav className={s.actions} aria-label="Breadcrumb"><Link to="/drive?view=my">My files</Link>{crumbs.data?.map(c=><Link key={c.id} to={`/drive/folder/${c.id}`}> / {c.name}</Link>)}</nav>}
     <div className={s.tabs}>{driveViews.map(([id,label])=><Link key={id} className={`${s.button} ${view===id?s.active:''}`} to={`/drive?view=${id}`}>{label}</Link>)}</div>
     <div className={s.toolbar}><input className={s.input} value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} placeholder="Search accessible files…" aria-label="Search files"/><select className={s.button} value={sort} onChange={e=>setSort(e.target.value)} aria-label="Sort files"><option value="name">Name</option><option value="updated">Last modified</option><option value="size">Size</option><option value="owner">Owner</option><option value="type">Type</option></select><button className={s.button} onClick={()=>setGrid(!grid)}>{grid?'List view':'Grid view'}</button></div>
     {(error||files.error)&&<div role="alert" className={s.error}>{error||errorText(files.error)}</div>}
     {uploads.map((u,i)=><div className={s.notice} key={i}><strong>{u.name}</strong> · {u.error ?? (u.progress===100?'Uploaded · indexing separately':`${u.progress}%`)} {u.progress<100&&!u.error&&busy&&<button className={s.button} onClick={()=>abort.current?.abort()}>Cancel current upload</button>}{u.error&&!busy&&<button className={s.button} onClick={()=>void uploadFiles([u.file])}>Retry</button>}</div>)}
-    {files.isPending?<p role="status">Loading files…</p>:!files.data?.length?<div className={s.empty}><h2>No files here yet</h2><p>{view==='workspace'?'Files appear here when explicitly shared with the workspace.':'Upload a file or create a document to get started.'}</p></div>:grid?<div className={s.grid}>{files.data.map(i=><article className={s.card} key={i.id}><div className={s.badge}>{i.kind==='folder'?'▱':i.kind==='document'?'≡':'↗'}</div><h2><Link className={s.link} to={itemLink(i)}>{i.name}</Link></h2><p className={s.muted}>{i.owner_name} · {i.kind}</p></article>)}</div>:<div className={s.tableWrap}><table className={s.table}><thead><tr><th>Name</th><th>Owner</th><th>Modified</th><th>Size</th><th>Actions</th></tr></thead><tbody>{files.data.map(i=><tr key={i.id}><td><Link className={s.link} to={itemLink(i)}>{i.kind==='folder'?'▱':'≡'} {i.name}</Link><div className={s.muted}>{i.kind}</div></td><td>{i.owner_name}</td><td>{new Date(i.updated_at).toLocaleDateString()}</td><td>{i.size_bytes?`${Math.ceil(i.size_bytes/1024)} KB`:'—'}</td><td>{view==='trash'?<button className={s.button} onClick={()=>void action(()=>result(platform.rpc('drive_restore',{p_item_id:i.id})))}>Restore</button>:<button className={s.button} aria-label={`${i.starred?'Unstar':'Star'} ${i.name}`} onClick={()=>void action(()=>result(platform.rpc('drive_toggle_star',{p_item_id:i.id})))}>{i.starred?'★':'☆'}</button>}</td></tr>)}</tbody></table></div>}
+    {files.isPending?<p role="status">Loading files…</p>:!files.data?.length?<div className={s.empty}><h2>No files here yet</h2><p>{view==='workspace'?'Files appear here when explicitly shared with the workspace.':'Upload a file or create a document to get started.'}</p><button className={s.primary} type="button" disabled={busy} onClick={()=>uploadInput.current?.click()}>Upload from your device</button></div>:grid?<div className={s.grid}>{files.data.map(i=><article className={s.card} key={i.id}><div className={s.badge}>{i.kind==='folder'?'▱':i.kind==='document'?'≡':'↗'}</div><h2><Link className={s.link} to={itemLink(i)}>{i.name}</Link></h2><p className={s.muted}>{i.owner_name} · {i.kind}</p></article>)}</div>:<div className={s.tableWrap}><table className={s.table}><thead><tr><th>Name</th><th>Owner</th><th>Modified</th><th>Size</th><th>Actions</th></tr></thead><tbody>{files.data.map(i=><tr key={i.id}><td><Link className={s.link} to={itemLink(i)}>{i.kind==='folder'?'▱':'≡'} {i.name}</Link><div className={s.muted}>{i.kind}</div></td><td>{i.owner_name}</td><td>{new Date(i.updated_at).toLocaleDateString()}</td><td>{i.size_bytes?`${Math.ceil(i.size_bytes/1024)} KB`:'—'}</td><td>{view==='trash'?<button className={s.button} onClick={()=>void action(()=>result(platform.rpc('drive_restore',{p_item_id:i.id})))}>Restore</button>:<button className={s.button} aria-label={`${i.starred?'Unstar':'Star'} ${i.name}`} onClick={()=>void action(()=>result(platform.rpc('drive_toggle_star',{p_item_id:i.id})))}>{i.starred?'★':'☆'}</button>}</td></tr>)}</tbody></table></div>}
     <div className={s.toolbar}><button className={s.button} disabled={page===0} onClick={()=>setPage(page-1)}>Previous</button><span className={s.muted}>Page {page+1} · {files.data?.[0]?.total_count ?? 0} items</span><button className={s.button} disabled={(page+1)*50>=(files.data?.[0]?.total_count ?? 0)} onClick={()=>setPage(page+1)}>Next</button></div>
     <Dialog open={!!create} onClose={()=>setCreate(null)} title={`New ${create}`}><form className={s.form} onSubmit={createItem}><label>Name<input autoFocus className={s.input} value={name} onChange={e=>setName(e.target.value)} maxLength={255} required/></label>{error&&<p role="alert">{error}</p>}<button className={s.primary} disabled={busy}>Create {create}</button></form></Dialog>
   </div>;
