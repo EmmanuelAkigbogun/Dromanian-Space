@@ -29,6 +29,7 @@ import {
   POSTGREST_PORT,
   REPO_ROOT,
   STATE_DIR,
+  STORAGE_DIR,
   applyMigrations,
   ensureDir,
   loadOrCreateKeys,
