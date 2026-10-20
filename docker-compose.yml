@@ -232,8 +232,7 @@ services:
       - --pkey=/run/coturn/privkey.pem
       - --stale-nonce=600
       - --no-multicast-peers
-      - --no-loopback-peers
-      - --no-cli
+      - --pidfile=/tmp/turnserver.pid
       - --no-software-attribute
     ports:
       - "3478:3478/tcp"
