@@ -10,6 +10,7 @@ export function useCallSounds(callScreen: CallScreen) {
   const activeNodesRef = useRef<Set<AudioScheduledSourceNode>>(new Set());
   const previousScreenRef = useRef<CallScreen>('none');
   const soundGenerationRef = useRef(0);
+  const desiredToneRef = useRef<'incoming' | 'outgoing' | null>(null);
 
   const getContext = useCallback((): BrowserAudioContext | null => {
     if (typeof window === 'undefined') return null;
@@ -25,7 +26,7 @@ export function useCallSounds(callScreen: CallScreen) {
   const unlockAudio = useCallback(async (): Promise<boolean> => {
     const context = getContext();
     if (!context) return false;
-    if (context.state === 'suspended') {
+    if (context.state !== 'running') {
       try {
         await context.resume();
       } catch {
@@ -36,6 +37,7 @@ export function useCallSounds(callScreen: CallScreen) {
   }, [getContext]);
 
   const stopSounds = useCallback(() => {
+    desiredToneRef.current = null;
     soundGenerationRef.current += 1;
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -81,18 +83,19 @@ export function useCallSounds(callScreen: CallScreen) {
 
   const startRepeatingTone = useCallback(async (kind: 'incoming' | 'outgoing') => {
     stopSounds();
+    desiredToneRef.current = kind;
     const generation = soundGenerationRef.current;
     if (!(await unlockAudio())) return;
-    if (generation !== soundGenerationRef.current) return;
+    if (generation !== soundGenerationRef.current || desiredToneRef.current !== kind) return;
     // A bright, layered three-step cadence stays audible from across a room
     // without changing the remote participant volume during the call.
     const pulse = kind === 'incoming'
       ? () => {
-          playChord([523.25, 659.25], 250, 0, 0.085);
-          playChord([587.33, 739.99], 250, 285, 0.085);
-          playChord([659.25, 783.99], 360, 570, 0.095);
+          playChord([523.25, 659.25], 250, 0, 0.24);
+          playChord([587.33, 739.99], 250, 285, 0.24);
+          playChord([659.25, 783.99], 360, 570, 0.3);
         }
-      : () => playChord([425, 510], 950, 0, 0.05);
+      : () => playChord([425, 510], 950, 0, 0.16);
     pulse();
     timerRef.current = setInterval(pulse, kind === 'incoming' ? 2_450 : 3_000);
   }, [playChord, stopSounds, unlockAudio]);
@@ -104,14 +107,21 @@ export function useCallSounds(callScreen: CallScreen) {
   }, []);
 
   useEffect(() => {
-    const unlockFromInteraction = () => { void unlockAudio(); };
+    const unlockFromInteraction = () => {
+      void unlockAudio().then((ready) => {
+        const desiredTone = desiredToneRef.current;
+        if (ready && desiredTone && !timerRef.current) void startRepeatingTone(desiredTone);
+      });
+    };
     window.addEventListener('pointerdown', unlockFromInteraction, { capture: true });
     window.addEventListener('keydown', unlockFromInteraction, { capture: true });
+    window.addEventListener('touchstart', unlockFromInteraction, { capture: true, passive: true });
     return () => {
       window.removeEventListener('pointerdown', unlockFromInteraction, { capture: true });
       window.removeEventListener('keydown', unlockFromInteraction, { capture: true });
+      window.removeEventListener('touchstart', unlockFromInteraction, { capture: true });
     };
-  }, [unlockAudio]);
+  }, [startRepeatingTone, unlockAudio]);
 
   useEffect(() => {
     const previous = previousScreenRef.current;

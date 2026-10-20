@@ -139,7 +139,9 @@ ipcMain.handle('desktop:notify', (event, payload) => {
   const body = typeof payload.body === 'string' ? payload.body.slice(0, 500) : '';
   const route = safeRoute(payload.route);
   const notification = new Notification({
-    title, body, icon: ICON_PATH, silent: payload.kind === 'call' || !soundsEnabled,
+    // Keep the Windows notification sound as a reliable first ring. The
+    // renderer continues the Teams-style cadence until the call is handled.
+    title, body, icon: ICON_PATH, silent: !soundsEnabled,
     urgency: payload.kind === 'call' ? 'critical' : 'normal',
   });
   notification.on('click', () => sendNotificationClick(route));
