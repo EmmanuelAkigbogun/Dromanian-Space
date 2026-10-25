@@ -1,10 +1,12 @@
 import { z } from 'zod';
+import { ensureChangeFeed } from '../server/change-feed.js';
 import { authenticate, databasePool } from '../server/database.js';
 import { addEventClient, publishBroadcast, updatePresence } from '../server/events.js';
 import { HttpError, json, readJson, sseResponse } from '../server/http.js';
 
 export async function stream(request: Request): Promise<Response> {
   const user = await authenticate(request);
+  void ensureChangeFeed();
   const memberships = await databasePool().query('SELECT workspace_id FROM public.workspace_members WHERE user_id = $1::uuid', [user.id]);
   return sseResponse((channel) => {
     const remove = addEventClient(channel, user.id, memberships.rows.map((row) => row.workspace_id));

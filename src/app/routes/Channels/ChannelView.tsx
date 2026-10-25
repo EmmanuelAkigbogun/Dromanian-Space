@@ -111,6 +111,15 @@ export function ChannelView() {
           </div>
           <div className={styles.channelHeaderActions}>
             <Button variant="secondary" onClick={() => navigate(`/agents?channel=${currentChannel.id}`)}>Ask AI</Button>
+            {isUserMember && (
+              <Button
+                variant="secondary"
+                title="Scribe summarizes this channel and sends the action items to project managers for approval"
+                onClick={() => navigate(`/agents/scribe?channel=${currentChannel.id}&prompt=notes`)}
+              >
+                Take notes
+              </Button>
+            )}
             <Button variant="secondary" onClick={() => navigate(`/drive?view=channel&channel=${currentChannel.id}`)}>Files</Button>
             <CallButton
               channelId={currentChannel.id}

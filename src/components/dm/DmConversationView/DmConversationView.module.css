@@ -4,6 +4,106 @@
   height: 100%;
   min-height: 0;
   background-color: var(--color-background);
+  transition: background-color 300ms ease;
+}
+
+/* While an AI session is active the whole conversation is tinted, so both
+   participants can see at a glance that the agent is reading along. */
+.aiSessionActive {
+  background-color: color-mix(in srgb, #7C3AED 9%, var(--color-background));
+}
+
+.aiSessionActive .header {
+  border-bottom-color: color-mix(in srgb, #7C3AED 45%, var(--color-border));
+}
+
+.aiSessionButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.aiSessionButton:hover:not(:disabled) {
+  border-color: #7C3AED;
+  color: var(--color-text);
+}
+
+.aiSessionButton:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.aiSessionButton:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.aiSessionButtonActive {
+  border-color: #7C3AED;
+  background: #7C3AED;
+  color: #FFFFFF;
+}
+
+.aiSessionButtonActive:hover:not(:disabled) {
+  background: #6D28D9;
+  color: #FFFFFF;
+}
+
+.aiSessionBanner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) clamp(var(--space-3), 2vw, var(--space-6));
+  border-bottom: 1px solid color-mix(in srgb, #7C3AED 25%, var(--color-border));
+  background: color-mix(in srgb, #7C3AED 14%, var(--color-surface));
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.aiSessionDot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #7C3AED;
+  animation: aiSessionPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes aiSessionPulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .container {
+    transition: none;
+  }
+
+  .aiSessionDot {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .aiSessionButton {
+    padding: 0 8px;
+    font-size: 12px;
+  }
 }
 
 .header {

@@ -4,6 +4,7 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { Avatar } from '@/components/ui/Avatar';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Spinner } from '@/components/ui/Spinner';
+import { PushToggle } from '@/components/notification-center/PushToggle';
 import { formatRelativeTime } from '@/utils';
 import type { TypedNotification, NotificationCategory } from '@/features/notifications/service';
 import styles from './Notifications.module.css';
@@ -84,14 +85,17 @@ export function Notifications() {
     <div className={styles.container}>
       <div className={styles.header}>
         <h2 className={styles.title}>Notifications</h2>
-        <button
-          type="button"
-          className={styles.markAllRead}
-          onClick={markAllAsRead}
-          disabled={!hasUnread || loading}
-        >
-          Mark all as read
-        </button>
+        <div className={styles.headerActions}>
+          <PushToggle />
+          <button
+            type="button"
+            className={styles.markAllRead}
+            onClick={markAllAsRead}
+            disabled={!hasUnread || loading}
+          >
+            Mark all as read
+          </button>
+        </div>
       </div>
 
       <div className={styles.categoryTabs} role="tablist" aria-label="Notification categories">

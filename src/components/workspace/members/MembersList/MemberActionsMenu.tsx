@@ -2,12 +2,16 @@ import { useState, useRef, useEffect } from 'react';
 import styles from './MembersList.module.css';
 
 interface MemberActionsMenuProps {
-  currentRole: 'admin' | 'member';
+  currentRole: 'owner' | 'admin' | 'member';
+  /** Role changes and removal; owners and the current user cannot be managed. */
+  canManage: boolean;
   onRoleChange: (role: 'admin' | 'member') => void;
   onRemove: () => void;
+  isProjectManager: boolean;
+  onToggleProjectManager?: () => void;
 }
 
-export function MemberActionsMenu({ currentRole, onRoleChange, onRemove }: MemberActionsMenuProps) {
+export function MemberActionsMenu({ currentRole, canManage, onRoleChange, onRemove, isProjectManager, onToggleProjectManager }: MemberActionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -41,7 +45,19 @@ export function MemberActionsMenu({ currentRole, onRoleChange, onRemove }: Membe
 
       {isOpen && (
         <div className={styles.actionsDropdown}>
-          {currentRole === 'member' && (
+          {onToggleProjectManager && (
+            <button
+              type="button"
+              className={styles.actionsItem}
+              onClick={() => {
+                onToggleProjectManager();
+                setIsOpen(false);
+              }}
+            >
+              {isProjectManager ? 'Remove as project manager' : 'Make project manager'}
+            </button>
+          )}
+          {canManage && currentRole === 'member' && (
             <button
               type="button"
               className={styles.actionsItem}
@@ -53,7 +69,7 @@ export function MemberActionsMenu({ currentRole, onRoleChange, onRemove }: Membe
               Promote to admin
             </button>
           )}
-          {currentRole === 'admin' && (
+          {canManage && currentRole === 'admin' && (
             <button
               type="button"
               className={styles.actionsItem}
@@ -65,16 +81,18 @@ export function MemberActionsMenu({ currentRole, onRoleChange, onRemove }: Membe
               Demote to member
             </button>
           )}
-          <button
-            type="button"
-            className={`${styles.actionsItem} ${styles.actionsItemDanger}`}
-            onClick={() => {
-              onRemove();
-              setIsOpen(false);
-            }}
-          >
-            Remove member
-          </button>
+          {canManage && (
+            <button
+              type="button"
+              className={`${styles.actionsItem} ${styles.actionsItemDanger}`}
+              onClick={() => {
+                onRemove();
+                setIsOpen(false);
+              }}
+            >
+              Remove member
+            </button>
+          )}
         </div>
       )}
     </div>

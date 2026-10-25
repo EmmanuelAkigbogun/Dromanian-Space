@@ -13,7 +13,7 @@ import { addUsage, emptyUsage, ProviderError, type Effort, type ModelProvider, t
 import { CitationRegistry, resolveCitations, sourcesFooter } from './citations.js';
 import { PROVIDER_TOOLS, TOOL_REGISTRY, toolSpecs } from './tools/index.js';
 import { readConversation, memberChannels } from './tools/read.js';
-import type { AgentTool, RunContext, RunScope, SourceKind, ToolOutput } from './tools/types.js';
+import { quoteData, type AgentTool, type RunContext, type RunScope, type SourceKind, type ToolOutput } from './tools/types.js';
 
 const HEARTBEAT_MS = 5000;
 // Viewers follow a run by reading its checkpoints, so keep them frequent.
@@ -23,6 +23,8 @@ const MAX_JSON_RETRIES = 2;
 /** Stop before the worker's own limit so partial output is kept. */
 const RUN_BUDGET_MS = Number(process.env.AGENT_RUN_BUDGET_MS ?? 600_000);
 const MAX_PARALLEL_SPECIALISTS = 2;
+/** Tools available in a direct-message AI session (see sessionTranscript). */
+const SESSION_TOOLS = ['submit_tasks_for_approval'];
 
 export interface RunEvents {
   emit(event: string, data: unknown): void;
@@ -74,6 +76,21 @@ const PLATFORM_RULES = `How you work in this workspace:
 
 function systemPrompt(agentName: string, instructions: string): string {
   return `You are ${agentName}, an AI agent inside a team collaboration workspace.\n\n${instructions.trim()}\n\n${PLATFORM_RULES}`;
+}
+
+/** The messages sent while a direct-message AI session was active. */
+async function sessionTranscript(ctx: RunContext, sessionId: string, channelId: string): Promise<string> {
+  const rows = await rpc<Array<{ id: string; author_name: string; content: string; created_at: string; parent_id: string | null }>>(
+    'ai_session_transcript_for',
+    { p_actor: ctx.actorId, p_session_id: sessionId },
+  );
+  await ctx.recordSource('channel', channelId, { channelId, label: 'a direct message' });
+  if (rows.length === 0) return 'No messages were sent during the session.';
+  return rows
+    .map((m) =>
+      quoteData('message', { id: m.id, author: m.author_name, time: String(m.created_at).slice(0, 16).replace('T', ' '), reply_to: m.parent_id }, m.content),
+    )
+    .join('\n');
 }
 
 function errorMessage(err: unknown): { code: string; message: string } {
@@ -211,7 +228,12 @@ export async function executeRun(
           ? `This request comes from a thread in ${where} (channel id ${channel.id}, thread_root_id ${run.scope.thread_root_id}).`
           : `This request is about ${where} (channel id ${channel.id}).`,
       );
-      if (run.trigger === 'mention' || run.trigger === 'thread_summary' || run.scope.thread_root_id) {
+      if (run.scope.session_id) {
+        snapshot = await sessionTranscript(ctx, run.scope.session_id, channel.id);
+        contextLines.push(
+          'The participants invited you into this conversation for an AI session. The snapshot holds every message sent while the session was active, and nothing else.',
+        );
+      } else if (run.trigger === 'mention' || run.trigger === 'thread_summary' || run.scope.thread_root_id) {
         snapshot = await readConversation(ctx, channel, run.scope.thread_root_id ?? null, 30);
       }
     }
@@ -242,12 +264,14 @@ export async function executeRun(
     `\n${inputMsg.data.content}`;
 
   // ---- Tools ----------------------------------------------------------------
+  // A session run may read nothing beyond its transcript.
+  const allowed = (n: string) => !run.scope?.session_id || SESSION_TOOLS.includes(n);
   const tools: AgentTool[] = version.tools
-    .filter((n) => !PROVIDER_TOOLS.includes(n) && (n !== 'delegate_to_specialists' || isCoordinator))
+    .filter((n) => allowed(n) && !PROVIDER_TOOLS.includes(n) && (n !== 'delegate_to_specialists' || isCoordinator))
     .map((n) => TOOL_REGISTRY[n])
     .filter((t): t is AgentTool => Boolean(t));
-  const webSearch = version.tools.includes('web_search') && claim.settings.web_research_enabled ? { maxUses: 5 } : null;
-  const webFetch = canFetchSite ? { allowedDomains: [new URL(ctx.settings.siteUrl!).hostname], maxUses: 8 } : null;
+  const webSearch = allowed('web_search') && version.tools.includes('web_search') && claim.settings.web_research_enabled ? { maxUses: 5 } : null;
+  const webFetch = canFetchSite && allowed('fetch_site_page') ? { allowedDomains: [new URL(ctx.settings.siteUrl!).hostname], maxUses: 8 } : null;
   const session = provider.startSession({
     model: run.model,
     effort: run.effort,

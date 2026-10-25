@@ -34,6 +34,8 @@ export interface ServerEnv {
   /** Shared secret for signed n8n webhooks; the integration is off without it. */
   n8nWebhookSecret: string | null;
   n8nBaseUrl: string | null;
+  /** VAPID keys for Web Push; push stays off unless all three are set. */
+  webPush: { publicKey: string; privateKey: string; subject: string } | null;
   workerId: string;
 }
 
@@ -71,6 +73,10 @@ export function env(): ServerEnv {
     cronSecret: read('CRON_SECRET'),
     n8nWebhookSecret: read('N8N_WEBHOOK_SECRET'),
     n8nBaseUrl: read('N8N_BASE_URL'),
+    webPush:
+      read('WEB_PUSH_PUBLIC_KEY') && read('WEB_PUSH_PRIVATE_KEY') && read('WEB_PUSH_SUBJECT')
+        ? { publicKey: read('WEB_PUSH_PUBLIC_KEY')!, privateKey: read('WEB_PUSH_PRIVATE_KEY')!, subject: read('WEB_PUSH_SUBJECT')! }
+        : null,
     workerId: `${read('HOSTNAME') ?? 'local'}:${process.pid}:${Math.random().toString(36).slice(2, 8)}`,
   };
   return cached;

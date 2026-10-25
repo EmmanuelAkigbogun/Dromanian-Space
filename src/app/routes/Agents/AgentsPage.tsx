@@ -46,7 +46,7 @@ interface Status {
     web_research_enabled: boolean;
   };
   usage: { workspace_month_tokens: number; user_day_tokens: number };
-  tools: Array<{ name: string; available: boolean; reason?: string; approval: 'none' | 'review_card' }>;
+  tools: Array<{ name: string; available: boolean; reason?: string; approval: 'none' | 'review_card' | 'project_manager' }>;
 }
 
 interface LiveTask {
@@ -76,6 +76,14 @@ const TOOL_LABELS: Record<string, string> = {
   propose_channel_message: 'Post messages',
   propose_crm_update: 'Update CRM records',
   propose_calendar_event: 'Add calendar events',
+  submit_tasks_for_approval: 'Send tasks to project managers',
+};
+
+/** Prompts other pages can prefill with ?prompt=<key>; the person still sends them. */
+const PRESET_PROMPTS: Record<string, string> = {
+  notes:
+    'Take notes on the conversation in this channel from about the last day: summary, decisions and open questions. ' +
+    'Send the action items to the project managers for approval.',
 };
 
 const CONNECTED_ACTIONS: Record<string, string> = {
@@ -208,7 +216,8 @@ function Agents({ ws, userId, admin }: { ws: string; userId: string; admin: bool
   const conversation = conversations.data?.find((c) => c.id === conversationId);
   const coordinator = directory.data?.find((d) => d.kind === 'coordinator');
   const chosenId = agentId === 'team' ? coordinator?.id : (agentId ?? conversation?.agent_id);
-  const agent = directory.data?.find((d) => d.id === chosenId);
+  // Agents can also be opened by handle (/agents/scribe).
+  const agent = directory.data?.find((d) => d.id === chosenId) ?? directory.data?.find((d) => d.handle === chosenId);
   const archived = !!conversationId && !!conversation && !agent;
 
   const notice = status.isPending ? (
@@ -378,7 +387,9 @@ function AgentView(props: {
   const navigate = useNavigate();
   const cache = useQueryClient();
   const base = ['platform', ws, userId, 'agents'];
-  const initial = params.get('crm') ? `Summarize the CRM ${params.get('crm_kind') ?? 'record'} ${params.get('crm')} and suggest a next step.` : '';
+  const initial = params.get('crm')
+    ? `Summarize the CRM ${params.get('crm_kind') ?? 'record'} ${params.get('crm')} and suggest a next step.`
+    : (PRESET_PROMPTS[params.get('prompt') ?? ''] ?? '');
   const [message, setMessage] = useState(initial);
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
@@ -448,7 +459,11 @@ function AgentView(props: {
       requestKey.current = null;
       setMessage('');
       setFollowing(String(data.run_id));
-      if (!conversationId) navigate(`/agents/conversations/${data.conversation_id}${params.toString() ? `?${params}` : ''}`, { replace: true });
+      if (!conversationId) {
+        const kept = new URLSearchParams(params);
+        kept.delete('prompt');
+        navigate(`/agents/conversations/${data.conversation_id}${kept.toString() ? `?${kept}` : ''}`, { replace: true });
+      }
       await refresh();
     } else if (name === 'snapshot') setStream(String(data.text ?? ''));
     else if (name === 'tool' && data.label) setProgress(String(data.label));
@@ -687,6 +702,7 @@ function AgentView(props: {
                     <li key={name}>
                       {TOOL_LABELS[name] ?? name}
                       {info?.approval === 'review_card' ? <span className={s.muted}> · needs your approval</span> : null}
+                      {info?.approval === 'project_manager' ? <span className={s.muted}> · a project manager approves</span> : null}
                       {info && !info.available ? <span className={s.muted}> · unavailable: {info.reason}</span> : null}
                     </li>
                   );

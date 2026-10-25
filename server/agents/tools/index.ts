@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { ToolSpec } from '../../ai/provider.js';
+import { submitTasksForApproval } from './approvals.js';
 import { readCrmRecord, proposeCrmUpdate } from './crm.js';
 import { computeCsvMetrics } from './csv-metrics.js';
 import { proposeChannelMessage, proposeDocument, proposeTask } from './propose.js';
@@ -14,7 +15,7 @@ export const TOOL_REGISTRY: Record<string, AgentTool> = Object.fromEntries(
   [
     readCrmRecord, proposeCrmUpdate, searchWorkspace, searchKnowledge, readFile, readConversationTool, listTasks, computeCsvMetrics,
     proposeTask, proposeDocument, proposeChannelMessage, readCalendar, proposeCalendarEvent, workspaceMetrics, readBrandKit,
-    readPersonalNotes, savePersonalNote, delegateToSpecialists,
+    readPersonalNotes, savePersonalNote, delegateToSpecialists, submitTasksForApproval,
   ].map((t) => [t.name, t as unknown as AgentTool]),
 );
 
@@ -28,15 +29,16 @@ export interface ToolAvailability {
   available: boolean;
   /** Why it is unavailable, in words an admin can act on. */
   reason?: string;
-  approval: 'none' | 'review_card';
+  approval: 'none' | 'review_card' | 'project_manager';
 }
 
-const APPROVAL: Record<string, 'none' | 'review_card'> = {
+const APPROVAL: Record<string, ToolAvailability['approval']> = {
   propose_task: 'review_card',
   propose_document: 'review_card',
   propose_channel_message: 'review_card',
   propose_crm_update: 'review_card',
   propose_calendar_event: 'review_card',
+  submit_tasks_for_approval: 'project_manager',
 };
 
 export interface AvailabilityInputs {

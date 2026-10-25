@@ -5,6 +5,7 @@ import { useToast } from '@/components/ui/Toast';
 import { platform } from '@/lib/platform';
 import { getWorkspaceMembers, validateRemoveMember, validateRoleChange } from '@/lib/workspace';
 import { getProfilesByUserIds } from '@/lib/profile';
+import { listProjectManagers, setProjectManager } from '@/lib/tasks/approvals';
 import { Avatar } from '@/components/ui/Avatar';
 import { Badge } from '@/components/ui/Badge';
 import { SearchInput } from '@/components/ui/SearchInput';
@@ -59,6 +60,32 @@ export function MembersList() {
   useEffect(() => {
     fetchMembers();
   }, [fetchMembers]);
+
+  const [projectManagers, setProjectManagers] = useState<Set<string>>(new Set());
+  const fetchProjectManagers = useCallback(async () => {
+    if (!currentWorkspace) return;
+    setProjectManagers(new Set(await listProjectManagers(currentWorkspace.id)));
+  }, [currentWorkspace]);
+
+  useEffect(() => {
+    void fetchProjectManagers();
+  }, [fetchProjectManagers]);
+
+  async function toggleProjectManager(member: MemberWithProfile) {
+    if (!currentWorkspace) return;
+    const enabled = !projectManagers.has(member.user_id);
+    const name = member.profile?.display_name || member.profile?.username || 'This member';
+    try {
+      await setProjectManager(currentWorkspace.id, member.user_id, enabled);
+      await fetchProjectManagers();
+      toast({
+        variant: 'success',
+        description: enabled ? `${name} now approves tasks prepared by Scribe.` : `${name} is no longer a project manager.`,
+      });
+    } catch (err) {
+      toast({ variant: 'error', description: err instanceof Error ? err.message : 'Could not update project managers.' });
+    }
+  }
 
   useEffect(() => {
     if (!currentWorkspace) return;
@@ -257,16 +284,20 @@ export function MembersList() {
                   </div>
                 </div>
                 <div className={styles.memberActions}>
+                  {projectManagers.has(member.user_id) && <Badge variant="success">Project manager</Badge>}
                   <Badge variant={isMemberOwner ? 'primary' : member.role === 'admin' ? 'warning' : 'default'}>
                     {member.role}
                   </Badge>
-                  {(canManage || canManageAsAdmin) && (
+                  {(canManage || canManageAsAdmin || isAdmin) && (
                     <MemberActionsMenu
-                      currentRole={member.role as 'admin' | 'member'}
+                      currentRole={member.role}
+                      canManage={canManage || canManageAsAdmin}
                       onRoleChange={(_role) => {
                         setRoleChangeTarget(member);
                       }}
                       onRemove={() => setRemoveTarget(member)}
+                      isProjectManager={projectManagers.has(member.user_id)}
+                      onToggleProjectManager={isAdmin ? () => void toggleProjectManager(member) : undefined}
                     />
                   )}
                 </div>

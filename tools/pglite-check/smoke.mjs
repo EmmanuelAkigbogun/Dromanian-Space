@@ -122,7 +122,7 @@ export default async function smoke(db, legacy) {
 
   // Roster
   const handles = (await h.admin(`SELECT handle FROM workspace_agents WHERE workspace_id = $1 AND is_builtin AND archived_at IS NULL ORDER BY handle`, [wsB])).map((r) => r.handle);
-  check(['gemini', 'kai', 'nova', 'vera', 'team'].every((x) => handles.includes(x)) && handles.length === 17, `roster: Gemini assistant + 15 specialists + team lead (${handles.join(', ')})`);
+  check(['gemini', 'kai', 'nova', 'vera', 'scribe', 'team'].every((x) => handles.includes(x)) && handles.length === 18, `roster: Gemini assistant + 16 specialists + team lead (${handles.join(', ')})`);
 
   // Automation keys
   check(await h.denied(h.user(member, `SELECT automation_key_create($1, 'n8n')`, [wsA])), 'members cannot create automation keys');
@@ -158,6 +158,81 @@ export default async function smoke(db, legacy) {
   await h.admin('DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2', [wsA, adm.id]);
   check((await h.svc('SELECT automation_key_for($1) AS r', [k2.id]))[0].r.active === false, 'a key is inactive once its owner leaves the workspace');
   check(await h.denied(h.svc(`SELECT automation_start_run($1, $2, 'vera', 'x', NULL)`, [k2.id, `req-${randomUUID()}`])), 'and cannot start runs');
+
+  // Project managers and task requests (20261024000100)
+  const approver = async (u) => (await h.user(u, 'SELECT is_task_approver($1, $2) AS a', [wsA, u.id]))[0].a;
+  check((await approver(owner)) && !(await approver(member)), 'without project managers, owners and admins approve tasks');
+  check(await h.denied(h.user(member, 'SELECT set_project_manager($1, $2, true)', [wsA, member.id]), /owners and admins/), 'members cannot make themselves project managers');
+  check(await h.denied(h.user(owner, 'SELECT set_project_manager($1, $2, true)', [wsA, other.id]), /not a member/), 'only workspace members can be project managers');
+  await h.user(owner, 'SELECT set_project_manager($1, $2, true)', [wsA, member.id]);
+  check((await approver(member)) && !(await approver(owner)), 'once chosen, only project managers approve tasks');
+  const scribe = (await h.admin(`SELECT id FROM workspace_agents WHERE workspace_id = $1 AND template_key = 'note_taker'`, [wsA]))[0]?.id;
+  check(Boolean(scribe), 'every workspace gets Scribe');
+  const startScribe = async (u, scope = {}, trigger = 'interactive') => {
+    const started = (await h.svc(`SELECT agent_start_run($1, $2, $3, NULL, 'Extract the tasks', $4, $5, '{}', '{"type":"private"}', $6, 1000) AS r`,
+      [u.id, wsA, scribe, scope, trigger, randomUUID()]))[0].r;
+    await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [started.run_id]);
+    return started.run_id;
+  };
+  const submitRun = await startScribe(owner);
+  const tasksJson = JSON.stringify([{ title: 'Send the Q3 report', assignee_ids: [owner.id], priority: 'high' }, { title: 'Book the venue' }]);
+  const sub = (await h.svc(`SELECT agent_submit_task_requests($1, 'tool-1', $2, '#general') AS r`, [submitRun, tasksJson]))[0].r;
+  check(sub.new === 2 && sub.approvers === 1, 'Scribe submits task requests to the project managers');
+  const again2 = (await h.svc(`SELECT agent_submit_task_requests($1, 'tool-1', $2, '#general') AS r`, [submitRun, tasksJson]))[0].r;
+  check(again2.new === 0 && again2.request_ids[0] === sub.request_ids[0], 'a retried submission does not duplicate requests');
+  check((await h.admin(`SELECT count(*)::int AS n FROM tasks WHERE workspace_id = $1 AND title = 'Send the Q3 report'`, [wsA]))[0].n === 0, 'nothing is created before approval');
+  const pmNote = await h.admin(`SELECT title, link FROM notifications WHERE user_id = $1 AND type = 'task_approval'`, [member.id]);
+  check(pmNote.length === 1 && pmNote[0].link === '/tasks?view=approvals', 'project managers are notified of the requests');
+  check((await h.user(member, 'SELECT id FROM task_requests')).length === 2, 'project managers see pending requests');
+  check((await h.user(owner, 'SELECT id FROM task_requests')).length === 2, 'the submitter sees their requests');
+  check((await h.user(other, 'SELECT id FROM task_requests')).length === 0, 'other workspaces see no requests');
+  check(await h.denied(h.user(owner, 'SELECT decide_task_request($1, true)', [sub.request_ids[0]]), /not found/), 'non-approvers cannot approve');
+  check(await h.denied(h.user(member, `INSERT INTO task_requests (workspace_id, title, submitted_by, idempotency_key) VALUES ($1, 'x', $2, 'k')`, [wsA, member.id])), 'clients cannot write task requests directly');
+  const approved = (await h.user(member, `SELECT decide_task_request($1, true, '{"title":"Send the Q3 report to the board"}') AS r`, [sub.request_ids[0]]))[0].r;
+  const task = (await h.admin('SELECT title, priority, created_by FROM tasks WHERE id = $1', [approved.task_id]))[0];
+  check(approved.status === 'approved' && task?.title === 'Send the Q3 report to the board' && task.priority === 'high' && task.created_by === member.id,
+    'approval creates the task with the manager\'s edits');
+  const assigned = await h.admin(`SELECT link FROM notifications WHERE user_id = $1 AND type = 'task_assigned'`, [owner.id]);
+  check(assigned.length === 1 && assigned[0].link === `/tasks/${approved.task_id}`, 'the assignee gets an assignment notification');
+  const twice = (await h.user(member, 'SELECT decide_task_request($1, true) AS r', [sub.request_ids[0]]))[0].r;
+  check(twice.status === 'approved' && twice.task_id === approved.task_id, 'approving twice does not create a second task');
+  await h.user(member, `SELECT decide_task_request($1, false, '{}', 'Already booked')`, [sub.request_ids[1]]);
+  const declined = await h.admin(`SELECT message FROM notifications WHERE user_id = $1 AND title LIKE 'Task not approved:%'`, [owner.id]);
+  check(declined[0]?.message === 'Already booked', 'the submitter learns why a request was declined');
+  await h.admin(`INSERT INTO task_assignees (task_id, user_id, assigned_by) VALUES ($1, $2, $2)`, [approved.task_id, member.id]);
+  check((await h.admin(`SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND type = 'task_assigned'`, [member.id]))[0].n === 0, 'self-assignment does not notify');
+
+  // Web Push queueing
+  check(await h.denied(h.user(member, `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth) VALUES ($1, 'https://push.example/x', $2, 'abcdefghijklmnop')`, [member.id, 'B'.repeat(87)])), 'clients cannot write push subscriptions directly');
+  await h.admin(`INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth) VALUES ($1, 'https://push.example/member', $2, 'abcdefghijklmnop')`, [member.id, 'B'.repeat(87)]);
+  check((await h.user(other, 'SELECT id FROM push_subscriptions')).length === 0 && (await h.user(member, 'SELECT id FROM push_subscriptions')).length === 1, 'people see only their own push subscriptions');
+  const t2 = (await h.admin(`INSERT INTO tasks (workspace_id, title, created_by) VALUES ($1, 'Pushed task', $2) RETURNING id`, [wsA, owner.id]))[0].id;
+  await h.admin(`INSERT INTO task_assignees (task_id, user_id, assigned_by) VALUES ($1, $2, $3)`, [t2, member.id, owner.id]);
+  const pushJobs = await h.admin(`SELECT payload FROM jobs WHERE kind = 'notification.push' AND principal_id = $1`, [member.id]);
+  check(pushJobs.length >= 1, 'assignments to people with push enabled queue a push delivery');
+  check((await h.admin(`SELECT count(*)::int AS n FROM jobs WHERE kind = 'notification.push' AND principal_id = $1`, [owner.id]))[0].n === 0, 'people without push subscriptions queue nothing');
+
+  // AI sessions in direct conversations
+  const conv = (await h.user(owner, 'SELECT create_direct_conversation($1, $2, $3) AS c', [wsA, owner.id, member.id]))[0].c;
+  const dm = (await h.admin('SELECT channel_id FROM direct_conversations WHERE id = $1', [conv]))[0].channel_id;
+  const general = (await h.admin(`SELECT id FROM channels WHERE workspace_id = $1 AND id NOT IN (SELECT channel_id FROM direct_conversations) LIMIT 1`, [wsA]))[0]?.id;
+  if (general) check(await h.denied(h.svc('SELECT ai_session_start($1, $2, $3)', [owner.id, general, scribe]), /not found/), 'sessions are only for direct conversations');
+  check(await h.denied(h.svc('SELECT ai_session_start($1, $2, $3)', [other.id, dm, scribe]), /not found/), 'non-participants cannot start a session');
+  await h.admin(`INSERT INTO messages (channel_id, user_id, content, created_at) VALUES ($1, $2, 'Before the session', now() - interval '1 hour')`, [dm, owner.id]);
+  const session = (await h.svc('SELECT (ai_session_start($1, $2, $3)).*', [owner.id, dm, scribe]))[0];
+  const sameSession = (await h.svc('SELECT (ai_session_start($1, $2, $3)).*', [member.id, dm, scribe]))[0];
+  check(session.status === 'active' && sameSession.id === session.id, 'one active session per conversation');
+  await h.admin(`INSERT INTO messages (channel_id, user_id, content, created_at) VALUES ($1, $2, 'Can you send the deck by Friday?', now() + interval '1 second')`, [dm, member.id]);
+  check((await h.user(member, 'SELECT id FROM conversation_ai_sessions')).length === 1 && (await h.user(other, 'SELECT id FROM conversation_ai_sessions')).length === 0, 'participants see the session; others do not');
+  check(await h.denied(h.svc('SELECT ai_session_finish($1, $2)', [other.id, session.id]), /not found/), 'non-participants cannot finish a session');
+  const ended = (await h.svc('SELECT (ai_session_finish($1, $2)).*', [member.id, session.id]))[0];
+  check(ended.status === 'finished' && ended.ended_by === member.id, 'either participant can finish the session');
+  await h.admin(`UPDATE conversation_ai_sessions SET ended_at = now() + interval '1 minute' WHERE id = $1`, [session.id]);
+  const transcript = await h.svc('SELECT content FROM ai_session_transcript_for($1, $2)', [owner.id, session.id]);
+  check(transcript.length === 1 && transcript[0].content.startsWith('Can you send'), 'the agent reads only messages sent during the session');
+  check((await h.svc('SELECT content FROM ai_session_transcript_for($1, $2)', [other.id, session.id])).length === 0, 'non-participants get no transcript');
+  const notesRun = await startScribe(member, { channel_id: dm, session_id: session.id }, 'session_notes');
+  check(Boolean(notesRun), 'session-notes runs can start');
 
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll smoke checks passed');
   process.exit(failures ? 1 : 0);

@@ -273,24 +273,8 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
             task_id: task.id,
             user_id: uid,
           }));
+          // The database notifies each assignee (and sends their push notification).
           await platform.from('task_assignees' as any).insert(assigneeRows);
-
-          const taskWorkspaceId = currentWorkspace?.id || null;
-          const link = `/tasks/${task.id}`;
-          for (const assigneeId of input.assigneeIds) {
-            createTypedNotification(
-              assigneeId,
-              'system',
-              `You were assigned to: ${input.title}`,
-              `You have been assigned to the task "${input.title}"`,
-              link,
-              'tasks',
-              'task',
-              task.id,
-              userId,
-              taskWorkspaceId,
-            ).catch(() => {});
-          }
         }
 
         if (input.labelIds && input.labelIds.length > 0) {
@@ -655,30 +639,7 @@ export function useTasks(filters?: TaskFilters): UseTasksReturn {
         description: 'assigned a member',
         new_value: userIdToAssign,
       });
-
-      const [taskRes, assignerRes] = await Promise.all([
-        platform.from('tasks' as any).select('title, workspace_id').eq('id', taskId).single(),
-        platform.from('profiles' as any).select('display_name, username').eq('id', userId).single(),
-      ]);
-
-      const taskRow = taskRes.data as any;
-      const assignerRow = assignerRes.data as any;
-
-      if (taskRow) {
-        const assignerName = assignerRow?.display_name || assignerRow?.username || 'Someone';
-        createTypedNotification(
-          userIdToAssign,
-          'system',
-          `You were assigned to: ${taskRow.title}`,
-          `${assignerName} assigned you to the task "${taskRow.title}"`,
-          `/tasks/${taskId}`,
-          'tasks',
-          'task',
-          taskId,
-          userId,
-          taskRow.workspace_id,
-        ).catch(() => {});
-      }
+      // The database notifies the assignee (and sends their push notification).
 
       return true;
     },

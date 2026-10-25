@@ -5,6 +5,8 @@ export interface RunScope {
   item_ids?: string[];
   channel_id?: string;
   thread_root_id?: string;
+  /** A direct-message AI session: the run reads only that session's messages. */
+  session_id?: string;
 }
 
 export type SourceKind = 'drive_item' | 'channel' | 'crm_record' | 'task' | 'web';

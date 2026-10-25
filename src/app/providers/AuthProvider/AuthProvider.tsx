@@ -10,6 +10,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { clearSignedUrlCache } from '@/lib/message/attachment';
 import { platform } from '@/lib/platform';
+import { forgetPushSubscription } from '@/lib/push';
 import type { AuthState, AuthError, SignUpCredentials, SignInCredentials, AuthResponse } from '@/types/auth';
 
 interface AuthContextValue extends AuthState {
@@ -147,6 +148,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       setError(null);
       localStorage.setItem(PROFILE_SETUP_FLAG, '1');
+      await forgetPushSubscription();
       await platform.auth.signOut();
     } catch  {
       setError({ message: 'An unexpected error occurred during sign out' });

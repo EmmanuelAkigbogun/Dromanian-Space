@@ -5,6 +5,8 @@ import * as status from '../api/ai/status.js';
 import * as providerKeys from '../api/ai/provider-keys.js';
 import * as run from '../api/agents/run.js';
 import * as mention from '../api/agents/mention.js';
+import * as sessions from '../api/agents/sessions.js';
+import * as push from '../api/push.js';
 import * as jobs from '../api/jobs/run.js';
 import * as n8n from '../api/integrations/n8n.js';
 import * as auth from '../api/auth.js';
@@ -21,6 +23,8 @@ export const ROUTES: Record<string, Partial<Record<ApiMethod, Handler>>> = {
   '/api/ai/provider-keys': providerKeys,
   '/api/agents/run': run,
   '/api/agents/mention': mention,
+  '/api/agents/sessions': sessions,
+  '/api/push': push,
   '/api/jobs/run': jobs,
   '/api/integrations/n8n/runs': n8n,
   '/api/auth/signup': { POST: auth.signup },

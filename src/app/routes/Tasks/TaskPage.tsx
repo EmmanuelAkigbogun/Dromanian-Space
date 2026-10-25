@@ -1,8 +1,11 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useTasks } from '@/hooks/useTasks';
 import { platform } from '@/lib/platform';
+import { isTaskApprover, subscribeToTaskRequests } from '@/lib/tasks/approvals';
+import { TaskApprovals } from '@/components/tasks/TaskApprovals';
 import { TaskList } from '@/components/tasks/TaskList';
 import { TaskBoard } from '@/components/tasks/TaskBoard';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
@@ -20,6 +23,11 @@ export function TaskPage() {
   const { currentWorkspace } = useWorkspace();
   const navigate = useNavigate();
   const { taskId } = useParams<{ taskId: string }>();
+  const { userId } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const showApprovals = searchParams.get('view') === 'approvals';
+  const [isApprover, setIsApprover] = useState(false);
+  const [pendingApprovals, setPendingApprovals] = useState(0);
   const {
     tasks,
     isLoading,
@@ -69,6 +77,34 @@ export function TaskPage() {
       cancelled = true;
     };
   }, [tasks, customStatusesVersion]);
+
+  const workspaceId = currentWorkspace?.id;
+  useEffect(() => {
+    if (!workspaceId || !userId) return;
+    let cancelled = false;
+    const refresh = () => {
+      isTaskApprover(workspaceId, userId).then((value) => !cancelled && setIsApprover(value));
+      platform
+        .from('task_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('workspace_id', workspaceId)
+        .eq('status', 'pending')
+        .then(({ count }) => !cancelled && setPendingApprovals(count ?? 0));
+    };
+    refresh();
+    const unsubscribe = subscribeToTaskRequests(workspaceId, refresh);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [workspaceId, userId]);
+
+  const setTab = useCallback(
+    (approvals: boolean) => {
+      setSearchParams(approvals ? { view: 'approvals' } : {}, { replace: true });
+    },
+    [setSearchParams],
+  );
 
   const handleCustomStatusesChange = useCallback(() => {
     setCustomStatusesVersion((v) => v + 1);
@@ -165,11 +201,26 @@ export function TaskPage() {
   return (
     <div className={styles.page}>
       <div className={styles.pageHeader}>
-        <h2 className={styles.pageTitle}>Tasks</h2>
-        <div className={styles.headerActions}>
-          <div className={styles.viewToggle}>
-            <TaskViewToggle view={view} onChange={handleViewChange} />
+        <div className={styles.titleGroup}>
+          <h2 className={styles.pageTitle}>Tasks</h2>
+          <div className={styles.tabs} role="tablist" aria-label="Task views">
+            <button type="button" role="tab" aria-selected={!showApprovals} className={`${styles.tab} ${!showApprovals ? styles.tabActive : ''}`} onClick={() => setTab(false)}>
+              All tasks
+            </button>
+            <button type="button" role="tab" aria-selected={showApprovals} className={`${styles.tab} ${showApprovals ? styles.tabActive : ''}`} onClick={() => setTab(true)}>
+              Approvals
+              {pendingApprovals > 0 && (
+                <span className={styles.tabBadge} aria-label={`${pendingApprovals} waiting`}>{pendingApprovals}</span>
+              )}
+            </button>
           </div>
+        </div>
+        <div className={styles.headerActions}>
+          {!showApprovals && (
+            <div className={styles.viewToggle}>
+              <TaskViewToggle view={view} onChange={handleViewChange} />
+            </div>
+          )}
           <button
             type="button"
             className={styles.createButton}
@@ -184,6 +235,12 @@ export function TaskPage() {
         </div>
       </div>
 
+      {showApprovals ? (
+        <div className={styles.content}>
+          <TaskApprovals workspaceId={currentWorkspace.id} isApprover={isApprover} onPendingCountChange={setPendingApprovals} />
+        </div>
+      ) : (
+      <>
       <div className={styles.filterBar}>
         <div className={styles.searchInput}>
           <Input
@@ -264,6 +321,8 @@ export function TaskPage() {
           <TaskBoard tasks={tasks} onTaskClick={handleTaskClick} onStatusChange={updateTaskStatus} onRestore={showArchived ? handleRestore : undefined} onDuplicate={duplicateTask} customStatusesVersion={customStatusesVersion} />
         )}
       </div>
+      </>
+      )}
 
       <TaskDialog
         open={showCreateDialog}
