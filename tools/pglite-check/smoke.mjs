@@ -234,6 +234,14 @@ export default async function smoke(db, legacy) {
   const notesRun = await startScribe(member, { channel_id: dm, session_id: session.id }, 'session_notes');
   check(Boolean(notesRun), 'session-notes runs can start');
 
+  // Dashboard insights (20261025000100)
+  const done = (await h.admin(`INSERT INTO tasks (workspace_id, title, created_by, status) VALUES ($1, 'Shipped it', $2, 'completed') RETURNING id`, [wsA, owner.id]))[0].id;
+  await h.admin(`INSERT INTO task_activity (task_id, user_id, action, details) VALUES ($1, $2, 'status_changed', '{"status":"completed"}')`, [done, owner.id]);
+  const insights = (await h.user(owner, 'SELECT workspace_dashboard_insights($1) AS r', [wsA]))[0].r;
+  const thisWeek = insights.throughput.at(-1);
+  check(insights.throughput.length === 8 && thisWeek.opened >= 1 && thisWeek.completed >= 1, `dashboard throughput covers 8 weeks and counts this week (opened ${thisWeek.opened}, completed ${thisWeek.completed})`);
+  check((await h.user(other, 'SELECT workspace_dashboard_insights($1) AS r', [wsA]))[0]?.r == null, 'other workspaces get no dashboard insights');
+
   console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll smoke checks passed');
   process.exit(failures ? 1 : 0);
 }

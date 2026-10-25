@@ -67,6 +67,8 @@ export const MessageItem = memo(function MessageItem({ message, isOwn, profile, 
   const isDeleted = !!message.deleted_at;
   const isEdited = !!message.edited_at;
   const displayName = message.agent_id ? 'AI assistant' : getDisplayName(profile, message.user_id);
+  // Agent replies are stored under the requester, but they are not the requester speaking.
+  const mine = isOwn && !message.agent_id;
   const replyCount = threadCountsCtx?.replyCounts.get(message.id) ?? 0;
 
   const canDelete = isOwn || hasPermission(userRole as 'owner' | 'admin' | 'member' | null, 'message:delete_any');
@@ -222,8 +224,10 @@ export const MessageItem = memo(function MessageItem({ message, isOwn, profile, 
 
   if (isDeleted) {
     return (
-      <div className={`${styles.message} ${styles.messageDeleted}`}>
-        <div className={styles.deleted}>This message was deleted</div>
+      <div className={`${styles.row} ${isOwn && !message.agent_id ? styles.rowOwn : ''}`}>
+        <div className={`${styles.message} ${styles.messageDeleted} ${isOwn && !message.agent_id ? styles.messageOwn : ''}`}>
+          <div className={styles.deleted}>This message was deleted</div>
+        </div>
       </div>
     );
   }
@@ -238,60 +242,62 @@ export const MessageItem = memo(function MessageItem({ message, isOwn, profile, 
         onDelete={handleRequestDelete}
       >
         <div
-          className={`${styles.row} ${selectionMode ? styles.rowSelectable : ''}`}
+          className={`${styles.row} ${mine ? styles.rowOwn : ''} ${selectionMode ? styles.rowSelectable : ''}`}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
         >
           <div
             id={`message-${message.id}`}
-            className={`${styles.message} ${isOwn ? styles.messageOwn : ''} ${isGrouped ? styles.messageGrouped : ''} ${highlight ? 'message-highlight' : ''} ${isSelected ? styles.messageSelected : ''}`}
+            className={`${styles.message} ${mine ? styles.messageOwn : ''} ${isGrouped ? styles.messageGrouped : ''} ${highlight ? 'message-highlight' : ''} ${isSelected ? styles.messageSelected : ''}`}
             onClick={handleRowClick}
           >
+            {!mine && (
+              <div className={styles.avatar}>
+                {!isGrouped && (
+                  <UserProfilePopover userId={message.user_id} side="right">
+                    <Avatar
+                      src={message.agent_id ? undefined : profile?.avatar_url || undefined}
+                      name={displayName}
+                      size="sm"
+                    />
+                  </UserProfilePopover>
+                )}
+              </div>
+            )}
               <div className={styles.content}>
-                <div className={styles.header}>
-                  <div className={styles.avatar}>
-                    {isGrouped ? (
-                      <span className={styles.timestampInline}>{formatTime(message.created_at)}</span>
-                    ) : (
-                      <UserProfilePopover userId={message.user_id} side="right">
-                        <Avatar
-                          src={profile?.avatar_url || undefined}
-                          name={displayName}
-                          size="sm"
-                        />
-                      </UserProfilePopover>
-                    )}
+                {!isGrouped && (
+                  <div className={styles.header}>
+                    {!mine && <span className={styles.username}>{displayName}</span>}
+                    <span className={styles.time} title={new Date(message.created_at).toLocaleString()}>
+                      {formatRelativeTime(message.created_at)}
+                    </span>
+                    {isEdited && <span className={styles.edited}>(edited)</span>}
                   </div>
-                  {!isGrouped && (
-                    <>
-                      <span className={styles.username}>{displayName}</span>
-                      <span className={styles.time} title={new Date(message.created_at).toLocaleString()}>
-                        {formatRelativeTime(message.created_at)}
-                      </span>
-                      {isEdited && <span className={styles.edited}>(edited)</span>}
-                    </>
-                  )}
-                </div>
-
-              {message.forwarded_from_message_id && (
-                <span className={styles.forwardedLabel} title="Forwarded from another message">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
-                  </svg>
-                  Forwarded
-                </span>
-              )}
+                )}
 
               {(() => {
                 const urls = extractUrls(message.content);
                 const linkMode = message.link_mode ?? 'embed';
                 const showLinkPreviews = linkMode === 'embed' && urls.length > 0;
                 const displayContent = showLinkPreviews ? removeUrlsFromText(message.content, urls) : message.content;
+                const hasText = !!displayContent.trim();
                 return (
                   <>
-                    {displayContent.trim() && (
-                      <div className={styles.text}>
-                        <MessageContent content={displayContent} />
+                    {(hasText || message.forwarded_from_message_id) && (
+                      <div className={styles.bubble} title={`${formatTime(message.created_at)}${isGrouped && isEdited ? ' · edited' : ''}`}>
+                        {message.forwarded_from_message_id && (
+                          <span className={styles.forwardedLabel} title="Forwarded from another message">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+                            </svg>
+                            Forwarded
+                          </span>
+                        )}
+                        {hasText && (
+                          <div className={styles.text}>
+                            <MessageContent content={displayContent} />
+                          </div>
+                        )}
                       </div>
                     )}
                     {showLinkPreviews && (

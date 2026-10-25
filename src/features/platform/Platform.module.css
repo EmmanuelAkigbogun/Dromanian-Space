@@ -4,8 +4,9 @@
 .muted { color: var(--color-text-secondary); font-size: 13px; }
 .eyebrow { color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: .12em; font-size: 10px; font-weight: 700; margin-bottom: 10px; }
 .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.button, .primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--color-border); border-radius: 7px; padding: 8px 12px; background: var(--color-surface); color: var(--color-text); cursor: pointer; font-size: 13px; text-decoration: none; }
-.primary { background: var(--color-secondary); color: var(--color-text-inverse); border-color: var(--color-secondary); }
+.button, .primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 8px 14px; background: var(--color-surface); color: var(--color-text); cursor: pointer; font-size: 13px; text-decoration: none; }
+.primary { background: var(--color-primary); color: var(--color-text-inverse); border-color: var(--color-primary); }
+.primary:hover:not(:disabled) { background: var(--color-primary-hover); border-color: var(--color-primary-hover); }
 .fileInput { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .button:hover { background: var(--color-surface-secondary); }
 .button:disabled, .primary:disabled { opacity: .5; cursor: not-allowed; }
@@ -25,7 +26,7 @@
 .empty { padding: 60px 24px; text-align: center; color: var(--color-text-secondary); border: 1px dashed var(--color-border); border-radius: 10px; }
 .empty .primary { margin-top: 12px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(240px,1fr)); gap: 16px; }
-.card { padding: 20px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); min-width: 0; }
+.card { padding: 20px; border: 1px solid var(--color-border); border-radius: var(--radius-xl); background: var(--color-surface); box-shadow: var(--shadow-xs); min-width: 0; }
 .card h2 { font-size: 17px; margin: 12px 0 8px; }
 .card p { font-size: 13px; line-height: 1.6; }
 .tableWrap { overflow: auto; border: 1px solid var(--color-border); border-radius: 9px; }

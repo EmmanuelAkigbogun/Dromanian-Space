@@ -1,4 +1,4 @@
-﻿import { useNavigate } from 'react-router-dom';
+﻿import { useLocation, useNavigate } from 'react-router-dom';
 import { useLayout } from '@/app/providers/LayoutProvider';
 import { useProfileContext } from '@/app/providers/ProfileProvider';
 import { isEmojiAvatarUrl } from '@/components/ui/Avatar';
@@ -11,9 +11,32 @@ interface HeaderProps {
   title?: string;
 }
 
+/** The page the person is on, so the header says where they are. */
+const PAGE_TITLES: Array<[RegExp, string]> = [
+  [/^\/$/, 'Home'],
+  [/^\/agents/, 'Agents'],
+  [/^\/(dm|messages)/, 'Direct messages'],
+  [/^\/channels/, 'Channels'],
+  [/^\/threads/, 'Threads'],
+  [/^\/tasks/, 'Tasks'],
+  [/^\/projects/, 'Projects'],
+  [/^\/calendar/, 'Calendar'],
+  [/^\/(drive|files)/, 'Drive'],
+  [/^\/crm/, 'CRM'],
+  [/^\/calls|^\/new-call|^\/call-history/, 'Calls'],
+  [/^\/saved-pinned/, 'Saved & pinned'],
+  [/^\/automation/, 'Automation'],
+  [/^\/notifications/, 'Notifications'],
+  [/^\/invitations/, 'Invitations'],
+  [/^\/profile/, 'Profile'],
+  [/^\/settings/, 'Settings'],
+];
+
 export function Header({ title = 'Δαρκ space' }: HeaderProps) {
   const { openMobileSidebar } = useLayout();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const pageTitle = PAGE_TITLES.find(([pattern]) => pattern.test(pathname))?.[1] ?? title;
   const { profile } = useProfileContext();
 
   const avatarUrl = profile?.avatar_url ?? null;
@@ -41,7 +64,7 @@ export function Header({ title = 'Δαρκ space' }: HeaderProps) {
           </svg>
         </button>
         <h1 className={styles.headerTitle}>
-          <span className={styles.titleFull}>{title}</span>
+          <span className={styles.titleFull}>{pageTitle}</span>
           <span className={styles.titleShort}>DS</span>
         </h1>
       </div>

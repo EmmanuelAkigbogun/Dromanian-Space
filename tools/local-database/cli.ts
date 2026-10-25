@@ -105,9 +105,13 @@ function startPostgres(): void {
       `-p ${PG_PORT} -c listen_addresses=localhost -c unix_socket_directories= -c wal_level=logical -c max_connections=200`,
       'start',
     ],
-    { encoding: 'utf8' },
+    // On Windows the server inherits pg_ctl's stdio pipes, so capturing them
+    // would block until PostgreSQL exits; failures are in postgres.log.
+    process.platform === 'win32' ? { stdio: 'ignore', windowsHide: true } : { encoding: 'utf8' },
   );
-  if (r.status !== 0) throw new Error(`pg_ctl start failed: ${r.error?.message || r.stderr || r.stdout}`);
+  if (r.status !== 0) {
+    throw new Error(`pg_ctl start failed: ${r.error?.message || r.stderr || r.stdout || `see ${path.join(LOG_DIR, 'postgres.log')}`}`);
+  }
 }
 
 async function writePostgrestConfig(): Promise<void> {
@@ -132,6 +136,7 @@ function spawnDetached(command: string, args: string[], logName: string, env: No
   const child = spawn(command, args, {
     cwd: REPO_ROOT,
     detached: true,
+    windowsHide: true,
     stdio: ['ignore', out, out],
     env: { ...process.env, ...env },
   });

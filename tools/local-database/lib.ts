@@ -25,8 +25,13 @@ export const ENV_FILE = path.join(STATE_DIR, 'env');
 export const MIGRATIONS_DIR = path.join(REPO_ROOT, 'database', 'migrations');
 export const BOOTSTRAP_SQL = path.join(here, 'bootstrap.sql');
 
+/** Portable binaries unpacked into .local/ (git-ignored) win over system installs. */
+const PORTABLE_PG_BIN = path.join(REPO_ROOT, '.local', 'postgresql', 'pgsql', 'bin');
+const PORTABLE_POSTGREST = path.join(REPO_ROOT, '.local', 'postgrest', 'postgrest.exe');
+
 function defaultPgBin(): string {
   if (process.platform !== 'win32') return '/opt/homebrew/opt/postgresql@17/bin';
+  if (existsSync(path.join(PORTABLE_PG_BIN, 'psql.exe'))) return PORTABLE_PG_BIN;
   const programFiles = process.env.ProgramFiles ?? 'C:\\Program Files';
   for (const version of ['18', '17', '16']) {
     const candidate = path.join(programFiles, 'PostgreSQL', version, 'bin');
@@ -36,7 +41,9 @@ function defaultPgBin(): string {
 }
 
 export const PG_BIN = process.env.LOCAL_PG_BIN ?? defaultPgBin();
-export const POSTGREST_BIN = process.env.LOCAL_POSTGREST_BIN ?? (process.platform === 'win32' ? 'postgrest.exe' : '/opt/homebrew/bin/postgrest');
+export const POSTGREST_BIN =
+  process.env.LOCAL_POSTGREST_BIN ??
+  (process.platform === 'win32' ? (existsSync(PORTABLE_POSTGREST) ? PORTABLE_POSTGREST : 'postgrest.exe') : '/opt/homebrew/bin/postgrest');
 export function pgExecutable(name: string): string {
   return path.join(PG_BIN, process.platform === 'win32' ? `${name}.exe` : name);
 }

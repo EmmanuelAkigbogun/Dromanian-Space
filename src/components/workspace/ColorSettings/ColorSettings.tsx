@@ -31,8 +31,26 @@ interface ColorPalette {
 
 const COLOR_PALETTES: ColorPalette[] = [
   {
+    // Matches the calm product palette in styles/tokens.css: soft neutrals and
+    // one quiet indigo accent, low glare in both themes.
+    id: 'calm',
+    label: 'Calm (Default)',
+    light: {
+      primary: '#5B5BD6', primaryHover: '#4F4FC4', primaryActive: '#4343AD',
+      secondary: '#1D1D22', secondaryHover: '#2A2A31', secondaryActive: '#121216',
+      accent: '#0E8F9E', accentHover: '#0B7A87', accentActive: '#096570',
+      background: '#F7F7F8', surface: '#FFFFFF', surfaceSecondary: '#F1F1F3', surfaceTertiary: '#E8E8EC',
+    },
+    dark: {
+      primary: '#8B8CF2', primaryHover: '#9D9EF7', primaryActive: '#7A7BE6',
+      secondary: '#1F1F24', secondaryHover: '#28282E', secondaryActive: '#141418',
+      accent: '#3FC2D0', accentHover: '#5FD0DB', accentActive: '#2AA9B7',
+      background: '#111114', surface: '#18181C', surfaceSecondary: '#1F1F24', surfaceTertiary: '#28282E',
+    },
+  },
+  {
     id: 'sage',
-    label: 'Sage (Default)',
+    label: 'Sage',
     light: {
       primary: '#82A6B1', primaryHover: '#6B939E', primaryActive: '#5A8490',
       secondary: '#2D2A32', secondaryHover: '#3D3A42', secondaryActive: '#1D1A22',

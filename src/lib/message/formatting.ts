@@ -1,6 +1,7 @@
 import type { Message } from '@/types';
 
-const GROUPING_WINDOW_MS = 60 * 1000;
+// Consecutive messages from one person within this window share one header.
+const GROUPING_WINDOW_MS = 5 * 60 * 1000;
 
 export function isTempId(id: string): boolean {
   return id.startsWith('temp-');

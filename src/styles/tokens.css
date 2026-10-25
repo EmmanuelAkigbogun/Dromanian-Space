@@ -299,115 +299,142 @@
   }
 }
 
-/* Dark-professional product palette. Kept as a late semantic override so
-   workspace branding can still replace the brand variables safely. */
+/* Calm product palette: soft neutrals, one quiet indigo accent, no pure
+   white-on-black. Kept as a late semantic override so workspace branding can
+   still replace the brand variables safely. */
 :root,
 [data-theme='light'] {
-  --brand-primary: #6d5ce7;
-  --brand-secondary: #171a24;
-  --brand-background: #f4f6fa;
-  --brand-accent: #0891b2;
-  --color-primary: #6d5ce7;
-  --color-primary-hover: #5b4bd2;
-  --color-primary-active: #493bb8;
-  --color-secondary: #171a24;
-  --color-secondary-hover: #252938;
-  --color-secondary-active: #0f1118;
-  --color-accent: #0891b2;
-  --color-accent-hover: #0e7490;
-  --color-accent-active: #155e75;
-  --color-background: #f4f6fa;
+  --brand-primary: #5b5bd6;
+  --brand-secondary: #1d1d22;
+  --brand-background: #f7f7f8;
+  --brand-accent: #0e8f9e;
+  --color-primary: #5b5bd6;
+  --color-primary-hover: #4f4fc4;
+  --color-primary-active: #4343ad;
+  --color-secondary: #1d1d22;
+  --color-secondary-hover: #2a2a31;
+  --color-secondary-active: #121216;
+  --color-accent: #0e8f9e;
+  --color-accent-hover: #0b7a87;
+  --color-accent-active: #096570;
+  --color-background: #f7f7f8;
   --color-surface: #ffffff;
-  --color-surface-secondary: #edf0f6;
-  --color-surface-tertiary: #e3e7ef;
-  --color-text: #171923;
-  --color-text-secondary: #50586b;
-  --color-text-muted: #737c91;
+  --color-surface-secondary: #f1f1f3;
+  --color-surface-tertiary: #e8e8ec;
+  --color-text: #1d1d22;
+  --color-text-secondary: #55555f;
+  --color-text-muted: #7a7a85;
   --color-text-inverse: #ffffff;
-  --color-border: #d8dde8;
-  --color-border-hover: #bfc7d6;
-  --color-focus: #6d5ce7;
-  --color-interactive: #6d5ce7;
-  --color-interactive-hover: #5b4bd2;
-  --color-interactive-active: #493bb8;
-  --color-info: #087e9c;
-  --color-info-hover: #0e7490;
-  --color-info-subtle: #e1f7fb;
-  --shadow-color: 226 28% 19%;
+  --color-border: #e4e4e8;
+  --color-border-hover: #cfcfd6;
+  --color-focus: #5b5bd6;
+  --color-interactive: #5b5bd6;
+  --color-interactive-hover: #4f4fc4;
+  --color-interactive-active: #4343ad;
+  --color-info: #2a6fc4;
+  --color-info-hover: #235ea8;
+  --color-info-subtle: #e9f1fb;
+  --shadow-color: 240 10% 20%;
   --radius-md: 0.5rem;
   --radius-lg: 0.625rem;
   --radius-xl: 0.875rem;
   --radius-2xl: 1.125rem;
+
+  /* Derived roles (follow --color-primary, so workspace branding carries through) */
+  --color-primary-bg: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  --color-primary-subtle: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface));
+  --color-sidebar: #fbfbfc;
+  --color-rail: #f3f3f5;
+  --color-nav-active: var(--color-surface);
+  --color-bubble-own: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
+  --color-bubble-own-border: color-mix(in srgb, var(--color-primary) 22%, var(--color-surface));
+  --color-bubble-other: var(--color-surface);
+  --color-bubble-other-border: var(--color-border);
+  --color-chat: var(--color-background);
 }
 
 [data-theme='dark'] {
-  --brand-primary: #9b8afb;
-  --brand-secondary: #12151c;
-  --brand-background: #0b0d12;
-  --brand-accent: #43d7ee;
-  --color-primary: #9b8afb;
-  --color-primary-hover: #b0a3ff;
-  --color-primary-active: #8372ea;
-  --color-secondary: #171a23;
-  --color-secondary-hover: #222735;
-  --color-secondary-active: #0d0f14;
-  --color-accent: #43d7ee;
-  --color-accent-hover: #67e2f4;
-  --color-accent-active: #22bdd6;
-  --color-background: #0b0d12;
-  --color-surface: #12151c;
-  --color-surface-secondary: #181c25;
-  --color-surface-tertiary: #202532;
-  --color-text: #f5f7fb;
-  --color-text-secondary: #b7bdca;
-  --color-text-muted: #7f8798;
-  --color-text-inverse: #0b0d12;
-  --color-border: #2a303d;
-  --color-border-hover: #3b4353;
-  --color-focus: #9b8afb;
-  --color-interactive: #9b8afb;
-  --color-interactive-hover: #b0a3ff;
-  --color-interactive-active: #8372ea;
-  --color-success: #4ade80;
-  --color-success-subtle: #102b1c;
-  --color-warning: #f6c453;
-  --color-warning-subtle: #30230d;
-  --color-error: #fb7185;
-  --color-error-subtle: #35131a;
-  --color-info: #43d7ee;
-  --color-info-hover: #67e2f4;
-  --color-info-subtle: #0e2930;
-  --shadow-color: 230 40% 3%;
+  --brand-primary: #8b8cf2;
+  --brand-secondary: #18181c;
+  --brand-background: #111114;
+  --brand-accent: #3fc2d0;
+  --color-primary: #8b8cf2;
+  --color-primary-hover: #9d9ef7;
+  --color-primary-active: #7a7be6;
+  --color-secondary: #1f1f24;
+  --color-secondary-hover: #28282e;
+  --color-secondary-active: #141418;
+  --color-accent: #3fc2d0;
+  --color-accent-hover: #5fd0db;
+  --color-accent-active: #2aa9b7;
+  --color-background: #111114;
+  --color-surface: #18181c;
+  --color-surface-secondary: #1f1f24;
+  --color-surface-tertiary: #28282e;
+  --color-text: #e8e8ec;
+  --color-text-secondary: #a6a6b0;
+  --color-text-muted: #75757f;
+  --color-text-inverse: #111114;
+  --color-border: #2a2a31;
+  --color-border-hover: #3a3a43;
+  --color-focus: #8b8cf2;
+  --color-interactive: #8b8cf2;
+  --color-interactive-hover: #9d9ef7;
+  --color-interactive-active: #7a7be6;
+  --color-success: #5ccf8a;
+  --color-success-subtle: #12261b;
+  --color-warning: #e8bd5b;
+  --color-warning-subtle: #2b2210;
+  --color-error: #f0808f;
+  --color-error-subtle: #2f1519;
+  --color-info: #6aa7ee;
+  --color-info-hover: #82b6f1;
+  --color-info-subtle: #15212f;
+  --shadow-color: 240 30% 3%;
+  --color-sidebar: #141417;
+  --color-rail: #101013;
+  --color-nav-active: var(--color-surface-tertiary);
+  --color-bubble-own: color-mix(in srgb, var(--color-primary) 20%, var(--color-surface));
+  --color-bubble-own-border: color-mix(in srgb, var(--color-primary) 30%, var(--color-surface));
+  --color-bubble-other: var(--color-surface-secondary);
+  --color-bubble-other-border: var(--color-border);
   color-scheme: dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
-    --brand-primary: #9b8afb;
-    --brand-background: #0b0d12;
-    --brand-accent: #43d7ee;
-    --color-primary: #9b8afb;
-    --color-primary-hover: #b0a3ff;
-    --color-primary-active: #8372ea;
-    --color-accent: #43d7ee;
-    --color-background: #0b0d12;
-    --color-surface: #12151c;
-    --color-surface-secondary: #181c25;
-    --color-surface-tertiary: #202532;
-    --color-text: #f5f7fb;
-    --color-text-secondary: #b7bdca;
-    --color-text-muted: #7f8798;
-    --color-text-inverse: #0b0d12;
-    --color-border: #2a303d;
-    --color-border-hover: #3b4353;
-    --color-focus: #9b8afb;
-    --color-interactive: #9b8afb;
-    --color-interactive-hover: #b0a3ff;
-    --color-info: #43d7ee;
-    --color-info-subtle: #0e2930;
-    --shadow-color: 230 40% 3%;
+    --brand-primary: #8b8cf2;
+    --brand-background: #111114;
+    --brand-accent: #3fc2d0;
+    --color-primary: #8b8cf2;
+    --color-primary-hover: #9d9ef7;
+    --color-primary-active: #7a7be6;
+    --color-accent: #3fc2d0;
+    --color-background: #111114;
+    --color-surface: #18181c;
+    --color-surface-secondary: #1f1f24;
+    --color-surface-tertiary: #28282e;
+    --color-text: #e8e8ec;
+    --color-text-secondary: #a6a6b0;
+    --color-text-muted: #75757f;
+    --color-text-inverse: #111114;
+    --color-border: #2a2a31;
+    --color-border-hover: #3a3a43;
+    --color-focus: #8b8cf2;
+    --color-interactive: #8b8cf2;
+    --color-interactive-hover: #9d9ef7;
+    --color-info: #6aa7ee;
+    --color-info-subtle: #15212f;
+    --shadow-color: 240 30% 3%;
+    --color-sidebar: #141417;
+    --color-rail: #101013;
+    --color-nav-active: var(--color-surface-tertiary);
+    --color-bubble-own: color-mix(in srgb, var(--color-primary) 20%, var(--color-surface));
+    --color-bubble-own-border: color-mix(in srgb, var(--color-primary) 30%, var(--color-surface));
+    --color-bubble-other: var(--color-surface-secondary);
   }
 }
+
 
 /* Reset */
 *,
@@ -431,9 +458,7 @@ body {
   font-weight: var(--font-weight-normal);
   line-height: var(--line-height-normal);
   color: var(--color-text);
-  background:
-    radial-gradient(circle at 15% -10%, color-mix(in srgb, var(--color-primary) 10%, transparent), transparent 32rem),
-    var(--color-background);
+  background: var(--color-background);
   transition: background-color var(--transition-normal), color var(--transition-normal);
 }
 

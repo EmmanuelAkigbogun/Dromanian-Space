@@ -14,6 +14,7 @@ export function ChannelSidebar({ collapsed = false }: ChannelSidebarProps) {
   const navigate = useNavigate();
   const params = useParams();
   const [isOpen, setIsOpen] = useState(false);
+  const [listCollapsed, setListCollapsed] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
@@ -44,8 +45,6 @@ export function ChannelSidebar({ collapsed = false }: ChannelSidebarProps) {
     navigate(`/channels/${slug}`);
     setIsOpen(false);
   }
-
-  const activeChannel = channels.find((c) => c.slug === activeSlug);
 
   const displayName = (channel: (typeof channels)[number]) =>
     dmDisplayNames[channel.id] ?? channel.name;
@@ -99,36 +98,33 @@ export function ChannelSidebar({ collapsed = false }: ChannelSidebarProps) {
     );
   }
 
+  // Expanded mode lists channels inline, like the direct-message section below it.
   return (
-    <div className={styles.section} ref={dropdownRef}>
+    <div className={styles.section}>
       <button
-        ref={triggerRef}
-        className={styles.trigger}
-        onClick={handleToggle}
-        aria-expanded={isOpen}
-        aria-haspopup="listbox"
+        className={styles.sectionHeader}
+        onClick={() => setListCollapsed((value) => !value)}
+        aria-expanded={!listCollapsed}
         type="button"
       >
         <svg
-          className={`${styles.chevron} ${isOpen ? styles.chevronOpen : ''}`}
+          className={`${styles.chevron} ${listCollapsed ? styles.chevronCollapsed : ''}`}
           width="12"
           height="12"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
-          strokeWidth="2"
+          strokeWidth="2.5"
+          aria-hidden="true"
         >
           <path d="M6 9l6 6 6-6" />
         </svg>
-        <span className={styles.triggerLabel}>
-          {activeChannel ? `# ${displayName(activeChannel)}` : 'Channels'}
-        </span>
+        <span className={styles.sectionTitle}>Channels</span>
         <span className={styles.triggerCount}>{channels.length}</span>
       </button>
 
-      {isOpen && (
-        <div className={styles.dropdown} role="listbox">
-          <div className={styles.sectionLabel}>Channels</div>
+      {!listCollapsed && (
+        <div className={styles.list}>
             {channels.map((channel) => {
               const isActive = channel.slug === activeSlug;
               return (
@@ -152,6 +148,10 @@ export function ChannelSidebar({ collapsed = false }: ChannelSidebarProps) {
               </button>
             );
           })}
+          <button className={`${styles.option} ${styles.optionMuted}`} onClick={() => navigate('/channels')} type="button">
+            <span className={styles.optionHash} aria-hidden="true">+</span>
+            <span className={styles.optionName}>Browse channels</span>
+          </button>
         </div>
       )}
     </div>

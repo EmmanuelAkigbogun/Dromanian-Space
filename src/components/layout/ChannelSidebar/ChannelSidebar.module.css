@@ -1,5 +1,73 @@
 .section {
   position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Section header, shared look with the direct-message section */
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sectionHeader:hover {
+  color: var(--color-text);
+}
+
+.sectionTitle {
+  flex: 1;
+}
+
+.chevronCollapsed {
+  transform: rotate(-90deg);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-bottom: var(--space-2);
+}
+
+.list .option {
+  border-radius: var(--radius-md);
+  padding: 6px var(--space-3);
+  color: var(--color-text-secondary);
+}
+
+.list .option:hover {
+  background-color: var(--color-surface-tertiary);
+  color: var(--color-text);
+}
+
+.list .optionActive,
+.list .optionActive:hover {
+  background-color: var(--color-nav-active);
+  color: var(--color-text);
+  font-weight: var(--font-weight-medium);
+  box-shadow: 0 0 0 1px var(--color-border), var(--shadow-xs);
+}
+
+.list .optionActive .optionHash,
+.list .optionActive .optionIcon {
+  color: var(--color-primary);
+}
+
+.optionMuted {
+  color: var(--color-text-muted);
 }
 
 .trigger {
@@ -34,7 +102,7 @@
 .triggerCount {
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
-  background: var(--color-bg-secondary);
+  background: var(--color-surface-tertiary);
   padding: 1px 6px;
   border-radius: var(--radius-sm);
 }

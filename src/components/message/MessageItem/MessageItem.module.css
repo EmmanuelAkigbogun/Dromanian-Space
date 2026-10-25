@@ -1,31 +1,33 @@
+/* Conversation layout: other people's messages sit on the left with their
+   avatar; your own sit on the right in a tinted bubble. Consecutive messages
+   from the same person stack tightly under one name. */
+
 .row {
   position: relative;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   margin: 0;
+  padding: 0 var(--space-3);
+}
+
+.rowOwn {
+  align-items: flex-end;
 }
 
 .rowSelectable {
   cursor: pointer;
 }
 
-.rowSelectable .message:hover {
-  background-color: var(--color-surface-secondary);
-}
-
-.row:hover .message {
-  background-color: var(--color-surface-secondary);
-}
-
-.messageSelected,
-.row:hover .messageSelected {
-  background-color: var(--color-primary-bg, rgba(130, 166, 177, 0.15));
+.messageSelected .bubble,
+.row:hover .messageSelected .bubble {
+  box-shadow: 0 0 0 2px var(--color-primary);
 }
 
 .actionsBar {
   position: absolute;
   top: -14px;
-  right: var(--space-3);
+  right: var(--space-4);
   z-index: 4;
   display: flex;
   justify-content: flex-end;
@@ -42,6 +44,12 @@
   transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
 
+/* Your messages are on the right, so their tools open on the left. */
+.rowOwn .actionsBar {
+  right: auto;
+  left: var(--space-4);
+}
+
 .actionsBarVisible,
 .row:focus-within .actionsBar {
   opacity: 1;
@@ -52,82 +60,97 @@
 .message {
   display: flex;
   gap: 10px;
-  min-height: 44px;
-  padding: 7px var(--space-4) 6px var(--space-3);
-  border-radius: var(--radius-sm);
-  transition: background-color var(--transition-fast);
+  max-width: min(720px, 82%);
+  padding-top: var(--space-3);
+  padding-bottom: 1px;
 }
 
 .messageOwn {
-  flex-direction: row;
+  flex-direction: row-reverse;
 }
 
 .messageGrouped {
-  min-height: 28px;
   padding-top: 2px;
-  padding-bottom: 2px;
-}
-
-.messageGrouped .header {
-  margin-bottom: 0;
 }
 
 .messageDeleted {
-  opacity: 0.6;
+  opacity: 0.7;
 }
 
 .avatar {
   flex-shrink: 0;
   align-self: flex-start;
-  width: 36px;
+  width: 32px;
   display: flex;
-  align-items: flex-start;
   justify-content: center;
-  padding-top: 1px;
+  padding-top: 18px;
 }
 
-.timestampInline {
-  font-size: 10px;
-  color: var(--color-text-muted);
-  visibility: hidden;
-  white-space: nowrap;
-  padding-top: 3px;
-}
-
-.message:hover .timestampInline {
-  visibility: visible;
+.messageGrouped .avatar {
+  padding-top: 0;
 }
 
 .content {
-  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   min-width: 0;
+}
+
+.messageOwn .content {
+  align-items: flex-end;
 }
 
 .header {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  margin-bottom: 2px;
+  margin: 0 var(--space-2) 3px;
   flex-wrap: wrap;
 }
 
 .username {
-  font-size: var(--font-size-sm);
+  font-size: 13px;
   font-weight: var(--font-weight-semibold);
   color: var(--color-text);
   line-height: 1.35;
 }
 
 .time {
-  font-size: var(--font-size-xs);
+  font-size: 11px;
   color: var(--color-text-muted);
   cursor: default;
 }
 
 .edited {
-  font-size: var(--font-size-xs);
+  font-size: 11px;
   color: var(--color-text-muted);
   font-style: italic;
+}
+
+.bubble {
+  max-width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--color-bubble-other-border);
+  border-radius: 16px;
+  background: var(--color-bubble-other);
+  box-shadow: var(--shadow-xs);
+  transition: box-shadow var(--transition-fast);
+}
+
+/* The first bubble of a run points at its sender. */
+.message:not(.messageGrouped) .bubble {
+  border-top-left-radius: 6px;
+}
+
+.messageOwn .bubble {
+  border-color: var(--color-bubble-own-border);
+  background: var(--color-bubble-own);
+}
+
+.messageOwn:not(.messageGrouped) .bubble {
+  border-top-left-radius: 16px;
+  border-top-right-radius: 6px;
 }
 
 .forwardedLabel {
@@ -143,38 +166,41 @@
 .text {
   font-size: var(--font-size-sm);
   color: var(--color-text);
-  line-height: 1.45;
+  line-height: 1.5;
   word-break: break-word;
   white-space: pre-wrap;
 }
 
-@media (min-width: 769px) {
-  .text {
-    max-width: 860px;
-  }
-}
-
 @media (max-width: 639px) {
+  .row {
+    padding: 0 var(--space-2);
+  }
+
   .message {
+    max-width: 90%;
     gap: var(--space-2);
-    padding-right: var(--space-2);
-    padding-left: var(--space-2);
   }
 
   .avatar {
-    width: 32px;
+    width: 28px;
   }
 
   .actionsBar {
     right: var(--space-2);
   }
+
+  .rowOwn .actionsBar {
+    left: var(--space-2);
+  }
 }
 
 .deleted {
+  padding: 6px 12px;
+  border: 1px dashed var(--color-border-hover);
+  border-radius: 16px;
   font-size: var(--font-size-sm);
   color: var(--color-text-muted);
   font-style: italic;
-  padding: var(--space-1) 0;
 }
 
 .threadLink {
@@ -206,7 +232,11 @@
 }
 
 .attachmentsSingle {
-  margin-top: var(--space-4);
+  margin-top: var(--space-1);
+}
+
+.messageOwn .attachments {
+  justify-content: flex-end;
 }
 
 .linkPreviews {

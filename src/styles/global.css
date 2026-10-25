@@ -62,11 +62,13 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-surface);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
   background: var(--color-border-hover);
+  border: 2px solid transparent;
+  background-clip: padding-box;
   border-radius: var(--radius-full);
 }
 
