@@ -7,6 +7,8 @@ import { useProfileContext } from '@/app/providers/ProfileProvider';
 import { platform, result, errorText } from '@/features/platform/client';
 import { getProfilesByUserIds } from '@/lib/profile';
 import { Avatar } from '@/components/ui/Avatar';
+import { InstallApp } from '@/components/pwa/InstallApp';
+import { useFeatureAccess } from '@/lib/workspace/features';
 import { ThroughputChart, type ThroughputWeek } from '@/components/dashboard/ThroughputChart/ThroughputChart';
 import { formatRelativeTime } from '@/utils';
 import styles from './Home.module.css';
@@ -72,6 +74,7 @@ export function Home() {
   const { userId } = useAuth();
   const { profile } = useProfileContext();
   const ws = currentWorkspace!.id;
+  const features = useFeatureAccess();
   const base = ['platform', ws, userId, 'home'];
 
   const data = useQuery({
@@ -114,7 +117,7 @@ export function Home() {
   const toReview = (data.data?.approvals ?? 0) + (pending.data ?? 0);
   const stats = [
     { label: 'Unread activity', value: data.data?.notifications, hint: 'Mentions, assignments and updates', to: '/notifications', icon: ICONS.bell },
-    { label: 'Waiting for review', value: data.isPending ? undefined : toReview, hint: 'Agent proposals and task approvals', to: pending.data ? '/tasks?view=approvals' : '/agents', icon: ICONS.review },
+    { label: 'Waiting for review', value: data.isPending ? undefined : toReview, hint: 'Agent proposals and task approvals', to: pending.data || !features.canSee('ai') ? '/tasks?view=approvals' : '/agents', icon: ICONS.review },
     { label: 'Open tasks', value: insights.data?.open_tasks, hint: `${insights.data?.completed_tasks ?? '—'} completed so far`, to: '/tasks', icon: ICONS.tasks },
     { label: 'Active projects', value: data.data?.projects, hint: `${data.data?.members ?? '—'} people in the workspace`, to: '/projects', icon: ICONS.projects },
   ];
@@ -129,6 +132,7 @@ export function Home() {
           <h1 className={styles.title}>Welcome back, {firstName}</h1>
         </div>
         <div className={styles.heroActions}>
+          <InstallApp />
           <Link className={styles.secondaryButton} to="/channels">Open chat</Link>
           <Link className={styles.primaryButton} to="/tasks">New task</Link>
         </div>
@@ -274,6 +278,7 @@ export function Home() {
           )}
         </Card>
 
+        {features.canSee('ai') && (
         <Card title="Your AI team" description="Specialists that work with what you can access" action={<Link className={styles.cardLink} to="/agents">All agents</Link>}>
           <ul className={styles.agents}>
             {agents.data?.filter((a) => a.kind === 'specialist').slice(0, 5).map((a) => (
@@ -289,6 +294,7 @@ export function Home() {
             ))}
           </ul>
         </Card>
+        )}
       </div>
     </div>
   );

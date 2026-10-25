@@ -234,6 +234,44 @@ export default async function smoke(db, legacy) {
   const notesRun = await startScribe(member, { channel_id: dm, session_id: session.id }, 'session_notes');
   check(Boolean(notesRun), 'session-notes runs can start');
 
+  // @all announcements (20261025000200)
+  const generalA = (await h.admin(`SELECT id FROM channels WHERE workspace_id = $1 AND slug = 'general'`, [wsA]))[0]?.id;
+  check(Boolean(generalA), 'the workspace has a General channel');
+  const ann = (await h.admin(`INSERT INTO messages (channel_id, user_id, content) VALUES ($1, $2, 'Standup moved to 10:00 @all') RETURNING id`, [generalA, owner.id]))[0].id;
+  check(await h.denied(h.user(member, 'SELECT notify_channel_everyone($1)', [ann]), /not found/), 'only the author can notify everyone');
+  const sent = (await h.user(owner, 'SELECT notify_channel_everyone($1) AS n', [ann]))[0].n;
+  const got = await h.admin(`SELECT id, user_id, link FROM notifications WHERE type = 'announcement' AND entity_id = $1`, [ann]);
+  check(sent >= 1 && got.length === sent && !got.some((n) => n.user_id === owner.id), `@all notifies every other member of General (${sent})`);
+  check((await h.user(owner, 'SELECT notify_channel_everyone($1) AS n', [ann]))[0].n === 0, '@all fires once per message');
+  check((await h.admin(`SELECT count(*)::int AS n FROM jobs WHERE kind = 'notification.push' AND payload->>'notification_id' = $1`, [got.find((n) => n.user_id === member.id)?.id ?? '00000000-0000-0000-0000-000000000000']))[0].n === 1, 'announcements are pushed to members with push enabled');
+  const elsewhere = (await h.admin(`INSERT INTO messages (channel_id, user_id, content) VALUES ($1, $2, 'hey @all') RETURNING id`, [dm, owner.id]))[0].id;
+  check(await h.denied(h.user(owner, 'SELECT notify_channel_everyone($1)', [elsewhere]), /General/), '@all only works in General');
+
+  // CRM company folders (20261025000300)
+  const company = (await h.user(owner, `INSERT INTO crm_companies (workspace_id, name, owner_id, created_by) VALUES ($1, 'Acme Corp', $2, $3) RETURNING id, drive_folder_id`, [wsA, member.id, owner.id]))[0];
+  const setup = (await h.admin(`SELECT c.drive_folder_id, c.brand_task_id, f.name AS folder, p.name AS parent, t.title,
+      (SELECT array_agg(user_id) FROM task_assignees WHERE task_id = c.brand_task_id) AS assignees
+    FROM crm_companies c JOIN drive_items f ON f.id = c.drive_folder_id LEFT JOIN drive_items p ON p.id = f.parent_id
+    LEFT JOIN tasks t ON t.id = c.brand_task_id WHERE c.id = $1`, [company.id]))[0];
+  check(setup?.folder === 'Acme Corp' && setup.parent === 'Companies', 'a new company gets a Drive folder inside Companies');
+  check(setup?.title === 'Add logo and brand identity files for Acme Corp' && setup.assignees?.includes(member.id), 'and a brand-files task for the company owner');
+  check((await h.admin(`SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND type = 'task_assigned' AND entity_id = $2`, [member.id, setup?.brand_task_id]))[0].n === 1, 'the owner is notified of the task');
+  check((await h.user(member, `SELECT id FROM drive_items WHERE id = $1`, [setup?.drive_folder_id])).length === 1, 'workspace members can open the company folder');
+  check((await h.admin(`SELECT count(*)::int AS n FROM crm_links WHERE company_id = $1`, [company.id]))[0].n === 2, 'the folder and task are linked to the company');
+  await h.user(owner, `INSERT INTO crm_companies (workspace_id, name, owner_id, created_by) VALUES ($1, 'Globex', $2, $2)`, [wsA, owner.id]);
+  check((await h.admin(`SELECT count(*)::int AS n FROM drive_items WHERE workspace_id = $1 AND name = 'Companies' AND parent_id IS NULL`, [wsA]))[0].n === 1, 'all companies share one Companies folder');
+
+  // Member features (20261025000400)
+  check(await h.denied(h.user(member, `SELECT set_member_features($1, ARRAY['ai'])`, [wsA]), /owners and admins/), 'members cannot change features');
+  check(await h.denied(h.user(owner, `SELECT set_member_features($1, ARRAY['games'])`, [wsA])), 'unknown features are refused');
+  await h.user(owner, `SELECT set_member_features($1, ARRAY['ai','crm'])`, [wsA]);
+  const vis = async (u, f) => (await h.user(u, 'SELECT feature_visible_to($1, $2, $3) AS v', [wsA, u.id, f]))[0].v;
+  check(!(await vis(member, 'ai')) && (await vis(owner, 'ai')) && (await vis(member, 'drive')), 'hidden features stay visible to admins only');
+  check(await h.denied(h.svc(`SELECT agent_start_run($1, $2, $3, NULL, 'hi', '{}', 'interactive', '{}', '{"type":"private"}', $4, 1000)`, [member.id, wsA, scribe, randomUUID()]), /not available/), 'members cannot run agents while AI is hidden');
+  check(Boolean(await startScribe(owner)), 'admins still can');
+  await h.user(owner, `SELECT set_member_features($1, '{}')`, [wsA]);
+  check(await vis(member, 'ai'), 'showing AI again restores access');
+
   // Dashboard insights (20261025000100)
   const done = (await h.admin(`INSERT INTO tasks (workspace_id, title, created_by, status) VALUES ($1, 'Shipped it', $2, 'completed') RETURNING id`, [wsA, owner.id]))[0].id;
   await h.admin(`INSERT INTO task_activity (task_id, user_id, action, details) VALUES ($1, $2, 'status_changed', '{"status":"completed"}')`, [done, owner.id]);

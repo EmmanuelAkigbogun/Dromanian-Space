@@ -26,6 +26,7 @@ import { WorkspaceGuard } from '@/components/workspace';
 import { HomeIcon, MessageIcon, UsersIcon, BellIcon, SettingsIcon, UserIcon, FolderIcon, MailIcon, TaskIcon, ProjectIcon, CalendarIcon, AutomationIcon, AiIcon, BookmarkIcon, PhoneIcon } from '@/components/shared/Icons';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useAuth } from '@/hooks/useAuth';
+import { useFeatureAccess } from '@/lib/workspace/features';
 
 
 const CRMPage = lazy(() => import('@/app/routes/CRM/CRMPage'));
@@ -114,6 +115,10 @@ const secondaryNavigation = [
 function AppLayoutWithThread() {
   const { activeThread, closeThread } = useThread();
   const { pathname } = useLocation();
+  const features = useFeatureAccess();
+  const visiblePrimary = primaryNavigation.filter((n) => !features.pathHidden(n.to));
+  const visibleSecondary = secondaryNavigation.filter((n) => !features.pathHidden(n.to));
+  const pageHidden = !features.loading && features.pathHidden(pathname);
   useEffect(() => {
     if (!/^\/(channels|dm|threads)(\/|$)/.test(pathname)) closeThread();
   }, [pathname, closeThread]);
@@ -127,13 +132,14 @@ function AppLayoutWithThread() {
     <Suspense fallback={null}><CommandPalette /></Suspense>
     <Suspense fallback={null}><CallOverlay /></Suspense>
     <AppLayout
-      primaryNavigation={primaryNavigation}
-      secondaryNavigation={secondaryNavigation}
+      primaryNavigation={visiblePrimary}
+      secondaryNavigation={visibleSecondary}
       headerTitle="Darkspace"
       rightPanelTitle={activeThread ? 'Thread' : undefined}
       rightPanelContent={activeThread ? <MessageProvider><ThreadPanel /></MessageProvider> : undefined}
       onRightPanelClose={closeThread}
     >
+      {pageHidden ? <Navigate to="/" replace /> : (
       <Suspense fallback={<p role="status">Loading workspace…</p>}><Routes>
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/invitations" element={<Invitations />} />
@@ -175,6 +181,7 @@ function AppLayoutWithThread() {
           </WorkspaceGuard>
         } />
       </Routes></Suspense>
+      )}
     </AppLayout>
     </>
   );

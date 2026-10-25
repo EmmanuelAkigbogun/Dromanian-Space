@@ -1,7 +1,7 @@
 import { platform } from '@/lib/platform';
 import { isTempId } from './formatting';
 import { deleteAttachmentsByMessageId, getCurrentForwardedAttachmentPolicy, type ForwardedAttachmentPolicy } from './attachment';
-import { extractMentionUsernames } from './mention';
+import { extractMentionUsernames, mentionsEveryone } from './mention';
 import { createTypedNotification } from '@/features/notifications/service';
 import type { LinkDisplayMode, Message, PinnedMessage, SavedMessage } from '@/types';
 
@@ -78,10 +78,16 @@ async function createMessageNotifications(
   const [memberIds, senderProfile, channel] = await Promise.all([
     platform.from('channel_members').select('user_id').eq('channel_id', channelId),
     platform.from('profiles').select('display_name, username').eq('id', senderId).single(),
-    platform.from('channels').select('name, workspace_id').eq('id', channelId).single(),
+    platform.from('channels').select('name, slug, workspace_id').eq('id', channelId).single(),
   ]);
 
   if (memberIds.error || !memberIds.data) return;
+
+  // @all in General: the database notifies (and pushes to) every member once.
+  if (channel.data?.slug === 'general' && mentionsEveryone(content)) {
+    const { error } = await platform.rpc('notify_channel_everyone', { p_message_id: messageId });
+    if (!error) return;
+  }
 
   const recipientIds = memberIds.data
     .map((m) => m.user_id)

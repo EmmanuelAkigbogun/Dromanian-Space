@@ -7,6 +7,7 @@ import { UserMenu } from '@/components/layout/UserMenu';
 import { useLayout } from '@/app/providers/LayoutProvider';
 import { useIsTablet } from '@/hooks/useBreakpoint';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import { useFeatureAccess } from '@/lib/workspace/features';
 import { BellIcon, SettingsIcon } from '@/components/shared/Icons';
 import styles from './Sidebar.module.css';
 
@@ -66,6 +67,7 @@ export function Sidebar({ primaryNavigation, secondaryNavigation = [] }: Sidebar
   const { pathname, search } = useLocation();
   const { isExpanded, toggleSidebar } = useLayout();
   const { currentWorkspace } = useWorkspace();
+  const features = useFeatureAccess();
   const tablet = useIsTablet();
   const collapsed = tablet || !isExpanded;
 
@@ -87,7 +89,7 @@ export function Sidebar({ primaryNavigation, secondaryNavigation = [] }: Sidebar
     return pathname === path && new URLSearchParams(search).get('view') === new URLSearchParams(query).get('view');
   };
 
-  const link = (to: string, label: string, glyph: string) => (
+  const link = (to: string, label: string, glyph: string) => features.pathHidden(to) ? null : (
     <NavLink
       key={to}
       to={to}

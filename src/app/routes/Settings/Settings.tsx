@@ -14,6 +14,7 @@ import { WorkspaceAuditLog } from '@/components/workspace/WorkspaceAuditLog';
 import { WorkspacePreferences } from '@/components/workspace/WorkspacePreferences';
 import { TypographySettings } from '@/components/workspace/TypographySettings';
 import { ColorSettings } from '@/components/workspace/ColorSettings';
+import { FeatureSettings } from '@/components/workspace/FeatureSettings';
 import styles from './Settings.module.css';
 
 export function Settings() {
@@ -27,6 +28,7 @@ export function Settings() {
   const validTabs = [
     'general',
     'members',
+    'features',
     'typography',
     'colors',
     'preferences',
@@ -62,6 +64,7 @@ export function Settings() {
         <TabsList>
           <TabsTrigger id="general">General</TabsTrigger>
           <TabsTrigger id="members">Members</TabsTrigger>
+          {canManage && <TabsTrigger id="features">Features</TabsTrigger>}
           <TabsTrigger id="typography">Typography</TabsTrigger>
           <TabsTrigger id="colors">Colors</TabsTrigger>
           {canManage && <TabsTrigger id="preferences">Preferences</TabsTrigger>}
@@ -82,6 +85,14 @@ export function Settings() {
             <MembersList />
           </div>
         </TabsContent>
+
+        {canManage && (
+          <TabsContent id="features">
+            <div className={styles.panel}>
+              <FeatureSettings />
+            </div>
+          </TabsContent>
+        )}
 
         <TabsContent id="typography">
           <div className={styles.panel}>

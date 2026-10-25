@@ -30,6 +30,7 @@ import { BulkDeleteConfirmDialog } from '@/components/message/BulkDeleteConfirmD
 import { CallButton } from '@/components/call';
 import { useToast } from '@/components/ui/Toast';
 import { useAiSession } from '@/hooks/useAiSession/useAiSession';
+import { useFeatureAccess } from '@/lib/workspace/features';
 import type { LinkDisplayMode, Message, Profile } from '@/types';
 import type { ConnectionStatus } from '@/app/providers/MessageProvider';
 import styles from './DmConversationView.module.css';
@@ -83,6 +84,7 @@ export function DmConversationView() {
   const channelId = currentConversation?.channel_id;
   const { session: aiSession, agent: aiAgent, busy: aiBusy, start: startAiSession, finish: finishAiSession } = useAiSession(currentWorkspace?.id, channelId);
   const { toast } = useToast();
+  const aiVisible = useFeatureAccess().canSee('ai');
 
   const handleStartAiSession = useCallback(async () => {
     try {
@@ -648,7 +650,7 @@ export function DmConversationView() {
             </svg>
             Finish session
           </button>
-        ) : aiAgent ? (
+        ) : aiAgent && aiVisible ? (
           <button
             type="button"
             className={styles.aiSessionButton}

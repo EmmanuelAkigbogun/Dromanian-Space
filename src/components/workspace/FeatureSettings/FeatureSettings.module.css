@@ -1,0 +1,156 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-width: 820px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.title {
+  font-size: 16px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.description {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
+.list,
+.keys {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.list li + li,
+.keys li + li {
+  border-top: 1px solid var(--color-border);
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--color-surface-secondary);
+}
+
+.checkbox {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.rowText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rowLabel {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
+}
+
+.rowHint {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--color-warning-subtle);
+  font-size: 11px;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-warning);
+}
+
+.note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.keyRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.keyInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.keyStatus {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.keyOn {
+  color: var(--color-success);
+}
+
+.keyForm {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  min-width: 260px;
+}
+
+.keyInput {
+  flex: 1;
+  min-width: 180px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-size: 13px;
+}
+
+.keyInput:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}

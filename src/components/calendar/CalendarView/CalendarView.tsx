@@ -4,7 +4,13 @@ import { WeekView } from '../WeekView/WeekView';
 import { DayView } from '../DayView/DayView';
 import { AgendaView } from '../AgendaView/AgendaView';
 import { EventDialog } from '../EventDialog/EventDialog';
+import { QuickCreate } from '../QuickCreate/QuickCreate';
+import type { Anchor, CalendarDraft } from '../TimeGrid/TimeGrid';
+import { DEFAULT_EVENT_COLOR, addMinutes } from '../calendarUtils';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog/ConfirmDialog';
+import { useToast } from '@/components/ui/Toast';
+import { useWorkspace } from '@/hooks/useWorkspace';
+import { platform } from '@/lib/platform';
 import type { CalendarEvent, CalendarReminder, CalendarViewType } from '@/types';
 import styles from './CalendarView.module.css';
 
@@ -60,11 +66,83 @@ const VIEW_LABELS: Record<CalendarViewType, string> = {
 };
 
 export function CalendarView({ onEventClick, events, createEvent, updateEvent, deleteEvent, isLoading, reminders, createReminder, onRemindersChanged }: CalendarViewProps) {
-  const [currentView, setCurrentView] = useState<CalendarViewType>('month');
+  const [currentView, setCurrentView] = useState<CalendarViewType>('week');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [showEventDialog, setShowEventDialog] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [draft, setDraft] = useState<{ draft: CalendarDraft; anchor: Anchor } | null>(null);
+  const [dialogInitial, setDialogInitial] = useState<{ title?: string; start: Date; end: Date; allDay: boolean } | null>(null);
+  const [pendingMoves, setPendingMoves] = useState<Record<string, { start_at: string; end_at: string }>>({});
+  const { currentWorkspace } = useWorkspace();
+  const { toast } = useToast();
+
+  const handleCreateDraft = useCallback((next: CalendarDraft, anchor: Anchor) => {
+    setDraft({ draft: next, anchor });
+  }, []);
+
+  const cancelDraft = useCallback(() => setDraft(null), []);
+
+  const handleQuickSave = useCallback(
+    async (title: string) => {
+      if (!draft || !currentWorkspace) return false;
+      const created = await createEvent({
+        workspace_id: currentWorkspace.id,
+        title,
+        description: null,
+        start_at: draft.draft.start.toISOString(),
+        end_at: draft.draft.end.toISOString(),
+        all_day: draft.draft.allDay,
+        location: null,
+        color: DEFAULT_EVENT_COLOR,
+        project_id: null,
+        task_id: null,
+      });
+      if (!created) return false;
+      setDraft(null);
+      return true;
+    },
+    [draft, currentWorkspace, createEvent],
+  );
+
+  const handleMoreOptions = useCallback(
+    (title: string) => {
+      if (!draft) return;
+      setDialogInitial({ title, start: draft.draft.start, end: draft.draft.end, allDay: draft.draft.allDay });
+      setSelectedEvent(null);
+      setDraft(null);
+      setShowEventDialog(true);
+    },
+    [draft],
+  );
+
+  /** Drag to move or resize. A reminder set for the event moves with its start. */
+  const handleChangeEvent = useCallback(
+    async (event: CalendarEvent, start: Date, end: Date) => {
+      // Show the event where it was dropped while the change is saved.
+      setPendingMoves((prev) => ({ ...prev, [event.id]: { start_at: start.toISOString(), end_at: end.toISOString() } }));
+      const ok = await updateEvent(event.id, { start_at: start.toISOString(), end_at: end.toISOString() });
+      setPendingMoves((prev) => {
+        const next = { ...prev };
+        delete next[event.id];
+        return next;
+      });
+      if (!ok) {
+        toast({ variant: 'error', description: 'This event could not be moved. You can only change events you created.' });
+        return;
+      }
+      const shift = start.getTime() - new Date(event.start_at).getTime();
+      const reminder = reminders.find((r) => r.entity_type === 'event' && r.entity_id === event.id);
+      if (reminder && shift !== 0) {
+        await platform
+          .from('reminders' as never)
+          .update({ remind_at: new Date(new Date(reminder.remind_at).getTime() + shift).toISOString(), notified: false } as never)
+          .eq('id', reminder.id);
+        await onRemindersChanged();
+      }
+    },
+    [updateEvent, reminders, onRemindersChanged, toast],
+  );
 
   const navigate = useCallback((direction: 'prev' | 'next') => {
     setCurrentDate((prev) => {
@@ -100,12 +178,12 @@ export function CalendarView({ onEventClick, events, createEvent, updateEvent, d
   }, [currentDate, currentView]);
 
   const filteredEvents = useMemo(() => {
-    return events.filter((e) => {
+    return events.map((e) => (pendingMoves[e.id] ? { ...e, ...pendingMoves[e.id] } : e)).filter((e) => {
       const eventStart = new Date(e.start_at);
       const eventEnd = new Date(e.end_at);
       return eventEnd >= range.start && eventStart <= range.end;
     });
-  }, [events, range]);
+  }, [events, range, pendingMoves]);
 
   const handleEventClick = useCallback((event: CalendarEvent) => {
     setSelectedEvent(event);
@@ -114,9 +192,15 @@ export function CalendarView({ onEventClick, events, createEvent, updateEvent, d
   }, [onEventClick]);
 
   const handleCreateEvent = useCallback(() => {
+    // Start at the next half hour on the day being viewed.
+    const now = new Date();
+    const start = new Date(currentDate);
+    start.setHours(now.getHours(), now.getMinutes() < 30 ? 30 : 60, 0, 0);
+    setDialogInitial({ start, end: addMinutes(start, 60), allDay: false });
     setSelectedEvent(null);
+    setDraft(null);
     setShowEventDialog(true);
-  }, []);
+  }, [currentDate]);
 
   const handleSaveEvent = useCallback(async (eventData: Omit<CalendarEvent, 'id' | 'created_at' | 'updated_at' | 'created_by'>) => {
     let saved: CalendarEvent | null = null;
@@ -200,23 +284,32 @@ export function CalendarView({ onEventClick, events, createEvent, updateEvent, d
           <MonthView
             currentDate={currentDate}
             events={filteredEvents}
+            draft={draft?.draft ?? null}
             onEventClick={handleEventClick}
             onDayClick={handleDayClick}
+            onCreate={handleCreateDraft}
+            onChangeEvent={handleChangeEvent}
           />
         )}
         {currentView === 'week' && (
           <WeekView
             currentDate={currentDate}
             events={filteredEvents}
+            draft={draft?.draft ?? null}
             onEventClick={handleEventClick}
             onDayClick={handleDayClick}
+            onCreate={handleCreateDraft}
+            onChangeEvent={handleChangeEvent}
           />
         )}
         {currentView === 'day' && (
           <DayView
             currentDate={currentDate}
             events={filteredEvents}
+            draft={draft?.draft ?? null}
             onEventClick={handleEventClick}
+            onCreate={handleCreateDraft}
+            onChangeEvent={handleChangeEvent}
           />
         )}
         {currentView === 'agenda' && (
@@ -227,9 +320,21 @@ export function CalendarView({ onEventClick, events, createEvent, updateEvent, d
         )}
       </div>
 
+      {draft && (
+        <QuickCreate
+          key={`${draft.draft.start.getTime()}-${draft.draft.end.getTime()}`}
+          draft={draft.draft}
+          anchor={draft.anchor}
+          onSave={handleQuickSave}
+          onMoreOptions={handleMoreOptions}
+          onCancel={cancelDraft}
+        />
+      )}
+
       {showEventDialog && (
         <EventDialog
           event={selectedEvent}
+          initial={selectedEvent ? null : dialogInitial}
           existingReminder={selectedEvent ? reminders.find((r) => r.entity_type === 'event' && r.entity_id === selectedEvent.id) || null : null}
           onSave={handleSaveEvent}
           onDelete={selectedEvent ? async () => { setShowEventDialog(false); setConfirmDelete(true); } : undefined}

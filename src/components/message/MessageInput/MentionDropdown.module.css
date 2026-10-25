@@ -38,3 +38,21 @@
   content: '@';
   color: var(--color-text-muted);
 }
+
+.allIcon {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+}
+
+.hint {
+  margin-left: auto;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}

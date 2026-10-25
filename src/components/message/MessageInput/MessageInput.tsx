@@ -739,6 +739,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
                 onSelect={handleMentionSelect}
                 onClose={() => setMentionQuery(null)}
                 memberIds={memberIds}
+                allowAll={!overrideChannelId && channelCtx?.currentChannel?.slug === 'general'}
               />
             )}
           </div>

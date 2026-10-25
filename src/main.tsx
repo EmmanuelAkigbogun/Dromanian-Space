@@ -3,12 +3,14 @@ import { createRoot } from 'react-dom/client';
 import { initTypography } from '@/components/workspace/TypographySettings';
 import { initColorPrefs } from '@/components/workspace/ColorSettings';
 import { applyStartupTheme } from '@/lib/workspace/themeCache';
+import { initPwa } from '@/lib/pwa';
 import './styles/global.css';
 import App from './App';
 
 initTypography();
 initColorPrefs();
 applyStartupTheme();
+initPwa();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

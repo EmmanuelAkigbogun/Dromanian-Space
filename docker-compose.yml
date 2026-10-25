@@ -55,6 +55,9 @@ x-server-env: &server-env
   WEB_PUSH_PUBLIC_KEY: ${WEB_PUSH_PUBLIC_KEY:-}
   WEB_PUSH_PRIVATE_KEY: ${WEB_PUSH_PRIVATE_KEY:-}
   WEB_PUSH_SUBJECT: ${WEB_PUSH_SUBJECT:-}
+  ONLYOFFICE_JWT_SECRET: ${ONLYOFFICE_JWT_SECRET:-}
+  ONLYOFFICE_INTERNAL_URL: ${ONLYOFFICE_INTERNAL_URL:-http://onlyoffice}
+  APP_INTERNAL_URL: ${APP_INTERNAL_URL:-http://api:3000}
   NODE_OPTIONS: --max-old-space-size=384
 
 services:
@@ -260,6 +263,37 @@ services:
           memory: 1G
     stop_grace_period: 5m
 
+  # Word/Excel/PowerPoint editing for Drive. Reached by browsers through the
+  # web container at /office/ and by the API on the private network. Every
+  # request is signed with ONLYOFFICE_JWT_SECRET; it stores no files itself.
+  onlyoffice:
+    image: onlyoffice/documentserver:9.2.1
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${ONLYOFFICE_JWT_SECRET:-}
+      JWT_HEADER: Authorization
+      JWT_IN_BODY: "true"
+      # Documents are fetched from the API on the private Docker network.
+      ALLOW_PRIVATE_IP_ADDRESS: "true"
+      WOPI_ENABLED: "false"
+    expose:
+      - "80"
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+          memory: 3G
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
   coturn:
     image: coturn/coturn:4.18.0-r0
     restart: unless-stopped
@@ -317,6 +351,7 @@ services:
     environment:
       API_UPSTREAM: api:3000
       LIVEKIT_UPSTREAM: livekit:7880
+      ONLYOFFICE_UPSTREAM: onlyoffice:80
     ports:
       - "127.0.0.1:${WEB_HOST_PORT:-3008}:8080"
     depends_on:

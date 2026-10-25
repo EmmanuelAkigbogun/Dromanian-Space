@@ -28,8 +28,11 @@ RUN chmod 755 /app/database/migrate.sh
 ENTRYPOINT ["/app/database/migrate.sh"]
 
 FROM nginxinc/nginx-unprivileged:1.30.5-alpine AS web
-ENV API_UPSTREAM=api:3000
+ENV API_UPSTREAM=api:3000 \
+    LIVEKIT_UPSTREAM=livekit:7880 \
+    ONLYOFFICE_UPSTREAM=onlyoffice:80
 COPY deploy/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
+COPY deploy/nginx/office-headers.conf /etc/nginx/snippets/office-headers.conf
 COPY deploy/nginx/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 8080

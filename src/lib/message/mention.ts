@@ -31,6 +31,11 @@ export function parseMentions(content: string): ParsedMention[] {
   return parts;
 }
 
+/** @all or @everyone, as a whole word. */
+export function mentionsEveryone(content: string): boolean {
+  return /(^|[^A-Za-z0-9_])@(all|everyone)(?![A-Za-z0-9_])/i.test(content);
+}
+
 export function extractMentionUsernames(content: string): string[] {
   const usernames: string[] = [];
   let match;

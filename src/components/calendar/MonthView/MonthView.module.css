@@ -2,18 +2,19 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
 }
 
 .weekdayHeader {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   border-bottom: 1px solid var(--color-border);
 }
 
 .weekdayCell {
   padding: var(--space-2) var(--space-1);
   text-align: center;
-  font-size: var(--font-size-xs);
+  font-size: 11px;
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-muted);
   text-transform: uppercase;
@@ -22,103 +23,171 @@
 
 .daysGrid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
   flex: 1;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-rows: repeat(6, minmax(96px, 1fr));
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.dragging {
+  cursor: grabbing;
 }
 
 .dayCell {
   display: flex;
   flex-direction: column;
-  min-height: 80px;
-  padding: var(--space-1);
-  border: 1px solid var(--color-border);
-  border-top: none;
-  border-left: none;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  padding: 4px;
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
   cursor: pointer;
   transition: background-color var(--transition-fast);
-  text-align: left;
+}
+
+.dayCell:nth-child(7n) {
+  border-right: none;
 }
 
 .dayCell:hover {
   background: var(--color-surface-secondary);
 }
 
-.dayCell:focus-visible {
-  outline: 2px solid var(--color-focus);
-  outline-offset: -2px;
-  z-index: 1;
-}
-
 .otherMonth {
   background: var(--color-surface-secondary);
-  opacity: 0.5;
-}
-
-.otherMonth:hover {
-  opacity: 0.7;
-}
-
-.today {
-  background: var(--color-primary-subtle, var(--color-info-subtle));
-}
-
-.today .dateNumber {
-  background: var(--color-primary);
-  color: var(--color-text-inverse);
-  border-radius: var(--radius-full);
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.dateNumber {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--color-text);
-  margin-bottom: var(--space-1);
 }
 
 .otherMonth .dateNumber {
   color: var(--color-text-muted);
 }
 
-.eventsContainer {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  flex: 1;
-  overflow: hidden;
+.highlighted,
+.highlighted:hover {
+  background: var(--color-primary-subtle);
 }
 
-.eventDot {
-  display: flex;
-  align-items: center;
-  padding: 1px var(--space-1);
-  border-radius: var(--radius-sm);
-  color: white;
-  font-size: 10px;
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.dateNumber {
+  align-self: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: none;
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text);
   cursor: pointer;
 }
 
-.eventDot:hover {
-  opacity: 0.9;
+.dateNumber:hover {
+  background: var(--color-surface-tertiary);
+}
+
+.todayNumber,
+.todayNumber:hover {
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+.eventsContainer {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.eventBar,
+.eventTimed {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: grab;
+}
+
+.eventBar {
+  overflow: hidden;
+  color: #ffffff;
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eventTimed {
+  color: var(--color-text);
+}
+
+.eventTimed:hover {
+  background: var(--color-surface-tertiary);
+}
+
+.eventBar:focus-visible,
+.eventTimed:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+.eventDragging {
+  opacity: 0.4;
+}
+
+.dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.eventTime {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
 }
 
 .eventTitle {
   overflow: hidden;
+  font-weight: var(--font-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.draft {
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
 .moreEvents {
-  font-size: 10px;
-  color: var(--color-text-muted);
-  padding-left: var(--space-1);
+  align-self: flex-start;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.moreEvents:hover {
+  background: var(--color-surface-tertiary);
+  color: var(--color-text);
+}
+
+@media (max-width: 639px) {
+  .daysGrid {
+    grid-template-rows: repeat(6, minmax(72px, 1fr));
+  }
+
+  .eventTime {
+    display: none;
+  }
 }

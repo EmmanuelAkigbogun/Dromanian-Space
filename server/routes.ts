@@ -7,6 +7,8 @@ import * as run from '../api/agents/run.js';
 import * as mention from '../api/agents/mention.js';
 import * as sessions from '../api/agents/sessions.js';
 import * as push from '../api/push.js';
+import * as drive from '../api/drive.js';
+import * as office from '../api/office.js';
 import * as jobs from '../api/jobs/run.js';
 import * as n8n from '../api/integrations/n8n.js';
 import * as auth from '../api/auth.js';
@@ -25,6 +27,11 @@ export const ROUTES: Record<string, Partial<Record<ApiMethod, Handler>>> = {
   '/api/agents/mention': mention,
   '/api/agents/sessions': sessions,
   '/api/push': push,
+  '/api/drive/unzip': { POST: drive.unzip },
+  '/api/office/status': { GET: office.status },
+  '/api/office/config': { POST: office.config },
+  '/api/office/file': { GET: office.file },
+  '/api/office/callback': { POST: office.callback },
   '/api/jobs/run': jobs,
   '/api/integrations/n8n/runs': n8n,
   '/api/auth/signup': { POST: auth.signup },

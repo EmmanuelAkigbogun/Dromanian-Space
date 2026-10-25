@@ -12,7 +12,7 @@ export type ContentToken =
   | { type: 'mention'; value: string; isSpecial?: boolean }
   | { type: 'line_break' };
 
-const SPECIAL_MENTIONS = new Set(['channel', 'everyone', 'here']);
+const SPECIAL_MENTIONS = new Set(['all', 'channel', 'everyone', 'here']);
 
 export function parseMessageContent(content: string): ContentToken[] {
   const lines = content.split('\n');

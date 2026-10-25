@@ -133,7 +133,7 @@ export interface Notification {
   created_at: string;
 }
 
-export type NotificationType = 'mention' | 'message' | 'invitation' | 'system' | 'task_assigned' | 'task_approval';
+export type NotificationType = 'mention' | 'message' | 'invitation' | 'system' | 'task_assigned' | 'task_approval' | 'announcement';
 
 export interface PinnedMessage {
   id: UUID;

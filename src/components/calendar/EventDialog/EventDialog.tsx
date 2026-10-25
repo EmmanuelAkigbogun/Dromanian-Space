@@ -10,10 +10,13 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 import { useAuth } from '@/hooks/useAuth';
 import { platform } from '@/lib/platform';
 import type { CalendarEvent, CalendarReminder } from '@/types';
+import { EVENT_COLORS } from '../calendarUtils';
 import styles from './EventDialog.module.css';
 
 interface EventDialogProps {
   event: CalendarEvent | null;
+  /** Prefill for a new event, e.g. the time picked on the grid. */
+  initial?: { title?: string; start: Date; end: Date; allDay: boolean } | null;
   existingReminder?: CalendarReminder | null;
   onSave: (event: Omit<CalendarEvent, 'id' | 'created_at' | 'updated_at' | 'created_by'>) => Promise<CalendarEvent | null>;
   onDelete?: () => Promise<void>;
@@ -22,7 +25,7 @@ interface EventDialogProps {
   onRemindersChanged: () => Promise<void>;
 }
 
-const COLORS = ['#82A6B1', '#2D8A4E', '#B8860B', '#C43E3E', '#4A7C9B', '#9B59B6', '#E67E22', '#1ABC9C'];
+const COLORS = EVENT_COLORS;
 
 const REMINDER_OPTIONS = [
   { value: 'none', label: 'None' },
@@ -45,14 +48,16 @@ function toLocalDatetimeString(date: Date): string {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
-export function EventDialog({ event, existingReminder, onSave, onDelete, onClose, createReminder, onRemindersChanged }: EventDialogProps) {
+export function EventDialog({ event, initial, existingReminder, onSave, onDelete, onClose, createReminder, onRemindersChanged }: EventDialogProps) {
   const { currentWorkspace } = useWorkspace();
   const { userId } = useAuth();
-  const [title, setTitle] = useState(event?.title || '');
+  const defaultStart = initial?.start ?? new Date();
+  const defaultEnd = initial?.end ?? new Date(Date.now() + 3600000);
+  const [title, setTitle] = useState(event?.title || initial?.title || '');
   const [description, setDescription] = useState(event?.description || '');
-  const [startTime, setStartTime] = useState(event ? toLocalDatetimeString(new Date(event.start_at)) : toLocalDatetimeString(new Date()));
-  const [endTime, setEndTime] = useState(event ? toLocalDatetimeString(new Date(event.end_at)) : toLocalDatetimeString(new Date(Date.now() + 3600000)));
-  const [allDay, setAllDay] = useState(event?.all_day || false);
+  const [startTime, setStartTime] = useState(toLocalDatetimeString(event ? new Date(event.start_at) : defaultStart));
+  const [endTime, setEndTime] = useState(toLocalDatetimeString(event ? new Date(event.end_at) : defaultEnd));
+  const [allDay, setAllDay] = useState(event?.all_day ?? initial?.allDay ?? false);
   const [location, setLocation] = useState(event?.location || '');
   const [color, setColor] = useState(event?.color || COLORS[0]);
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);

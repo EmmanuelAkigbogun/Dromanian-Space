@@ -17,6 +17,7 @@ import { JoinChannelButton } from '@/components/channel/JoinChannelButton';
 import { ChannelActionsMenu } from '@/components/channel/ChannelActionsMenu';
 import { MessageList, PinnedMessagesPanel } from '@/components/message';
 import { CallButton } from '@/components/call';
+import { useFeatureAccess } from '@/lib/workspace/features';
 import type { Channel } from '@/types';
 import styles from './Channels.module.css';
 
@@ -26,6 +27,7 @@ export function ChannelView() {
   const { currentChannel, isLoading, error, switchChannel, hasChannels, isMember, memberCounts } = useChannel();
   const dmDisplayNames = useDmDisplayNames();
   const { activeThread } = useThread();
+  const features = useFeatureAccess();
   const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
   const [deletingChannel, setDeletingChannel] = useState<Channel | null>(null);
   const [archivingChannel, setArchivingChannel] = useState<Channel | null>(null);
@@ -110,8 +112,10 @@ export function ChannelView() {
             )}
           </div>
           <div className={styles.channelHeaderActions}>
-            <Button variant="secondary" onClick={() => navigate(`/agents?channel=${currentChannel.id}`)}>Ask AI</Button>
-            {isUserMember && (
+            {features.canSee('ai') && (
+              <Button variant="secondary" onClick={() => navigate(`/agents?channel=${currentChannel.id}`)}>Ask AI</Button>
+            )}
+            {isUserMember && features.canSee('ai') && (
               <Button
                 variant="secondary"
                 title="Scribe summarizes this channel and sends the action items to project managers for approval"
@@ -120,7 +124,9 @@ export function ChannelView() {
                 Take notes
               </Button>
             )}
-            <Button variant="secondary" onClick={() => navigate(`/drive?view=channel&channel=${currentChannel.id}`)}>Files</Button>
+            {features.canSee('drive') && (
+              <Button variant="secondary" onClick={() => navigate(`/drive?view=channel&channel=${currentChannel.id}`)}>Files</Button>
+            )}
             <CallButton
               channelId={currentChannel.id}
               callType="channel"

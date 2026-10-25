@@ -10,7 +10,7 @@ interface EventCardProps {
   isOverdue?: boolean;
 }
 
-const EVENT_COLORS = ['#82A6B1', '#2D8A4E', '#B8860B', '#C43E3E', '#4A7C9B', '#9B59B6'];
+import { EVENT_COLORS } from '../calendarUtils';
 
 export function EventCard({ event, participants = [], onClick, compact = false, isOverdue = false }: EventCardProps) {
   const formatTime = (dateStr: string) => {

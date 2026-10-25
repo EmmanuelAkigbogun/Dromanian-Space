@@ -108,7 +108,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
           title: notification.title,
           body: notification.message,
           route: notification.link ?? '/notifications',
-          kind: notification.type === 'message' || notification.type === 'mention' ? 'message' : 'system',
+          kind: ['message', 'mention', 'announcement'].includes(notification.type) ? 'message' : 'system',
         });
       }
     });

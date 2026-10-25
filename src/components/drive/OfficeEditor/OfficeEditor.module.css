@@ -1,0 +1,52 @@
+.editor {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.status {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.close {
+  padding: 4px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.close:hover {
+  border-color: var(--color-border-hover);
+}
+
+.frame {
+  height: min(80vh, 900px);
+  min-height: 480px;
+}
+
+.frame > div,
+.frame iframe {
+  width: 100%;
+  height: 100%;
+}
+
+.error {
+  padding: var(--space-6);
+  font-size: var(--font-size-sm);
+  color: var(--color-error);
+}

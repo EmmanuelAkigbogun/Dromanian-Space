@@ -5,6 +5,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Spinner } from '@/components/ui/Spinner';
 import { PushToggle } from '@/components/notification-center/PushToggle';
+import { InstallApp } from '@/components/pwa/InstallApp';
 import { formatRelativeTime } from '@/utils';
 import type { TypedNotification, NotificationCategory } from '@/features/notifications/service';
 import styles from './Notifications.module.css';
@@ -86,6 +87,7 @@ export function Notifications() {
       <div className={styles.header}>
         <h2 className={styles.title}>Notifications</h2>
         <div className={styles.headerActions}>
+          <InstallApp />
           <PushToggle />
           <button
             type="button"
