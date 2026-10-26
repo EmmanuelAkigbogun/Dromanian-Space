@@ -154,8 +154,8 @@ export function Sidebar({ primaryNavigation, secondaryNavigation = [] }: Sidebar
     crm: group(
       'Records',
       <>
-        {link('/crm/contacts', 'Contacts', 'user')}
         {link('/crm/companies', 'Companies', 'building')}
+        {link('/crm/contacts', 'Contacts', 'user')}
         {link('/crm/deals', 'Deals', 'deal')}
       </>,
     ),

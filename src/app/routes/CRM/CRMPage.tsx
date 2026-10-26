@@ -1,62 +1,619 @@
-import { useState } from 'react';
+// The CRM, after OpenCRM (MIT, clawnify/OpenCRM): each list is a spreadsheet
+// with saved views, filters and footer calculations; deals also show as a
+// board; every record has a page with its details, notes and links. Each
+// client company can keep its own CRM (client_id), kept apart from ours.
+import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useWorkspaceContext } from '@/app/providers/WorkspaceProvider';
 import { useAuth } from '@/hooks/useAuth';
 import { Dialog } from '@/components/ui/Dialog';
-import { platform,result,errorText,workspacePeople,type Row } from '@/features/platform/client';
-import s from '@/features/platform/Platform.module.css';
+import { platform, result, errorText, workspacePeople } from '@/features/platform/client';
+import { RecordTable } from './RecordTable';
+import { DealsBoard } from './DealsBoard';
+import { RecordView } from './RecordView';
+import { ImportDialog } from './ImportDialog';
+import { toCsv } from './spreadsheet';
+import {
+  EMPTY_VIEW, OPERATORS, SINGULAR, STAGE_COLORS, TABLES, applyView, columnsFor, displayValue, filterKind,
+  needsValue, patchFor, sameView, savedFromView, viewFromSaved,
+  type Column, type Company, type Context, type CrmRecord, type CustomField, type Deal, type Kind,
+  type Rule, type SavedView, type Stage, type ViewState,
+} from './model';
+import s from './CRM.module.css';
 
-type Kind='contacts'|'companies'|'deals';
-type RecordRow=Row<'crm_contacts'>|Row<'crm_companies'>|Row<'crm_deals'>;
-export default function CRMPage(){const {currentWorkspace,currentRole}=useWorkspaceContext();const {userId}=useAuth();const {kind}=useParams();const [params]=useSearchParams();const client=params.get('client');return <CRM key={`${currentWorkspace!.id}:${userId}:${kind}:${client}`} client={client} ws={currentWorkspace!.id} userId={userId!} admin={currentRole==='owner'||currentRole==='admin'} kind={['contacts','companies','deals'].includes(kind??'')?kind as Kind:'contacts'}/>;}
-// Each client company keeps its own CRM (client_id); null is our own CRM.
-function CRM({ws,userId,admin,kind,client}:{ws:string;userId:string;admin:boolean;kind:Kind;client:string|null}){
- const {recordId}=useParams();const navigate=useNavigate();const cache=useQueryClient();const [search,setSearch]=useState('');const [page,setPage]=useState(0);const [board,setBoard]=useState(kind==='deals');const [editor,setEditor]=useState(false);const [pipeline,setPipeline]=useState(false);const [pipelineName,setPipelineName]=useState('Sales pipeline');const [stages,setStages]=useState('New, Qualified, Proposal, Negotiation, Won, Lost');const [error,setError]=useState('');const [busy,setBusy]=useState(false);const [addClient,setAddClient]=useState(false);
- const base=['platform',ws,userId,'crm'];const book=client?`?client=${client}`:'';
- const clients=useQuery({queryKey:[...base,'clients'],queryFn:()=>result(platform.from('crm_companies').select('*').eq('workspace_id',ws).eq('is_client',true).is('client_id',null).order('name'))});
- const clientName=client?clients.data?.find(c=>c.id===client)?.name??'Client':null;
- const rows=useQuery({queryKey:[...base,kind,search,page,recordId],queryFn:async():Promise<RecordRow[]>=>{const table=`crm_${kind}` as const;let query=platform.from(table).select('*').eq('workspace_id',ws).order('updated_at',{ascending:false}).range(page*50,page*50+49);if(recordId)query=query.eq('id',recordId);else query=client?query.eq('client_id',client):query.is('client_id',null);if(!recordId&&search)query=query.ilike('name',`%${search.replaceAll('%','\\%').replaceAll('_','\\_')}%`);return await result(query);},staleTime:5000});
- const options=useQuery({queryKey:[...base,'options',client],queryFn:async()=>{const [companies,contacts,pipelines,stages,people]=await Promise.all([result((client?platform.from('crm_companies').select('*').eq('workspace_id',ws).eq('client_id',client):platform.from('crm_companies').select('*').eq('workspace_id',ws).is('client_id',null)).order('name').limit(200)),result((client?platform.from('crm_contacts').select('*').eq('workspace_id',ws).eq('client_id',client):platform.from('crm_contacts').select('*').eq('workspace_id',ws).is('client_id',null)).order('name').limit(200)),result(platform.from('crm_pipelines').select('*').eq('workspace_id',ws)),result(platform.from('crm_stages').select('*').eq('workspace_id',ws).order('position')),workspacePeople(ws)]);return{companies,contacts,pipelines,stages,people};}});
- const detail=useQuery({queryKey:[...base,'detail',recordId],enabled:!!recordId,queryFn:async()=>{const [activity,links]=await Promise.all([result(platform.from('crm_activity').select('*').eq('workspace_id',ws).eq('record_id',recordId!).order('created_at',{ascending:false}).limit(50)),result(platform.from('crm_links').select('*').eq('workspace_id',ws).eq(kind==='companies'?'company_id':kind==='contacts'?'contact_id':'deal_id',recordId!))]);return{activity,links};}});
- const refresh=()=>cache.invalidateQueries({queryKey:base});
- async function act(fn:()=>PromiseLike<unknown>){setBusy(true);setError('');try{await fn();await refresh();}catch(e){setError(errorText(e));}finally{setBusy(false);}}
- const selected=recordId?rows.data?.[0]:undefined;
- const editable=(r:RecordRow)=>admin||r.owner_id===userId||r.created_by===userId;
- const totals=new Map<string,number>();for(const r of rows.data??[]){if('currency'in r)totals.set(r.currency,(totals.get(r.currency)??0)+Number(r.value));}
- return <div className={s.page}><header className={s.header}><div><div className={s.eyebrow}>Relationships · {clientName?`${clientName}'s CRM`:'Our CRM'}</div><h1>{selected?.name??(kind[0].toUpperCase()+kind.slice(1))}</h1><p className={s.muted}>Shared with workspace members. Linked resources keep their own permissions.</p></div><div className={s.actions}>{selected?<><Link className={s.button} to={`/crm/${kind}${book}`}>Back to {kind}</Link>{kind==='companies'&&'is_client'in selected&&!selected.client_id&&(selected.is_client?<Link className={s.button} to={`/crm/contacts?client=${selected.id}`}>Open {selected.name}'s CRM</Link>:editable(selected)&&<button className={s.button} disabled={busy} onClick={()=>void act(async()=>{await result(platform.from('crm_companies').update({is_client:true}).eq('id',selected.id).eq('workspace_id',ws));navigate(`/crm/contacts?client=${selected.id}`);})}>Give it its own CRM</button>)}{editable(selected)&&<button className={s.primary} onClick={()=>setEditor(true)}>Edit record</button>}{admin&&<button className={s.button} disabled={busy} onClick={()=>{if(!window.confirm(`Delete ${selected.name}? Its contacts and deals stay, unlinked; its Drive folder is kept.`))return;void act(async()=>{await result(platform.from(`crm_${kind}`).delete().eq('id',selected.id).eq('workspace_id',ws));navigate(`/crm/${kind}${book}`);});}}>Delete</button>}<Link className={s.button} to={`/agents?crm=${selected.id}&crm_kind=${kind}`}>Ask Sales Assistant</Link></>:<><button className={s.primary} onClick={()=>setEditor(true)}>New {kind==='companies'?'company':kind.slice(0,-1)}</button>{kind==='deals'&&admin&&<button className={s.button} onClick={()=>setPipeline(true)}>New pipeline</button>}</>}</div></header>
- <div className={s.tabs} role="navigation" aria-label="CRMs"><Link className={`${s.button} ${!client?s.active:''}`} to={`/crm/${kind}`}>Our CRM</Link>{clients.data?.map(c=><Link key={c.id} className={`${s.button} ${client===c.id?s.active:''}`} to={`/crm/${kind}?client=${c.id}`}>{c.name}</Link>)}<button className={s.button} onClick={()=>setAddClient(true)}>+ Client CRM</button></div>
- <div className={s.tabs}>{(['contacts','companies','deals'] as const).map(k=><Link className={`${s.button} ${kind===k?s.active:''}`} key={k} to={`/crm/${k}${book}`}>{k[0].toUpperCase()+k.slice(1)}</Link>)}</div>
- {(error||rows.error||options.error||detail.error||clients.error)&&<p role="alert" className={s.error}>{error||errorText(rows.error??options.error??detail.error??clients.error)}</p>}{clientName&&!recordId&&<p className={s.muted}>Records in {clientName}'s CRM stay separate from ours. Companies added here get no Drive folder.</p>}
- {recordId?selected?<div className={s.split}><div className={s.stack}><section className={s.card}><h2>Notes</h2><p style={{whiteSpace:'pre-wrap'}}>{selected.notes||'No notes yet.'}</p>{'email'in selected&&<p>{selected.email} · {selected.phone}</p>}{'domain'in selected&&<p>{selected.domain}</p>}{'value'in selected&&<><p>{selected.currency} {Number(selected.value).toLocaleString()} · {options.data?.stages.find(st=>st.id===selected.stage_id)?.name}</p><p>Expected close: {selected.expected_close??'Not set'}</p></>}</section><section className={s.card}><h2>Activity</h2>{detail.data?.activity.map(a=><div key={a.id} className={s.notice}><strong>{a.action==='insert'?'Record created':'Record updated'}</strong><p className={s.muted}>{new Date(a.created_at).toLocaleString()}</p>{a.action!=='insert'&&Object.keys(a.changes??{}).length>0&&<p className={s.muted}>Changed: {Object.keys(a.changes??{}).join(', ')}</p>}</div>)}</section></div><aside className={s.stack}><section className={s.card}><h2>Owner</h2><p>{options.data?.people.find(p=>p.id===selected.owner_id)?.display_name??'Former member'}</p><h2>Linked resources</h2>{detail.data?.links.map(l=><p key={l.id}><Link to={l.item_id?`/drive/item/${l.item_id}`:l.task_id?`/tasks/${l.task_id}`:`/channels/${l.channel_id}`}>{l.item_id?'Open linked file':l.task_id?'Open linked task':'Open conversation'}</Link></p>)}<LinkResource ws={ws} userId={userId} kind={kind} id={recordId} onSaved={refresh}/></section></aside></div>:<div className={s.empty}>{rows.isPending?'Loading record…':'Record unavailable.'}</div>:<><div className={s.toolbar}><input className={s.input} aria-label="Search CRM" placeholder={`Search ${kind}…`} value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}}/>{kind==='deals'&&<button className={s.button} onClick={()=>setBoard(!board)}>{board?'List view':'Board view'}</button>}</div>{kind==='deals'&&<p className={s.muted}>Visible page totals: {[...totals].map(([currency,value])=>`${currency} ${value.toLocaleString()}`).join(' · ')||'No deals yet'}</p>}{rows.isPending?<p>Loading records…</p>:!rows.data?.length?<div className={s.empty}><h2>Start a relationship</h2><p>Create your first {kind==='companies'?'company':kind.slice(0,-1)} to keep work and context together.</p></div>:board&&kind==='deals'?<div className={s.grid}>{options.data?.stages.map(stage=><section key={stage.id} className={s.card}><h2>{stage.name}</h2><span className={s.muted}>{options.data?.pipelines.find(p=>p.id===stage.pipeline_id)?.name}</span>{rows.data.filter((r):r is Row<'crm_deals'>=>'stage_id'in r&&r.stage_id===stage.id).map(d=><article className={s.notice} key={d.id}><Link className={s.link} to={`/crm/deals/${d.id}${book}`}>{d.name}</Link><p>{d.currency} {Number(d.value).toLocaleString()}</p><select className={s.input} aria-label={`Stage for ${d.name}`} value={d.stage_id} disabled={!editable(d)||busy} onChange={e=>void act(()=>result(platform.from('crm_deals').update({stage_id:e.target.value}).eq('id',d.id).eq('workspace_id',ws)))}>{options.data?.stages.filter(st=>st.pipeline_id===d.pipeline_id).map(st=><option key={st.id} value={st.id}>{st.name}</option>)}</select></article>)}</section>)}</div>:<div className={s.tableWrap}><table className={s.table}><thead><tr><th>Name</th><th>Details</th><th>Owner</th><th>Modified</th></tr></thead><tbody>{rows.data?.map(r=><tr key={r.id}><td><Link className={s.link} to={`/crm/${kind}/${r.id}${book}`}>{r.name}</Link></td><td>{'domain'in r?r.domain:'email'in r?r.email:`${r.currency} ${Number(r.value).toLocaleString()}`}</td><td>{options.data?.people.find(p=>p.id===r.owner_id)?.display_name??'Former member'}</td><td>{new Date(r.updated_at).toLocaleDateString()}</td></tr>)}</tbody></table></div>}<div className={s.toolbar}><button className={s.button} disabled={!page} onClick={()=>setPage(page-1)}>Previous</button><span>Page {page+1}</span><button className={s.button} disabled={(rows.data?.length??0)<50} onClick={()=>setPage(page+1)}>Next</button></div></>}
- {editor&&options.data&&<RecordEditor ws={ws} userId={userId} kind={kind} client={client} current={selected} options={options.data} onClose={()=>setEditor(false)} onSaved={async(id)=>{await refresh();setEditor(false);navigate(`/crm/${kind}/${id}${book}`);}}/>}
- {addClient&&<AddClient ws={ws} userId={userId} onClose={()=>setAddClient(false)} onSaved={async(id)=>{await refresh();setAddClient(false);navigate(`/crm/contacts?client=${id}`);}}/>}
- <Dialog open={pipeline} onClose={()=>setPipeline(false)} title="New pipeline"><form className={s.form} onSubmit={e=>{e.preventDefault();void act(async()=>{await result(platform.rpc('crm_create_pipeline',{p_workspace_id:ws,p_name:pipelineName,p_stages:stages.split(',').map(v=>v.trim()).filter(Boolean)}));setPipeline(false);});}}><label>Name<input className={s.input} value={pipelineName} onChange={e=>setPipelineName(e.target.value)} required/></label><label>Stages (comma separated)<input className={s.input} value={stages} onChange={e=>setStages(e.target.value)} required/></label>{error&&<p role="alert">{error}</p>}<button className={s.primary} disabled={busy}>Create pipeline</button></form></Dialog>
- </div>;
+const KINDS: Kind[] = ['companies', 'contacts', 'deals'];
+const LIMIT = 1000;
+
+export default function CRMPage() {
+  const { currentWorkspace, currentRole } = useWorkspaceContext();
+  const { userId } = useAuth();
+  const { kind } = useParams();
+  const [params] = useSearchParams();
+  const client = params.get('client');
+  const k: Kind = KINDS.includes(kind as Kind) ? (kind as Kind) : 'companies';
+  return (
+    <CRM
+      key={`${currentWorkspace!.id}:${userId}:${k}:${client}`}
+      ws={currentWorkspace!.id}
+      userId={userId!}
+      admin={currentRole === 'owner' || currentRole === 'admin'}
+      kind={k}
+      client={client}
+    />
+  );
 }
-type Options={companies:Row<'crm_companies'>[];contacts:Row<'crm_contacts'>[];pipelines:Row<'crm_pipelines'>[];stages:Row<'crm_stages'>[];people:Awaited<ReturnType<typeof workspacePeople>>};
-function RecordEditor({ws,userId,kind,client,current,options,onClose,onSaved}:{ws:string;userId:string;kind:Kind;client:string|null;current?:RecordRow;options:Options;onClose:()=>void;onSaved:(id:string)=>Promise<void>}){
- const [error,setError]=useState('');const [busy,setBusy]=useState(false);const [pipeline,setPipeline]=useState(current&&'pipeline_id'in current?current.pipeline_id:options.pipelines[0]?.id??'');
- async function save(e:React.FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);const str=(k:string)=>String(f.get(k)??'');setBusy(true);setError('');try{
- const common={name:str('name'),notes:str('notes'),owner_id:str('owner'),workspace_id:ws,created_by:current?.created_by??userId,client_id:current?current.client_id:client};let id:string;
- if(kind==='companies'){const data={...common,domain:str('domain')||null};const r=await result(current?platform.from('crm_companies').update(data).eq('id',current.id).select().single():platform.from('crm_companies').insert(data).select().single());id=r.id;}
- else if(kind==='contacts'){const data={...common,email:str('email')||null,phone:str('phone')||null,company_id:str('company')||null,lifecycle_stage:str('stage'),tags:str('tags').split(',').map(t=>t.trim()).filter(Boolean)};const r=await result(current?platform.from('crm_contacts').update(data).eq('id',current.id).select().single():platform.from('crm_contacts').insert(data).select().single());id=r.id;}
- else{const data={...common,pipeline_id:pipeline,stage_id:str('stage'),value:Number(str('value')),currency:str('currency').toUpperCase(),expected_close:str('close')||null,company_id:str('company')||null,contact_id:str('contact')||null};const r=await result(current?platform.from('crm_deals').update(data).eq('id',current.id).select().single():platform.from('crm_deals').insert(data).select().single());id=r.id;}
- await onSaved(id);
- }catch(e){setError(errorText(e));}finally{setBusy(false);}}
- return <Dialog open onClose={onClose} title={`${current?'Edit':'New'} ${kind==='companies'?'company':kind.slice(0,-1)}`}><form className={s.form} onSubmit={save}><label>Name<input className={s.input} name="name" defaultValue={current?.name} required maxLength={200}/></label><label>Owner<select className={s.input} name="owner" defaultValue={current?.owner_id??userId}>{options.people.map(p=><option key={p.id} value={p.id}>{p.display_name??p.username}</option>)}</select></label>{kind==='companies'?<label>Domain<input className={s.input} name="domain" defaultValue={current&&'domain'in current?current.domain??'':''}/></label>:<label>Company<select className={s.input} name="company" defaultValue={current&&'company_id'in current?current.company_id??'':''}><option value="">None</option>{options.companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>}
- {kind==='contacts'&&<><label>Email<input className={s.input} type="email" name="email" defaultValue={current&&'email'in current?current.email??'':''}/></label><label>Phone<input className={s.input} name="phone" defaultValue={current&&'phone'in current?current.phone??'':''}/></label><label>Lifecycle stage<select className={s.input} name="stage" defaultValue={current&&'lifecycle_stage'in current?current.lifecycle_stage:'lead'}>{['lead','qualified','customer','former_customer'].map(st=><option key={st}>{st}</option>)}</select></label><label>Tags (comma separated)<input className={s.input} name="tags" defaultValue={current&&'tags'in current?current.tags.join(', '):''}/></label></>}
- {kind==='deals'&&<><label>Contact<select className={s.input} name="contact" defaultValue={current&&'contact_id'in current?current.contact_id??'':''}><option value="">None</option>{options.contacts.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label>Pipeline<select className={s.input} value={pipeline} onChange={e=>setPipeline(e.target.value)} required><option value="">Choose a pipeline</option>{options.pipelines.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label>Stage<select className={s.input} key={pipeline} name="stage" defaultValue={current&&'stage_id'in current?current.stage_id:undefined} required>{options.stages.filter(st=>st.pipeline_id===pipeline).map(st=><option key={st.id} value={st.id}>{st.name}</option>)}</select></label><label>Value<input className={s.input} type="number" min="0" step="0.01" name="value" defaultValue={current&&'value'in current?current.value:0} required/></label><label>Currency<input className={s.input} name="currency" defaultValue={current&&'currency'in current?current.currency:'EUR'} pattern="[A-Za-z]{3}" maxLength={3} required/></label><label>Expected close<input className={s.input} type="date" name="close" defaultValue={current&&'expected_close'in current?current.expected_close??'':''}/></label>{!options.pipelines.length&&<p className={s.notice}>An administrator must create a pipeline before adding deals.</p>}</>}
- <label>Notes<textarea className={s.text} name="notes" defaultValue={current?.notes} maxLength={20000}/></label>{error&&<p role="alert" className={s.error}>{error}</p>}<button className={s.primary} disabled={busy||(kind==='deals'&&!pipeline)}>Save record</button></form></Dialog>;
+
+function CRM({ ws, userId, admin, kind, client }: { ws: string; userId: string; admin: boolean; kind: Kind; client: string | null }) {
+  const { recordId } = useParams();
+  const navigate = useNavigate();
+  const cache = useQueryClient();
+  const base = ['platform', ws, userId, 'crm'];
+  const book = client ? `?client=${client}` : '';
+  const inBook = <Q extends { eq: (c: string, v: string) => Q; is: (c: string, v: null) => Q }>(q: Q) => (client ? q.eq('client_id', client) : q.is('client_id', null));
+
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState<ViewState>(EMPTY_VIEW);
+  const [activeView, setActiveView] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [board, setBoard] = useState(kind === 'deals');
+  const [pipelineId, setPipelineId] = useState('');
+  const [dialog, setDialog] = useState<'new' | 'import' | 'client' | 'stages' | 'properties' | 'saveView' | null>(null);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const clients = useQuery({
+    queryKey: [...base, 'clients'],
+    queryFn: (): Promise<Company[]> => result(platform.from('crm_companies').select('*').eq('workspace_id', ws).eq('is_client', true).is('client_id', null).order('name')),
+  });
+  const clientName = client ? clients.data?.find((c) => c.id === client)?.name ?? 'Client' : null;
+  const bookName = clientName ? `${clientName}'s CRM` : 'our CRM';
+
+  const ctx = useQuery({
+    queryKey: [...base, 'context', client],
+    queryFn: async (): Promise<Context> => {
+      const [companies, contacts, stages, pipelines, fields, people] = await Promise.all([
+        result(inBook(platform.from('crm_companies').select('id,name').eq('workspace_id', ws)).order('name').limit(2000)),
+        result(inBook(platform.from('crm_contacts').select('id,name').eq('workspace_id', ws)).order('name').limit(2000)),
+        result(platform.from('crm_stages').select('*').eq('workspace_id', ws).order('position')),
+        result(platform.from('crm_pipelines').select('*').eq('workspace_id', ws)),
+        result(platform.from('crm_custom_fields').select('*').eq('workspace_id', ws).order('position')),
+        workspacePeople(ws),
+      ]);
+      return { companies, contacts, stages, pipelines, fields, people };
+    },
+  });
+  const context = useMemo<Context>(() => ctx.data ?? { companies: [], contacts: [], stages: [], pipelines: [], fields: [], people: [] }, [ctx.data]);
+  const columns = useMemo(() => columnsFor(kind, context), [kind, context]);
+  const visible = columns.filter((c) => !(view.columns[c.key]?.hidden ?? !c.shown));
+  const pipeline = pipelineId || context.pipelines[0]?.id || '';
+
+  const views = useQuery({
+    queryKey: [...base, 'views', kind],
+    queryFn: (): Promise<SavedView[]> => result(platform.from('crm_views').select('*').eq('workspace_id', ws).eq('entity', kind).order('position').order('created_at')),
+  });
+  const savedView = views.data?.find((v) => v.id === activeView);
+  const dirty = savedView ? !sameView(view, viewFromSaved(savedView)) : !sameView(view, EMPTY_VIEW);
+
+  const rows = useQuery({
+    queryKey: [...base, 'rows', kind, client, search, JSON.stringify(savedFromView(view)), ctx.isSuccess],
+    enabled: !recordId && ctx.isSuccess,
+    queryFn: async (): Promise<CrmRecord[]> => {
+      let q = inBook(platform.from(TABLES[kind]).select('*').eq('workspace_id', ws));
+      if (search.trim()) q = q.ilike('name', `*${search.trim().replaceAll('*', '').replaceAll(',', ' ')}*`);
+      q = applyView(q, view, columns);
+      q = q.order(view.sort ?? 'updated_at', { ascending: view.sort ? !view.sortDesc : false }).limit(LIMIT);
+      return result(q);
+    },
+    placeholderData: (prev) => prev,
+  });
+
+  const record = useQuery({
+    queryKey: [...base, 'one', kind, recordId],
+    enabled: !!recordId,
+    queryFn: (): Promise<CrmRecord | null> => result(platform.from(TABLES[kind]).select('*').eq('workspace_id', ws).eq('id', recordId!).maybeSingle()),
+  });
+
+  const refresh = () => cache.invalidateQueries({ queryKey: base });
+  const editable = (r: CrmRecord) => admin || r.owner_id === userId || r.created_by === userId;
+
+  const suggestions = useMemo(() => {
+    const out: Record<string, string[]> = {};
+    for (const c of columns.filter((c) => c.suggest)) {
+      out[c.key] = [...new Set((rows.data ?? []).map((r) => displayValue(r, c)).filter(Boolean))].sort().slice(0, 100);
+    }
+    return out;
+  }, [columns, rows.data]);
+
+  async function act(fn: () => Promise<unknown>) {
+    setBusy(true);
+    setError('');
+    try {
+      await fn();
+      await refresh();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const saveCell = async (r: CrmRecord, column: Column, value: unknown) => {
+    const patch = patchFor(r, column, value);
+    const apply = (list: CrmRecord[] | undefined) => list?.map((x) => (x.id === r.id ? ({ ...x, ...patch } as CrmRecord) : x));
+    cache.setQueriesData<CrmRecord[]>({ queryKey: [...base, 'rows', kind] }, apply);
+    cache.setQueryData<CrmRecord | null>([...base, 'one', kind, r.id], (x) => (x ? ({ ...x, ...patch } as CrmRecord) : x));
+    try {
+      setError('');
+      await result(platform.from(TABLES[kind]).update(patch).eq('id', r.id).eq('workspace_id', ws));
+      if (column.key === 'company_id' || column.key === 'name') void cache.invalidateQueries({ queryKey: [...base, 'context'] });
+    } catch (e) {
+      setError(errorText(e));
+      await refresh();
+    }
+  };
+
+  const exportCsv = () => {
+    const header = visible.map((c) => c.label);
+    const body = (rows.data ?? []).map((r) => visible.map((c) => displayValue(r, c)));
+    const blob = new Blob([`﻿${toCsv(header, body)}`], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${clientName ?? 'crm'}-${kind}-${new Date().toISOString().slice(0, 10)}.csv`.replace(/[^\w.-]+/g, '-');
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const deleteSelected = () => {
+    if (!window.confirm(`Delete ${selected.size} ${selected.size === 1 ? SINGULAR[kind] : kind}? Linked contacts and deals stay, unlinked; Drive folders are kept.`)) return;
+    void act(async () => {
+      await result(platform.from(TABLES[kind]).delete().eq('workspace_id', ws).in('id', [...selected]));
+      setSelected(new Set());
+    });
+  };
+
+  const selectedRecord = recordId ? record.data : null;
+  const selectedCompany = kind === 'companies' ? (selectedRecord as Company | null) : null;
+  const anyError = error || rows.error || ctx.error || record.error || clients.error || views.error;
+
+  return (
+    <div className={s.page}>
+      <div className={s.top}>
+        <div className={s.titleRow}>
+          <h1 className={s.title}>{selectedRecord?.name ?? (clientName ? `${clientName}'s CRM` : 'CRM')}</h1>
+          <div className={s.books} role="navigation" aria-label="CRMs">
+            <Link className={`${s.chip} ${!client ? s.chipActive : ''}`} to={`/crm/${kind}`}>Our CRM</Link>
+            {clients.data?.map((c) => (
+              <Link key={c.id} className={`${s.chip} ${client === c.id ? s.chipActive : ''}`} to={`/crm/${kind}?client=${c.id}`}>{c.name}</Link>
+            ))}
+            <button className={s.chip} onClick={() => setDialog('client')}>+ Client CRM</button>
+          </div>
+        </div>
+        <nav className={s.kinds} aria-label="Records">
+          {KINDS.map((x) => (
+            <Link key={x} className={`${s.kind} ${x === kind ? s.kindActive : ''}`} to={`/crm/${x}${book}`}>
+              {x[0].toUpperCase() + x.slice(1)}
+              {x === kind && !recordId && rows.data && <span className={s.count}>{rows.data.length}{rows.data.length === LIMIT ? '+' : ''}</span>}
+            </Link>
+          ))}
+        </nav>
+      </div>
+
+      {anyError && <p role="alert" className={s.error} style={{ marginTop: 12 }}>{error || errorText(anyError)}</p>}
+
+      {recordId ? (
+        <>
+          <div className={s.toolbar}>
+            <Link className={s.button} to={`/crm/${kind}${book}`}>← Back to {kind}</Link>
+            {selectedCompany && !selectedCompany.client_id && (selectedCompany.is_client
+              ? <Link className={s.button} to={`/crm/companies?client=${selectedCompany.id}`}>Open {selectedCompany.name}'s CRM</Link>
+              : editable(selectedCompany) && (
+                <button className={s.button} disabled={busy} onClick={() => void act(async () => {
+                  await result(platform.from('crm_companies').update({ is_client: true }).eq('id', selectedCompany.id).eq('workspace_id', ws));
+                  navigate(`/crm/companies?client=${selectedCompany.id}`);
+                })}>Give it its own CRM</button>
+              ))}
+            <Link className={s.button} to={`/agents?crm=${recordId}&crm_kind=${kind}`}>Ask Sales Assistant</Link>
+            <span className={s.spacer} />
+            {admin && selectedRecord && (
+              <button className={`${s.button} ${s.danger}`} disabled={busy} onClick={() => {
+                if (!window.confirm(`Delete ${selectedRecord.name}? Its contacts and deals stay, unlinked; its Drive folder is kept.`)) return;
+                void act(async () => {
+                  await result(platform.from(TABLES[kind]).delete().eq('id', selectedRecord.id).eq('workspace_id', ws));
+                  navigate(`/crm/${kind}${book}`);
+                });
+              }}>Delete</button>
+            )}
+          </div>
+          {selectedRecord ? (
+            <RecordView ws={ws} userId={userId} kind={kind} record={selectedRecord} columns={columns} people={context.people}
+              editable={editable(selectedRecord)} suggestions={suggestions} onSave={saveCell} book={book} />
+          ) : (
+            <div className={s.empty}>{record.isPending ? 'Loading…' : 'This record is no longer available.'}</div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className={s.views} style={{ padding: '12px 20px 0' }}>
+            <button className={`${s.chip} ${!activeView ? s.chipActive : ''}`} onClick={() => { setActiveView(null); setView(EMPTY_VIEW); }}>All {kind}</button>
+            {views.data?.map((v) => (
+              <button key={v.id} className={`${s.chip} ${activeView === v.id ? s.chipActive : ''}`} onClick={() => { setActiveView(v.id); setView(viewFromSaved(v)); }}>{v.name}</button>
+            ))}
+            {dirty && savedView && (
+              <button className={s.ghost} disabled={busy} onClick={() => void act(() => result(platform.from('crm_views').update(savedFromView(view)).eq('id', savedView.id)))}>Update “{savedView.name}”</button>
+            )}
+            {dirty && <button className={s.ghost} onClick={() => setDialog('saveView')}>Save as view</button>}
+            {savedView && (admin || savedView.created_by === userId) && (
+              <button className={s.ghost} onClick={() => {
+                if (!window.confirm(`Delete the view “${savedView.name}”?`)) return;
+                void act(async () => { await result(platform.from('crm_views').delete().eq('id', savedView.id)); setActiveView(null); setView(EMPTY_VIEW); });
+              }}>Delete view</button>
+            )}
+          </div>
+
+          <div className={s.toolbar}>
+            <input className={s.search} type="search" aria-label={`Search ${kind}`} placeholder={`Search ${kind}…`} value={search} onChange={(e) => setSearch(e.target.value)} />
+            <button className={s.button} onClick={() => setView({ ...view, rules: [...view.rules, { field: (visible[1] ?? columns[0]).key, op: OPERATORS[filterKind((visible[1] ?? columns[0]).type)][0].op }] })}>+ Filter</button>
+            {kind === 'companies' && (
+              <button className={s.button} onClick={() => setView({ ...view, rules: [...view.rules, { field: 'customer_since', op: 'not_empty' }] })}>Customers</button>
+            )}
+            {kind === 'deals' && <button className={s.button} onClick={() => setBoard(!board)}>{board ? 'Table' : 'Board'}</button>}
+            <div className={s.menuWrap}>
+              <button className={s.button} onClick={() => setColumnsOpen(!columnsOpen)} aria-expanded={columnsOpen}>Columns</button>
+              {columnsOpen && (
+                <div className={s.menu} onMouseLeave={() => setColumnsOpen(false)}>
+                  {columns.slice(1).map((c) => {
+                    const hidden = view.columns[c.key]?.hidden ?? !c.shown;
+                    return (
+                      <label key={c.key}>
+                        <input type="checkbox" checked={!hidden} onChange={() => setView({ ...view, columns: { ...view.columns, [c.key]: { ...view.columns[c.key], hidden: !hidden } } })} />
+                        {c.label}
+                      </label>
+                    );
+                  })}
+                  {admin && <button className={s.ghost} onClick={() => { setColumnsOpen(false); setDialog('properties'); }}>Manage properties…</button>}
+                </div>
+              )}
+            </div>
+            <span className={s.spacer} />
+            {kind !== 'deals' && <button className={s.button} onClick={() => setDialog('import')}>Import</button>}
+            <button className={s.button} onClick={exportCsv} disabled={!rows.data?.length}>Export</button>
+            {kind === 'deals' && admin && <button className={s.button} onClick={() => setDialog('stages')}>Stages</button>}
+            <button className={s.primary} onClick={() => setDialog('new')}>New {SINGULAR[kind]}</button>
+          </div>
+
+          {view.rules.length > 0 && <FilterBar view={view} columns={columns} onView={setView} />}
+          {clientName && <p className={s.hint} style={{ padding: '0 20px 8px' }}>Records here stay separate from our CRM. Companies added here get no Drive folder.</p>}
+          {selected.size > 0 && (
+            <div className={s.bulk}>
+              {selected.size} selected
+              {admin && <button className={`${s.button} ${s.danger}`} disabled={busy} onClick={deleteSelected}>Delete</button>}
+              <button className={s.ghost} onClick={() => setSelected(new Set())}>Clear</button>
+            </div>
+          )}
+
+          {rows.isPending ? (
+            <div className={s.empty}>Loading…</div>
+          ) : kind === 'deals' && board ? (
+            <DealsBoard
+              deals={(rows.data ?? []) as Deal[]}
+              stages={context.stages}
+              pipelines={context.pipelines}
+              pipelineId={pipeline}
+              onPipeline={setPipelineId}
+              companyName={(id) => context.companies.find((c) => c.id === id)?.name ?? ''}
+              canEdit={editable}
+              onMove={(d, stageId) => saveCell(d, columns.find((c) => c.key === 'stage_id')!, stageId)}
+              book={book}
+            />
+          ) : !rows.data?.length && !search && !view.rules.length ? (
+            <div className={s.empty}>
+              <p>No {kind} in {bookName} yet.</p>
+              <div className={s.choiceRow} style={{ justifyContent: 'center' }}>
+                <button className={s.primary} onClick={() => setDialog('new')}>New {SINGULAR[kind]}</button>
+                {kind !== 'deals' && <button className={s.button} onClick={() => setDialog('import')}>Import from a file or Drive</button>}
+              </div>
+            </div>
+          ) : (
+            <RecordTable kind={kind} records={rows.data ?? []} columns={visible} view={view} onView={setView} canEdit={editable}
+              onSave={saveCell} selected={selected} onSelect={setSelected} book={book} suggestions={suggestions} />
+          )}
+        </>
+      )}
+
+      {dialog === 'new' && ctx.data && (
+        <NewRecord ws={ws} userId={userId} kind={kind} client={client} ctx={ctx.data} pipelineId={pipeline}
+          onClose={() => setDialog(null)} onSaved={async (id) => { setDialog(null); await refresh(); navigate(`/crm/${kind}/${id}${book}`); }} />
+      )}
+      {dialog === 'import' && kind !== 'deals' && (
+        <ImportDialog ws={ws} userId={userId} admin={admin} kind={kind} client={client} bookName={bookName} fields={context.fields}
+          onClose={() => setDialog(null)} onDone={async () => { await refresh(); }} />
+      )}
+      {dialog === 'client' && (
+        <AddClient ws={ws} userId={userId} onClose={() => setDialog(null)} onSaved={async (id) => { setDialog(null); await refresh(); navigate(`/crm/companies?client=${id}`); }} />
+      )}
+      {dialog === 'stages' && <StagesDialog ws={ws} stages={context.stages} pipelines={context.pipelines} pipelineId={pipeline} onClose={() => setDialog(null)} onChanged={refresh} />}
+      {dialog === 'properties' && <PropertiesDialog ws={ws} userId={userId} kind={kind} fields={context.fields} onClose={() => setDialog(null)} onChanged={refresh} />}
+      {dialog === 'saveView' && (
+        <NameDialog title="Save view" label="View name" onClose={() => setDialog(null)} onSave={async (name) => {
+          const row = await result(platform.from('crm_views').insert({ workspace_id: ws, entity: kind, name, created_by: userId, position: views.data?.length ?? 0, ...savedFromView(view) }).select().single());
+          setActiveView(row.id);
+          setDialog(null);
+          await refresh();
+        }} />
+      )}
+    </div>
+  );
 }
-function AddClient({ws,userId,onClose,onSaved}:{ws:string;userId:string;onClose:()=>void;onSaved:(id:string)=>Promise<void>}){
- const [pick,setPick]=useState('');const [name,setName]=useState('');const [error,setError]=useState('');const [busy,setBusy]=useState(false);
- const ours=useQuery({queryKey:['platform',ws,userId,'crm','our-companies'],queryFn:()=>result(platform.from('crm_companies').select('id,name').eq('workspace_id',ws).is('client_id',null).eq('is_client',false).order('name').limit(500))});
- async function save(e:React.FormEvent){e.preventDefault();setBusy(true);setError('');try{const r=pick?await result(platform.from('crm_companies').update({is_client:true}).eq('id',pick).eq('workspace_id',ws).select('id').single()):await result(platform.from('crm_companies').insert({workspace_id:ws,name,owner_id:userId,created_by:userId,is_client:true}).select('id').single());await onSaved(r.id);}catch(e){setError(errorText(e));}finally{setBusy(false);}}
- return <Dialog open onClose={onClose} title="New client CRM"><form className={s.form} onSubmit={save}><p className={s.muted}>A client CRM keeps that client's own contacts, companies and deals apart from ours.</p><label>Client<select className={s.input} value={pick} onChange={e=>setPick(e.target.value)}><option value="">New company…</option>{ours.data?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>{!pick&&<label>Company name<input className={s.input} value={name} onChange={e=>setName(e.target.value)} required maxLength={200}/></label>}{(error||ours.error)&&<p role="alert" className={s.error}>{error||errorText(ours.error)}</p>}<button className={s.primary} disabled={busy}>Create client CRM</button></form></Dialog>;
+
+function FilterBar({ view, columns, onView }: { view: ViewState; columns: Column[]; onView: (v: ViewState) => void }) {
+  const setRule = (i: number, rule: Rule) => onView({ ...view, rules: view.rules.map((r, j) => (j === i ? rule : r)) });
+  return (
+    <div className={s.filters}>
+      {view.rules.map((rule, i) => {
+        const column = columns.find((c) => c.key === rule.field) ?? columns[0];
+        const fk = filterKind(column.type);
+        const value = Array.isArray(rule.value) ? rule.value[0] ?? '' : rule.value ?? '';
+        return (
+          <span key={i} className={s.rule}>
+            <select aria-label="Field" value={column.key} onChange={(e) => {
+              const c = columns.find((x) => x.key === e.target.value)!;
+              setRule(i, { field: c.key, op: OPERATORS[filterKind(c.type)][0].op });
+            }}>
+              {columns.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+            </select>
+            <select aria-label="Condition" value={rule.op} onChange={(e) => setRule(i, { ...rule, op: e.target.value })}>
+              {OPERATORS[fk].map((o) => <option key={o.op} value={o.op}>{o.label}</option>)}
+            </select>
+            {needsValue(rule.op) && (fk === 'choice' && column.options ? (
+              <select aria-label="Value" value={value} onChange={(e) => setRule(i, { ...rule, value: e.target.value ? [e.target.value] : [] })}>
+                <option value="">Choose…</option>
+                {column.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            ) : (
+              <input aria-label="Value" type={fk === 'date' && !rule.op.endsWith('_days') ? 'date' : fk === 'number' || rule.op.endsWith('_days') ? 'number' : 'text'}
+                value={value} onChange={(e) => setRule(i, { ...rule, value: fk === 'choice' ? [e.target.value] : e.target.value })} />
+            ))}
+            <button className={s.ruleRemove} aria-label="Remove filter" onClick={() => onView({ ...view, rules: view.rules.filter((_, j) => j !== i) })}>×</button>
+          </span>
+        );
+      })}
+      {view.rules.length > 1 && (
+        <select className={s.rule} aria-label="Match" value={view.match} onChange={(e) => onView({ ...view, match: e.target.value as 'all' | 'any' })}>
+          <option value="all">Match all filters</option>
+          <option value="any">Match any filter</option>
+        </select>
+      )}
+      <button className={s.ghost} onClick={() => onView({ ...view, rules: [] })}>Clear filters</button>
+    </div>
+  );
 }
-function LinkResource({ws,userId,kind,id,onSaved}:{ws:string;userId:string;kind:Kind;id:string;onSaved:()=>Promise<unknown>}){
- const [open,setOpen]=useState(false);const [target,setTarget]=useState('');const [error,setError]=useState('');
- const choices=useQuery({queryKey:['platform',ws,userId,'crm-link-options'],enabled:open,queryFn:async()=>{const [files,tasks,channels]=await Promise.all([result(platform.rpc('drive_list',{p_workspace_id:ws,p_view:'all',p_limit:100})),result(platform.from('tasks').select('id,title').eq('workspace_id',ws).is('deleted_at',null).limit(100)),result(platform.from('channels').select('id,name').eq('workspace_id',ws).limit(100))]);return{files,tasks,channels};}});
- return <><button className={s.button} onClick={()=>setOpen(true)}>Link resource</button><Dialog open={open} onClose={()=>setOpen(false)} title="Link an existing resource"><form className={s.form} onSubmit={e=>{e.preventDefault();const [type,targetId]=target.split(':');void result(platform.from('crm_links').insert({workspace_id:ws,created_by:userId,...(kind==='companies'?{company_id:id}:kind==='contacts'?{contact_id:id}:{deal_id:id}),...(type==='file'?{item_id:targetId}:type==='task'?{task_id:targetId}:{channel_id:targetId})})).then(async()=>{await onSaved();setOpen(false);}).catch(e=>setError(errorText(e)));}}><p className={s.muted}>Only people with access to the linked resource will see the link. This action grants no additional access.</p><select className={s.input} aria-label="Resource" value={target} onChange={e=>setTarget(e.target.value)} required><option value="">Choose a resource</option>{choices.data?.files.map(f=><option key={f.id} value={`file:${f.id}`}>File: {f.name}</option>)}{choices.data?.tasks.map(t=><option key={t.id} value={`task:${t.id}`}>Task: {t.title}</option>)}{choices.data?.channels.map(c=><option key={c.id} value={`channel:${c.id}`}>Channel: {c.name}</option>)}</select>{(error||choices.error)&&<p role="alert">{error||errorText(choices.error)}</p>}<button className={s.primary}>Link resource</button></form></Dialog></>;
+
+function NewRecord({ ws, userId, kind, client, ctx, pipelineId, onClose, onSaved }: {
+  ws: string; userId: string; kind: Kind; client: string | null; ctx: Context; pipelineId: string;
+  onClose: () => void; onSaved: (id: string) => Promise<void>;
+}) {
+  const [name, setName] = useState('');
+  const [pipeline, setPipeline] = useState(pipelineId);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const stages = ctx.stages.filter((st) => st.pipeline_id === pipeline);
+  const save = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const common = { workspace_id: ws, name: name.trim(), owner_id: userId, created_by: userId, client_id: client };
+      const row = kind === 'deals' ? { ...common, pipeline_id: pipeline, stage_id: stages[0]?.id, value: 0, currency: 'EUR' } : common;
+      const created = await result(platform.from(TABLES[kind]).insert(row).select('id').single());
+      await onSaved(created.id);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open onClose={onClose} title={`New ${SINGULAR[kind]}`} size="sm">
+      <form className={s.form} onSubmit={(e) => { e.preventDefault(); void save(); }}>
+        <label>Name<input className={s.input} autoFocus value={name} onChange={(e) => setName(e.target.value)} required maxLength={200} /></label>
+        {kind === 'deals' && (
+          <label>Pipeline
+            <select className={s.input} value={pipeline} onChange={(e) => setPipeline(e.target.value)} required>
+              {ctx.pipelines.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+        )}
+        {kind === 'deals' && !ctx.pipelines.length && <p className={s.hint}>An administrator needs to create a pipeline first (Stages).</p>}
+        <p className={s.hint}>Fill in the rest on the record’s page.</p>
+        {error && <p className={s.error}>{error}</p>}
+        <button className={s.primary} disabled={busy || !name.trim() || (kind === 'deals' && !stages.length)}>Create</button>
+      </form>
+    </Dialog>
+  );
+}
+
+function AddClient({ ws, userId, onClose, onSaved }: { ws: string; userId: string; onClose: () => void; onSaved: (id: string) => Promise<void> }) {
+  const [pick, setPick] = useState('');
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const ours = useQuery({
+    queryKey: ['platform', ws, userId, 'crm', 'our-companies'],
+    queryFn: (): Promise<{ id: string; name: string }[]> => result(platform.from('crm_companies').select('id,name').eq('workspace_id', ws).is('client_id', null).eq('is_client', false).order('name').limit(1000)),
+  });
+  const save = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const r = pick
+        ? await result(platform.from('crm_companies').update({ is_client: true }).eq('id', pick).eq('workspace_id', ws).select('id').single())
+        : await result(platform.from('crm_companies').insert({ workspace_id: ws, name: name.trim(), owner_id: userId, created_by: userId, is_client: true }).select('id').single());
+      await onSaved(r.id);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open onClose={onClose} title="New client CRM" size="sm">
+      <form className={s.form} onSubmit={(e) => { e.preventDefault(); void save(); }}>
+        <p className={s.hint}>A client CRM keeps that client's own companies, contacts and deals apart from ours.</p>
+        <label>Client
+          <select className={s.input} value={pick} onChange={(e) => setPick(e.target.value)}>
+            <option value="">New company…</option>
+            {ours.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </label>
+        {!pick && <label>Company name<input className={s.input} value={name} onChange={(e) => setName(e.target.value)} required maxLength={200} /></label>}
+        {(error || ours.error) && <p className={s.error}>{error || errorText(ours.error)}</p>}
+        <button className={s.primary} disabled={busy || (!pick && !name.trim())}>Create client CRM</button>
+      </form>
+    </Dialog>
+  );
+}
+
+function NameDialog({ title, label, onClose, onSave }: { title: string; label: string; onClose: () => void; onSave: (name: string) => Promise<void> }) {
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  return (
+    <Dialog open onClose={onClose} title={title} size="sm">
+      <form className={s.form} onSubmit={(e) => { e.preventDefault(); onSave(name.trim()).catch((err) => setError(errorText(err))); }}>
+        <label>{label}<input className={s.input} autoFocus value={name} onChange={(e) => setName(e.target.value)} required maxLength={80} /></label>
+        {error && <p className={s.error}>{error}</p>}
+        <button className={s.primary} disabled={!name.trim()}>Save</button>
+      </form>
+    </Dialog>
+  );
+}
+
+function StagesDialog({ ws, stages, pipelines, pipelineId, onClose, onChanged }: {
+  ws: string; stages: Stage[]; pipelines: { id: string; name: string }[]; pipelineId: string; onClose: () => void; onChanged: () => Promise<unknown>;
+}) {
+  const [pipeline, setPipeline] = useState(pipelineId);
+  const [newPipeline, setNewPipeline] = useState('');
+  const [newStage, setNewStage] = useState('');
+  const [error, setError] = useState('');
+  const list = stages.filter((st) => st.pipeline_id === pipeline).sort((a, b) => a.position - b.position);
+  const run = (fn: () => Promise<unknown>) => fn().then(onChanged).catch((e) => setError(errorText(e)));
+  const save = (st: Stage, patch: Partial<Stage>) => {
+    const next = { ...st, ...patch };
+    if (patch.is_won) next.is_lost = false;
+    if (patch.is_lost) next.is_won = false;
+    return run(() => result(platform.rpc('crm_save_stage', { p_workspace_id: ws, p_pipeline_id: pipeline, p_stage_id: st.id, p_name: next.name, p_color: next.color, p_is_won: next.is_won, p_is_lost: next.is_lost })));
+  };
+  const move = (i: number, by: number) => {
+    const ids = list.map((st) => st.id);
+    [ids[i], ids[i + by]] = [ids[i + by], ids[i]];
+    return run(() => result(platform.rpc('crm_reorder_stages', { p_workspace_id: ws, p_pipeline_id: pipeline, p_stage_ids: ids })));
+  };
+  return (
+    <Dialog open onClose={onClose} title="Pipeline stages" size="lg">
+      <div className={s.form}>
+        {pipelines.length > 0 && (
+          <select className={s.input} value={pipeline} onChange={(e) => setPipeline(e.target.value)} aria-label="Pipeline">
+            {pipelines.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        )}
+        {list.map((st, i) => (
+          <div key={st.id} className={s.stageRow}>
+            <input className={s.input} defaultValue={st.name} aria-label="Stage name" onBlur={(e) => { if (e.target.value.trim() && e.target.value !== st.name) void save(st, { name: e.target.value.trim() }); }} />
+            <select className={s.input} value={st.color} aria-label="Colour" onChange={(e) => void save(st, { color: e.target.value })}>
+              {STAGE_COLORS.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select className={s.input} value={st.is_won ? 'won' : st.is_lost ? 'lost' : 'open'} aria-label="Meaning"
+              onChange={(e) => void save(st, { is_won: e.target.value === 'won', is_lost: e.target.value === 'lost' })}>
+              <option value="open">Open</option>
+              <option value="won">Won</option>
+              <option value="lost">Lost</option>
+            </select>
+            <span className={s.choiceRow}>
+              <button className={s.ghost} disabled={i === 0} onClick={() => void move(i, -1)} aria-label="Move up">↑</button>
+              <button className={s.ghost} disabled={i === list.length - 1} onClick={() => void move(i, 1)} aria-label="Move down">↓</button>
+            </span>
+            <button className={`${s.ghost} ${s.danger}`} aria-label={`Delete ${st.name}`} onClick={() => {
+              const target = list.find((x) => x.id !== st.id);
+              if (!window.confirm(`Delete “${st.name}”? Its deals move to “${target?.name}”.`)) return;
+              void run(() => result(platform.rpc('crm_delete_stage', { p_workspace_id: ws, p_stage_id: st.id, p_move_to: target?.id ?? null })));
+            }}>Delete</button>
+          </div>
+        ))}
+        {pipeline && (
+          <form className={s.choiceRow} onSubmit={(e) => {
+            e.preventDefault();
+            if (!newStage.trim()) return;
+            void run(() => result(platform.rpc('crm_save_stage', { p_workspace_id: ws, p_pipeline_id: pipeline, p_stage_id: null, p_name: newStage.trim(), p_color: 'sky' }))).then(() => setNewStage(''));
+          }}>
+            <input className={s.input} placeholder="New stage" value={newStage} onChange={(e) => setNewStage(e.target.value)} />
+            <button className={s.button}>Add stage</button>
+          </form>
+        )}
+        <form className={s.choiceRow} onSubmit={(e) => {
+          e.preventDefault();
+          if (!newPipeline.trim()) return;
+          result(platform.rpc('crm_create_pipeline', { p_workspace_id: ws, p_name: newPipeline.trim() }))
+            .then(async (id: string) => { setNewPipeline(''); await onChanged(); setPipeline(id); })
+            .catch((err) => setError(errorText(err)));
+        }}>
+          <input className={s.input} placeholder="New pipeline name" value={newPipeline} onChange={(e) => setNewPipeline(e.target.value)} />
+          <button className={s.button}>Create pipeline</button>
+        </form>
+        {error && <p className={s.error}>{error}</p>}
+      </div>
+    </Dialog>
+  );
+}
+
+function PropertiesDialog({ ws, userId, kind, fields, onClose, onChanged }: {
+  ws: string; userId: string; kind: Kind; fields: CustomField[]; onClose: () => void; onChanged: () => Promise<unknown>;
+}) {
+  const [label, setLabel] = useState('');
+  const [type, setType] = useState('text');
+  const [choices, setChoices] = useState('');
+  const [error, setError] = useState('');
+  const mine = fields.filter((f) => f.entity === kind);
+  const add = async () => {
+    setError('');
+    try {
+      const key = label.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').replace(/^(\d)/, 'f_$1').slice(0, 40) || 'field';
+      await result(platform.from('crm_custom_fields').insert({
+        workspace_id: ws, entity: kind, key, label: label.trim(), field_type: type, created_by: userId, position: mine.length,
+        options: type === 'select' ? { choices: choices.split(',').map((c) => c.trim()).filter(Boolean) } : {},
+      }));
+      setLabel('');
+      setChoices('');
+      await onChanged();
+    } catch (e) {
+      setError(errorText(e));
+    }
+  };
+  return (
+    <Dialog open onClose={onClose} title={`Custom properties for ${kind}`} size="md">
+      <div className={s.form}>
+        {mine.map((f) => (
+          <div key={f.id} className={s.choiceRow} style={{ alignItems: 'center' }}>
+            <strong style={{ flex: 1 }}>{f.label}</strong>
+            <span className={s.hint}>{f.field_type}</span>
+            <button className={`${s.ghost} ${s.danger}`} onClick={() => {
+              if (!window.confirm(`Remove the property “${f.label}”? Values stay stored but are no longer shown.`)) return;
+              result(platform.from('crm_custom_fields').delete().eq('id', f.id)).then(onChanged).catch((e) => setError(errorText(e)));
+            }}>Remove</button>
+          </div>
+        ))}
+        {!mine.length && <p className={s.hint}>No custom properties yet.</p>}
+        <form className={s.form} onSubmit={(e) => { e.preventDefault(); void add(); }}>
+          <label>Name<input className={s.input} value={label} onChange={(e) => setLabel(e.target.value)} required maxLength={80} /></label>
+          <label>Type
+            <select className={s.input} value={type} onChange={(e) => setType(e.target.value)}>
+              {['text', 'long_text', 'number', 'checkbox', 'date', 'select', 'url', 'email', 'phone', 'tags'].map((t) => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
+            </select>
+          </label>
+          {type === 'select' && <label>Choices (comma separated)<input className={s.input} value={choices} onChange={(e) => setChoices(e.target.value)} /></label>}
+          <button className={s.primary} disabled={!label.trim()}>Add property</button>
+        </form>
+        {error && <p className={s.error}>{error}</p>}
+      </div>
+    </Dialog>
+  );
 }

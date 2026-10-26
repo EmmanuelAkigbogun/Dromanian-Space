@@ -172,7 +172,7 @@ function AppLayoutWithThread() {
               <Route path="/files" element={<Navigate to="/drive" replace />} />
               <Route path="/drive" element={<DrivePage />} />
               <Route path="/threads" element={<ThreadsPage />} />
-              <Route path="/crm" element={<Navigate to="/crm/contacts" replace />} />
+              <Route path="/crm" element={<Navigate to="/crm/companies" replace />} />
               <Route path="/crm/:kind" element={<CRMPage />} />
               <Route path="/crm/:kind/:recordId" element={<CRMPage />} />
               <Route path="/drive/item/:itemId" element={<DrivePage />} />

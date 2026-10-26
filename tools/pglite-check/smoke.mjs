@@ -299,6 +299,24 @@ export default async function smoke(db, legacy) {
   await h.user(owner, 'DELETE FROM crm_deals WHERE id = $1', [deal]);
   check((await h.admin('SELECT id FROM crm_notes WHERE record_id = $1', [deal])).length === 0, 'notes go with their record');
 
+  // CRM import (20261026000500)
+  const foldersBeforeImport = (await h.admin(`SELECT count(*)::int AS n FROM drive_items WHERE workspace_id = $1 AND kind = 'folder'`, [wsA]))[0].n;
+  const imported = (await h.user(member, 'SELECT crm_import($1, $2, $3, $4) AS r', [wsA, company.id, 'companies', JSON.stringify([{ name: 'Supplier One', industry: 'Logistics' }, { name: 'supplier one' }, { name: '' }, { name: 'Supplier Two', custom: { tier: 'Gold' } }])]))[0].r;
+  check(imported.created === 2 && imported.skipped === 2, 'imports skip duplicate and unnamed companies');
+  const people = (await h.user(member, 'SELECT crm_import($1, $2, $3, $4) AS r', [wsA, company.id, 'contacts', JSON.stringify([{ name: 'Dana', email: 'dana@supplier.test', company: 'Supplier One' }, { name: 'Dana again', email: 'DANA@supplier.test' }, { name: 'Eli', company: 'Brand New Co' }])]))[0].r;
+  check(people.created === 2 && people.skipped === 1 && people.companies_created === 1, 'contact imports dedupe by email and create missing companies');
+  check((await h.admin(`SELECT c.client_id = $2 AS ok FROM crm_contacts ct JOIN crm_companies c ON c.id = ct.company_id WHERE ct.email = 'dana@supplier.test' AND ct.workspace_id = $1`, [wsA, company.id]))[0]?.ok, 'imported contacts link to companies in the same CRM');
+  await h.user(owner, 'SELECT crm_import($1, NULL, $2, $3)', [wsA, 'companies', JSON.stringify([{ name: 'Bulk Our Co' }])]);
+  check((await h.admin(`SELECT count(*)::int AS n FROM drive_items WHERE workspace_id = $1 AND kind = 'folder'`, [wsA]))[0].n === foldersBeforeImport, 'bulk imports into our CRM skip folders unless asked');
+  await h.user(owner, 'SELECT crm_import($1, NULL, $2, $3, true)', [wsA, 'companies', JSON.stringify([{ name: 'Bulk With Folder' }])]);
+  check((await h.admin(`SELECT drive_folder_id FROM crm_companies WHERE workspace_id = $1 AND name = 'Bulk With Folder'`, [wsA]))[0].drive_folder_id !== null, 'imports can still create folders when asked');
+  check(await h.denied(h.user(other, 'SELECT crm_import($1, NULL, $2, $3)', [wsA, 'companies', '[]'])), 'outsiders cannot import');
+
+  // Prospect columns (20261026000600)
+  await h.user(owner, 'SELECT crm_import($1, NULL, $2, $3)', [wsA, 'companies', JSON.stringify([{ name: 'Consstar Construct', email: 'office@consstar.ro', industry: 'Construction', linkedin_url: 'https://www.linkedin.com/company/consstar', listed_location: 'Sector 5, Bucharest', prospect_type: 'Potential direct buyer', contact_status: 'Email and phone found', contact_sources: 'https://consstar.ro/contact' }])]);
+  const pc = (await h.admin(`SELECT * FROM crm_companies WHERE workspace_id = $1 AND name = 'Consstar Construct'`, [wsA]))[0];
+  check(pc?.has_linkedin === true && pc.prospect_type === 'Potential direct buyer' && pc.contact_sources === 'https://consstar.ro/contact', 'companies keep the prospect-list columns');
+
   // CRM delete (20261026000300)
   const doomed = (await h.user(owner, `INSERT INTO crm_companies (workspace_id, name, owner_id, created_by) VALUES ($1, 'Short-lived Ltd', $2, $2) RETURNING id`, [wsA, owner.id]))[0].id;
   const keptContact = (await h.user(owner, `INSERT INTO crm_contacts (workspace_id, name, owner_id, created_by, company_id) VALUES ($1, 'Kept person', $2, $2, $3) RETURNING id`, [wsA, owner.id, doomed]))[0].id;
