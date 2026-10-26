@@ -15,6 +15,21 @@
   background-color: var(--color-primary-bg, rgba(130, 166, 177, 0.05));
 }
 
+.dropOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--color-primary);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--color-background) 88%, transparent);
+  color: var(--color-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  pointer-events: none;
+}
+
 .pendingFiles {
   display: flex;
   flex-wrap: wrap;

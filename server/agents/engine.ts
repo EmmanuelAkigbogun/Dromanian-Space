@@ -7,10 +7,10 @@
 import { env } from '../env.js';
 import { log } from '../log.js';
 import { rpc, serviceClient } from '../database.js';
-import { HttpError } from '../http.js';
 import { PROVIDER_KEYS, PROVIDER_LABELS, providerFor, providerNameFor } from '../ai/registry.js';
-import { addUsage, emptyUsage, ProviderError, type Effort, type ModelProvider, type TurnUsage } from '../ai/provider.js';
+import type { Effort, ModelProvider, TurnUsage } from '../ai/provider.js';
 import { CitationRegistry, resolveCitations, sourcesFooter } from './citations.js';
+import { providerCrewRunner, remoteCrewRunner, type CrewAgentConfig, type CrewRunner } from './crew.js';
 import { PROVIDER_TOOLS, TOOL_REGISTRY, toolSpecs } from './tools/index.js';
 import { readConversation, memberChannels } from './tools/read.js';
 import { quoteData, type AgentTool, type RunContext, type RunScope, type SourceKind, type ToolOutput } from './tools/types.js';
@@ -18,11 +18,8 @@ import { quoteData, type AgentTool, type RunContext, type RunScope, type SourceK
 const HEARTBEAT_MS = 5000;
 // Viewers follow a run by reading its checkpoints, so keep them frequent.
 const CHECKPOINT_MS = 500;
-const MAX_TOKENS = 32000;
-const MAX_JSON_RETRIES = 2;
 /** Stop before the worker's own limit so partial output is kept. */
 const RUN_BUDGET_MS = Number(process.env.AGENT_RUN_BUDGET_MS ?? 600_000);
-const MAX_PARALLEL_SPECIALISTS = 2;
 /** Tools available in a direct-message AI session (see sessionTranscript). */
 const SESSION_TOOLS = ['submit_tasks_for_approval'];
 
@@ -94,13 +91,17 @@ async function sessionTranscript(ctx: RunContext, sessionId: string, channelId: 
 }
 
 function errorMessage(err: unknown): { code: string; message: string } {
-  if (err instanceof ProviderError) return { code: err.code, message: err.message };
+  if (err instanceof Error && /auth|api key|unauthor/i.test(err.message)) return { code: 'auth', message: 'The configured AI provider rejected its credentials.' };
+  if (err instanceof Error && /rate limit/i.test(err.message)) return { code: 'rate_limited', message: 'The AI provider is rate limited. Try again shortly.' };
+  if (err instanceof Error && /CrewAI runtime returned HTTP|fetch failed|ECONNREFUSED/i.test(err.message)) {
+    return { code: 'crew_unavailable', message: 'The CrewAI runtime is temporarily unavailable. Try again.' };
+  }
   return { code: 'internal', message: 'The run failed because of a server error. Try again.' };
 }
 
 export async function executeRun(
   runId: string,
-  opts: { worker?: string; events?: RunEvents; provider?: ModelProvider; budgetMs?: number } = {},
+  opts: { worker?: string; events?: RunEvents; provider?: ModelProvider; crew?: CrewRunner; budgetMs?: number } = {},
 ): Promise<RunOutcome> {
   const worker = opts.worker ?? env().workerId;
   const emit = (event: string, data: unknown) => {
@@ -244,18 +245,47 @@ export async function executeRun(
   const canFetchSite = version.tools.includes('fetch_site_page') && Boolean(ctx.settings.siteUrl);
   if (canFetchSite) contextLines.push(`The workspace site is ${ctx.settings.siteUrl} — you may fetch pages on that site only.`);
   const isCoordinator = agent.kind === 'coordinator' && run.depth === 0;
+  let specialistConfigs: CrewAgentConfig[] = [];
   if (isCoordinator) {
     const { data: team } = await db
       .from('workspace_agents')
-      .select('handle, name, description, template_key, status, archived_at')
+      .select('id, handle, name, description, category, template_key, current_version_id, visibility, created_by, status, archived_at')
       .eq('workspace_id', run.workspace_id)
       .eq('status', 'active')
       .is('archived_at', null);
-    const specialists = (team ?? []).filter((a) => a.handle !== agent.handle);
+    const specialists = (team ?? []).filter((a) =>
+      a.handle !== agent.handle && a.current_version_id && (a.visibility === 'workspace' || a.created_by === run.requested_by),
+    );
     contextLines.push(
       'Specialists you can delegate to (handle — name: what they do):',
       ...specialists.map((a) => `- ${a.handle} — ${a.name}: ${a.description}`),
     );
+    if (specialists.length) {
+      const { data: versions, error: versionsError } = await db
+        .from('workspace_agent_versions')
+        .select('id, instructions, tools, model, effort, max_tool_steps')
+        .in('id', specialists.map((a) => a.current_version_id as string));
+      if (versionsError) throw new Error(versionsError.message);
+      type TeamVersion = { id: string; instructions: string; tools: string[]; model: string; effort: string; max_tool_steps: number };
+      const byId = new Map<string, TeamVersion>(((versions ?? []) as TeamVersion[]).map((v) => [v.id, v]));
+      specialistConfigs = specialists.flatMap((a) => {
+        const v = byId.get(a.current_version_id as string);
+        if (!v) return [];
+        return [{
+          name: a.name as string,
+          role: `${a.name} — ${a.category || 'Specialist'}`,
+          goal: (a.description as string) || `Complete work assigned to @${a.handle}.`,
+          description: (a.description as string) || '',
+          instructions: v.instructions as string,
+          kind: 'specialist' as const,
+          model: v.model as string,
+          effort: v.effort as string,
+          tools: (v.tools as string[]) ?? [],
+          max_iter: Number(v.max_tool_steps ?? 8),
+          max_execution_time: Math.max(60, Math.floor((opts.budgetMs ?? RUN_BUDGET_MS) / 1000) - 30),
+        }];
+      });
+    }
   }
   if (run.depth > 0) contextLines.push('You are working on a task assigned by the team coordinator; answer the task directly.');
   const userMessage =
@@ -266,23 +296,11 @@ export async function executeRun(
   // ---- Tools ----------------------------------------------------------------
   // A session run may read nothing beyond its transcript.
   const allowed = (n: string) => !run.scope?.session_id || SESSION_TOOLS.includes(n);
-  const tools: AgentTool[] = version.tools
+  const requestedTools = new Set([...version.tools, ...specialistConfigs.flatMap((specialist) => specialist.tools)]);
+  const tools: AgentTool[] = [...requestedTools]
     .filter((n) => allowed(n) && !PROVIDER_TOOLS.includes(n) && (n !== 'delegate_to_specialists' || isCoordinator))
     .map((n) => TOOL_REGISTRY[n])
     .filter((t): t is AgentTool => Boolean(t));
-  const webSearch = allowed('web_search') && version.tools.includes('web_search') && claim.settings.web_research_enabled ? { maxUses: 5 } : null;
-  const webFetch = canFetchSite && allowed('fetch_site_page') ? { allowedDomains: [new URL(ctx.settings.siteUrl!).hostname], maxUses: 8 } : null;
-  const session = provider.startSession({
-    model: run.model,
-    effort: run.effort,
-    system: systemPrompt(agent.name, version.instructions),
-    history: history.map((h) => ({ role: h.role, text: h.content })),
-    userMessage,
-    tools: toolSpecs(tools),
-    webSearch,
-    webFetch,
-    maxTokens: MAX_TOKENS,
-  });
 
   // ---- Liveness: heartbeat, cancellation, time budget ----------------------
   let steps = 0;
@@ -301,17 +319,11 @@ export async function executeRun(
     }
   }, HEARTBEAT_MS);
   const budgetMs = opts.budgetMs ?? RUN_BUDGET_MS;
-  const deadline = Date.now() + budgetMs;
   const budget = setTimeout(() => abort('timeout'), budgetMs);
-
-  if (isCoordinator) {
-    ctx.delegate = (tasks) =>
-      delegate({ runId, workspaceId: run.workspace_id, worker, provider: opts.provider, ctx, tasks, deadline, emit, signal: controller.signal });
-  }
 
   let committed = '';
   let turnText = '';
-  let usage = emptyUsage();
+  let usage: TurnUsage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 };
   let servedModel: string | null = null;
   let lastCheckpoint = 0;
   let checkpointing = false;
@@ -378,80 +390,73 @@ export async function executeRun(
     return { id: call.id, content: out.content, isError: out.isError };
   };
 
-  // ---- Loop -----------------------------------------------------------------
+  // ---- CrewAI execution -----------------------------------------------------
   try {
-    let jsonRetries = 0;
     const warnings: Array<{ code: string; message: string }> = [];
-    for (;;) {
-      turnText = '';
-      let result;
-      try {
-        result = await session.next({
-          signal: controller.signal,
-          onText: (delta) => {
-            turnText += delta;
-            emit('delta', { text: delta });
-            checkpoint();
-          },
-          onWebSearch: (query) => emit('tool', { phase: 'started', id: `web:${query}`, name: 'web_search', label: `Searching the web for “${query}”` }),
-          onWebFetch: (url) => {
-            emit('tool', { phase: 'started', id: `fetch:${url}`, name: 'fetch_site_page', label: `Reading ${url}` });
-            void rpc('agent_add_event', { p_run_id: runId, p_type: 'tool_started', p_data: { name: 'fetch_site_page', label: `Reading ${url}` } }).catch(() => undefined);
-          },
-        });
-      } catch (err) {
-        if (err instanceof ProviderError && err.code === 'invalid_tool_json' && jsonRetries < MAX_JSON_RETRIES) {
-          jsonRetries++;
-          turnText = '';
-          emit('snapshot', { text: committed });
-          continue;
-        }
-        throw err;
-      }
-      jsonRetries = 0;
-      usage = addUsage(usage, result.usage);
-      servedModel = result.model;
-      if (result.fallbackUsed) {
-        await rpc('agent_add_event', { p_run_id: runId, p_type: 'status', p_data: { served_by: result.model } });
-      }
-      for (const src of result.webSources) await ctx.recordSource('web', src.url, { label: src.title ?? src.url });
-      if (result.webSources.length) emit('sources', { web: result.webSources.slice(0, 10) });
-
-      if (result.stop === 'refusal') {
-        // A declined response is discarded, not presented as an answer.
-        emit('snapshot', { text: '' });
-        return await finish('failed', '', usage, servedModel, 'refusal', 'The model declined this request.');
-      }
-      committed = committed && result.text ? `${committed}\n\n${result.text}` : committed || result.text;
-      turnText = '';
-
-      if (result.stop === 'paused') continue;
-      if (result.stop === 'tool_use' && result.toolCalls.length > 0) {
-        if (steps >= version.max_tool_steps) {
-          warnings.push({ code: 'step_limit', message: `Stopped after ${steps} tool steps; the answer may be incomplete.` });
-          break;
-        }
-        steps++;
-        const results: Array<{ id: string; content: string; isError?: boolean }> = [];
-        for (const call of result.toolCalls) {
-          if (controller.signal.aborted) break;
-          results.push(await runTool(call));
-        }
-        if (controller.signal.aborted) throw new ProviderError('aborted', 'Stopped.');
-        session.addToolResults(results);
-        continue;
-      }
-      if (result.stop === 'max_tokens') {
-        if (result.toolCalls.length > 0) {
-          return await finish('failed', committed, usage, servedModel, 'max_tokens', 'The response was too long to complete. Try a narrower request.');
-        }
-        warnings.push({ code: 'truncated', message: 'The answer reached the length limit and is cut off.' });
-      }
-      if (result.stop === 'context_exceeded') {
-        warnings.push({ code: 'context_exceeded', message: 'The conversation is too long for the model; start a new conversation.' });
-      }
-      break;
+    const maxSeconds = Math.max(60, Math.floor(budgetMs / 1000) - 30);
+    const agentConfig: CrewAgentConfig = {
+      name: agent.name,
+      role: agent.kind === 'coordinator' ? `${agent.name} — Crew manager` : agent.name,
+      goal: agent.kind === 'coordinator' ? 'Coordinate the available specialists and deliver one useful answer.' : 'Answer the requester accurately using only authorized workspace tools.',
+      description: agent.handle,
+      instructions: systemPrompt(agent.name, version.instructions),
+      kind: agent.kind,
+      model: run.model,
+      effort: run.effort,
+      tools: version.tools.filter((name) => allowed(name) && Boolean(TOOL_REGISTRY[name]) && name !== 'delegate_to_specialists'),
+      max_iter: version.max_tool_steps,
+      max_execution_time: maxSeconds,
+    };
+    specialistConfigs = specialistConfigs.map((specialist) => ({
+      ...specialist,
+      instructions: systemPrompt(specialist.name, specialist.instructions),
+      tools: specialist.tools.filter((name) => allowed(name) && Boolean(TOOL_REGISTRY[name]) && name !== 'delegate_to_specialists'),
+      max_execution_time: maxSeconds,
+    }));
+    const historyText = history.length
+      ? `<conversation_history>\n${history.map((item) => `${item.role}: ${item.content}`).join('\n\n')}\n</conversation_history>\n\n`
+      : '';
+    const crew = opts.crew ?? (opts.provider ? providerCrewRunner(opts.provider) : remoteCrewRunner);
+    const liveTeam = new Map<string, { task_id: string; agent: string; status: string }>();
+    const result = await crew.run(
+      {
+        run_id: runId,
+        agent: agentConfig,
+        specialists: specialistConfigs,
+        prompt: `${historyText}${userMessage}`,
+        tools: toolSpecs(tools),
+      },
+      {
+        signal: controller.signal,
+        onDelta(delta) {
+          turnText += delta;
+          emit('delta', { text: delta });
+          checkpoint();
+        },
+        onTeam(teamAgent, status) {
+          const existing = liveTeam.get(teamAgent);
+          liveTeam.set(teamAgent, existing ? { ...existing, status } : { task_id: `crew:${teamAgent}`, agent: teamAgent, status });
+          const data = { tasks: [...liveTeam.values()] };
+          emit('team', data);
+          void rpc('agent_add_event', { p_run_id: runId, p_type: 'team', p_data: data }).catch(() => undefined);
+        },
+        async callTool(call) {
+          steps++;
+          const output = await runTool(call);
+          return { content: output.content, isError: output.isError };
+        },
+      },
+    );
+    committed = result.text;
+    turnText = '';
+    usage = result.usage;
+    servedModel = result.model;
+    if (liveTeam.size) {
+      const tasks = [...liveTeam.values()].map((task) => ({ ...task, status: 'completed' }));
+      emit('team', { tasks });
+      await rpc('agent_add_event', { p_run_id: runId, p_type: 'team', p_data: { tasks } });
     }
+    checkpoint(true);
 
     // ---- Finalize -----------------------------------------------------------
     const { text, citations, dropped } = resolveCitations(committed.trim(), ctx.citations);
@@ -478,7 +483,7 @@ export async function executeRun(
     return await finish('completed', text, usage, servedModel);
   } catch (err) {
     const partial = visible();
-    if (err instanceof ProviderError && err.code === 'aborted') {
+    if (controller.signal.aborted) {
       if (abortReason === 'timeout') {
         return await finish('interrupted', partial, usage, servedModel, 'timeout', 'The run reached its time limit before finishing. Retry to continue.');
       }
@@ -496,135 +501,4 @@ export async function executeRun(
     clearTimeout(budget);
     checkpointing = false;
   }
-}
-
-// ---------------------------------------------------------------------------
-// Team chat: the coordinator's delegate tool
-// ---------------------------------------------------------------------------
-interface DelegateArgs {
-  runId: string;
-  workspaceId: string;
-  worker: string;
-  provider?: ModelProvider;
-  ctx: RunContext;
-  tasks: Array<{ agent: string; instruction: string }>;
-  deadline: number;
-  emit: (event: string, data: unknown) => void;
-  signal: AbortSignal;
-}
-
-interface SpecialistResult {
-  agent: string;
-  handle: string;
-  status: string;
-  text: string;
-}
-
-const handleOf = (h: string) => h.trim().replace(/^@/, '').toLowerCase();
-
-/**
- * Creates (or, after a restart, reuses) specialist runs and executes them
- * under the same requester. Specialists' citations are renumbered into the
- * coordinator's registry so the combined answer can cite them.
- */
-async function delegate(a: DelegateArgs): Promise<ToolOutput> {
-  const db = serviceClient();
-  const handles = [...new Set(a.tasks.map((t) => handleOf(t.agent)))];
-  const { data: agents, error } = await db
-    .from('workspace_agents')
-    .select('id, handle, name')
-    .eq('workspace_id', a.workspaceId)
-    .in('handle', handles);
-  if (error) throw new Error(error.message);
-  const agentRows = (agents ?? []) as Array<{ id: string; handle: string; name: string }>;
-  const byHandle = new Map<string, { id: string; handle: string; name: string }>(agentRows.map((x) => [x.handle, x]));
-  const missing = handles.filter((h) => !byHandle.has(h));
-  if (missing.length) {
-    return { content: `Unknown specialist handle(s): ${missing.join(', ')}. Use the handles listed in your context.`, summary: { error: 'unknown_agent' }, isError: true };
-  }
-
-  let created: Array<{ task_id: string; child_run_id: string; agent_id: string; reused: boolean }>;
-  try {
-    created = await rpc('agent_delegate', {
-      p_parent_run_id: a.runId,
-      p_tasks: a.tasks.map((t) => ({ agent_id: byHandle.get(handleOf(t.agent))!.id, instruction: t.instruction })),
-    });
-  } catch (err) {
-    if (err instanceof HttpError && err.status < 500) return { content: err.message, summary: { error: err.code }, isError: true };
-    throw err;
-  }
-  const info = new Map<string, { name: string; handle: string }>(agentRows.map((x) => [x.id, { name: x.name, handle: x.handle }]));
-  a.emit('team', { tasks: created.map((c) => ({ task_id: c.task_id, agent: info.get(c.agent_id)?.name, status: 'queued' })) });
-
-  const results: SpecialistResult[] = new Array(created.length);
-  let next = 0;
-  const lane = async () => {
-    while (next < created.length) {
-      const i = next++;
-      const c = created[i];
-      const who = info.get(c.agent_id) ?? { name: 'Specialist', handle: 'specialist' };
-      const { data: before } = await db.from('agent_runs').select('status').eq('id', c.child_run_id).single();
-      if (!a.signal.aborted && before && ['queued', 'running'].includes(before.status as string)) {
-        a.emit('team', { task_id: c.task_id, agent: who.name, status: 'running' });
-        await executeRun(c.child_run_id, {
-          worker: a.worker,
-          provider: a.provider,
-          budgetMs: Math.max(30_000, a.deadline - Date.now() - 15_000),
-        }).catch((err) => log.error('specialist run crashed', { run_id: c.child_run_id, error: err instanceof Error ? err : String(err) }));
-      }
-      await rpc('agent_settle_team_task', { p_task_id: c.task_id });
-      results[i] = await specialistResult(a.ctx, c.child_run_id, who);
-      a.emit('team', { task_id: c.task_id, agent: who.name, status: results[i].status });
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(MAX_PARALLEL_SPECIALISTS, created.length) }, lane));
-
-  const content = results
-    .map((r) => quoteSpecialist(r))
-    .join('\n\n');
-  return {
-    content: `${content}\n\nCombine these results for the requester. Attribute each part to its specialist and keep the [n] citations.`,
-    summary: { tasks: results.map((r) => ({ agent: r.agent, status: r.status })) },
-  };
-}
-
-function quoteSpecialist(r: SpecialistResult): string {
-  const body = r.text.replace(/<\/specialist>/gi, '');
-  return `<specialist name="${r.agent}" handle="${r.handle}" status="${r.status}">\n${body || '(no output)'}\n</specialist>`;
-}
-
-async function specialistResult(ctx: RunContext, childRunId: string, who: { name: string; handle: string }): Promise<SpecialistResult> {
-  const db = serviceClient();
-  const { data: run } = await db.from('agent_runs').select('status, output_message_id, error_message').eq('id', childRunId).single();
-  if (!run) return { agent: who.name, handle: who.handle, status: 'failed', text: '' };
-  const { data: msg } = await db.from('agent_messages').select('content').eq('id', run.output_message_id).single();
-  const status = run.status === 'awaiting_approval' ? 'completed' : (run.status as string);
-  let text = (msg?.content as string | undefined) ?? '';
-  if (status !== 'completed') {
-    text = `${text}\n\n[This specialist did not finish: ${run.error_message ?? status}.]`.trim();
-  }
-  // Renumber the specialist's citations into the coordinator's registry.
-  const { data: cites } = await db.from('agent_citations').select('ordinal, chunk_id, item_id').eq('run_id', childRunId);
-  const map = new Map<number, number>();
-  if (cites && cites.length) {
-    const { data: chunks } = await db.from('knowledge_chunks').select('id, content, location, item_id').in('id', cites.map((c) => c.chunk_id));
-    const { data: items } = await db.from('drive_items').select('id, name').in('id', cites.map((c) => c.item_id));
-    for (const c of cites) {
-      const chunk = chunks?.find((k) => k.id === c.chunk_id);
-      if (!chunk) continue;
-      const p = ctx.citations.add({
-        chunkId: c.chunk_id as string,
-        itemId: c.item_id as string,
-        itemName: (items?.find((i) => i.id === c.item_id)?.name as string | undefined) ?? 'Source',
-        location: (chunk.location as Record<string, unknown>) ?? {},
-        content: chunk.content as string,
-      });
-      map.set(c.ordinal as number, p.n);
-    }
-  }
-  text = text.replace(/\[(\d{1,3}(?:\s*,\s*\d{1,3})*)\](?!\()/g, (_m, group: string) => {
-    const ns = group.split(',').map((k) => map.get(Number(k.trim()))).filter((n): n is number => n !== undefined);
-    return ns.length ? `[${ns.join(', ')}]` : '';
-  });
-  return { agent: who.name, handle: who.handle, status, text };
 }

@@ -10,7 +10,7 @@ import { executeRun } from '../../server/agents/engine.js';
 import { startRun } from '../../server/agents/start.js';
 import { enqueueRun, tailRun } from '../../server/agents/tail.js';
 import { drainQueue } from '../../server/jobs/runner.js';
-import { emptyUsage, type ModelProvider, type ToolCall, type TurnResult, type TurnStop } from '../../server/ai/provider.js';
+import type { CrewRunner } from '../../server/agents/crew.js';
 import type { SseChannel } from '../../server/http.js';
 import { GET as statusEndpoint } from '../../api/ai/status.js';
 import { POST as mentionEndpoint } from '../../api/agents/mention.js';
@@ -21,10 +21,6 @@ let other: TestUser;
 let ws: string;
 let doc: string;
 const agents: Record<string, string> = {};
-
-const turn = (text: string, stop: TurnStop, toolCalls: ToolCall[] = []): TurnResult => ({
-  text, stop, toolCalls, refusalCategory: null, usage: emptyUsage(), model: 'test-double', fallbackUsed: false, webSearches: [], webSources: [],
-});
 
 async function token(u: TestUser): Promise<string> {
   const keys = await loadOrCreateKeys();
@@ -58,49 +54,36 @@ afterAll(() => pool.end());
 
 describe('team chat', () => {
   let parent: { run_id: string; conversation_id: string };
-  const seen: Record<string, string[]> = {};
+  let configuredSpecialists: string[] = [];
 
   beforeAll(async () => {
-    const provider: ModelProvider = {
-      name: 'test-double',
-      configured: () => true,
-      startSession: (input) => {
-        const who = /^You are ([^,]+),/.exec(input.system)?.[1] ?? '?';
-        let step = 0;
+    const crew: CrewRunner = {
+      async run(input, callbacks) {
+        configuredSpecialists = input.specialists.map((specialist) => specialist.name);
+        callbacks.onTeam?.('Tally', 'working');
+        const source = await callbacks.callTool({ id: 'read-tally', name: 'read_file', input: { item_id: doc } });
+        expect(source.content).toContain('EUR 180 per night');
+        callbacks.onTeam?.('Inka', 'working');
         return {
-          addToolResults: (results) => void (seen[who] ??= []).push(...results.map((r) => r.content)),
-          next: async () => {
-            step++;
-            if (who === 'Team Lead') {
-              if (step === 1) {
-                return turn('', 'tool_use', [{ id: 'delegate-1', name: 'delegate_to_specialists', input: { tasks: [
-                  { agent: 'tally', instruction: 'Find the approved nightly travel budget in the travel policy.' },
-                  { agent: 'inka', instruction: 'Write a one-line summary of the travel budget for the team.' },
-                ] } }]);
-              }
-              return turn('Tally confirmed EUR 180 per night [1]. Inka drafted the summary.', 'end');
-            }
-            if (step === 1) return turn('', 'tool_use', [{ id: `read-${who}`, name: 'read_file', input: { item_id: doc } }]);
-            return turn('The travel budget is EUR 180 per night [1].', 'end');
-          },
+          text: 'Tally confirmed EUR 180 per night [1]. Inka drafted the summary.',
+          model: 'test-double',
+          usage: { input_tokens: 100, output_tokens: 20, cache_read_tokens: 0, cache_write_tokens: 0 },
         };
       },
     };
     parent = await startRun(user.id, {
       workspace_id: ws, agent_id: agents.team_coordinator, message: 'What is our hotel budget? Draft a summary.', idempotency_key: randomUUID(),
     });
-    const outcome = await executeRun(parent.run_id, { provider });
+    const outcome = await executeRun(parent.run_id, { crew, provider: { name: 'test-double', configured: () => true, startSession: () => { throw new Error('unused'); } } });
     expect(outcome.status).toBe('completed');
   });
 
-  it('runs each specialist under the requester and combines their cited results', async () => {
+  it('gives CrewAI the workspace specialists and keeps tool access under the requester', async () => {
+    expect(configuredSpecialists).toEqual(expect.arrayContaining(['Tally', 'Inka']));
     const tasks = await q<{ status: string }>(user, 'SELECT status FROM agent_team_tasks WHERE parent_run_id = $1', [parent.run_id]);
-    expect(tasks.map((t) => t.status)).toEqual(['completed', 'completed']);
+    expect(tasks).toEqual([]);
     const children = await q<{ status: string; requested_by: string }>(user, 'SELECT status, requested_by FROM agent_runs WHERE parent_run_id = $1', [parent.run_id]);
-    expect(children.every((c) => c.status === 'completed' && c.requested_by === user.id)).toBe(true);
-    // The coordinator saw both specialists' answers with citations renumbered into its own registry.
-    expect(seen['Team Lead'][0]).toContain('<specialist name="Tally"');
-    expect(seen['Team Lead'][0]).toContain('EUR 180 per night [1]');
+    expect(children).toEqual([]);
     const citations = await q<{ item_id: string }>(user, 'SELECT item_id FROM agent_citations WHERE run_id = $1', [parent.run_id]);
     expect(citations).toEqual([{ item_id: doc }]);
     const sources = await q<{ item_id: string }>(user, `SELECT item_id FROM agent_run_sources WHERE run_id = $1 AND kind = 'drive_item'`, [parent.run_id]);
@@ -110,11 +93,10 @@ describe('team chat', () => {
     expect(notes).toHaveLength(0);
   });
 
-  it('shows who did what in the conversation timeline', async () => {
+  it('stores the CrewAI manager answer in the conversation timeline', async () => {
     const timeline = await q<{ kind: string; role: string; agent_name: string; content: string }>(
       user, 'SELECT kind, role, agent_name, content FROM agent_conversation_timeline($1)', [parent.conversation_id]);
-    const answers = timeline.filter((m) => m.kind === 'delegation' && m.role === 'assistant');
-    expect(answers.map((m) => m.agent_name).sort()).toEqual(['Inka', 'Tally']);
+    expect(timeline.filter((m) => m.kind === 'delegation')).toEqual([]);
     expect(timeline.at(-1)).toMatchObject({ kind: 'chat', role: 'assistant', agent_name: 'Team Lead' });
   });
 
@@ -123,7 +105,7 @@ describe('team chat', () => {
     await tailRun(parent.run_id, user.id, mine, 5000);
     const names = mine.events.map(([e]) => e);
     expect(names).toContain('snapshot');
-    expect(mine.events.find(([e]) => e === 'team')?.[1]).toMatchObject({ tasks: [{ agent: 'Tally', status: 'completed' }, { agent: 'Inka', status: 'completed' }] });
+    expect(mine.events.filter(([e]) => e === 'team').at(-1)?.[1]).toMatchObject({ tasks: [{ agent: 'Tally', status: 'completed' }, { agent: 'Inka', status: 'completed' }] });
     expect(mine.events.at(-1)).toEqual(['done', expect.objectContaining({ status: 'completed', served_model: 'test-double' })]);
 
     const response = await reattachEndpoint(new Request(`http://localhost/api/agents/run?run_id=${parent.run_id}`, {

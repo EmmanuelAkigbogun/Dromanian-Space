@@ -1,6 +1,6 @@
 # Dromanian Space
 
-A React/TypeScript workspace with messaging, tasks, projects, Drive documents and files, CRM, and permission-aware Gemini agents: a general-purpose Gemini chatbot, fifteen business specialists (executive assistant, social media, copywriting, SEO, sales development, customer support, data analysis, business research, HR, creative direction, software engineering, marketing strategy, commerce, email marketing, personal coaching), and a Team Lead that delegates across them. See [implementation status](docs/IMPLEMENTATION_STATUS.md) for completed work and remaining scope.
+A React/TypeScript workspace with messaging, tasks, projects, Drive documents and files, CRM, and a permission-aware CrewAI crew: a general-purpose assistant, fifteen business specialists (executive assistant, social media, copywriting, SEO, sales development, customer support, data analysis, business research, HR, creative direction, software engineering, marketing strategy, commerce, email marketing, personal coaching), and a CrewAI manager that coordinates them. See [implementation status](docs/IMPLEMENTATION_STATUS.md) for completed work and remaining scope.
 
 ## Local preview
 

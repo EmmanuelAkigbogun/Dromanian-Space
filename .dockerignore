@@ -12,3 +12,6 @@ supabase/.temp
 **/.env
 **/*.env
 **/.env.local
+**/.venv
+**/__pycache__
+**/.runtime

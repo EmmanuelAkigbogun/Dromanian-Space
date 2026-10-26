@@ -52,14 +52,24 @@ export function toolAvailability(names: string[], opts: AvailabilityInputs): Too
   return names.map((name) => {
     const approval = APPROVAL[name] ?? 'none';
     if (name === 'web_search') {
-      return opts.webResearchEnabled
-        ? { name, available: true, approval }
-        : { name, available: false, approval, reason: 'Web research is turned off in this workspace’s AI settings.' };
+      return {
+        name,
+        available: false,
+        approval,
+        reason: opts.webResearchEnabled
+          ? 'Connect a CrewAI web-search tool before agents can research the public web.'
+          : 'Web research is turned off in this workspace’s AI settings.',
+      };
     }
     if (name === 'fetch_site_page') {
-      return opts.siteUrl
-        ? { name, available: true, approval }
-        : { name, available: false, approval, reason: 'No site address is set in this workspace’s AI settings.' };
+      return {
+        name,
+        available: false,
+        approval,
+        reason: opts.siteUrl
+          ? 'Connect a CrewAI site-reading tool before agents can fetch live pages.'
+          : 'No site address is set in this workspace’s AI settings.',
+      };
     }
     if (name === 'read_crm_record' || name === 'propose_crm_update') {
       return opts.crmInstalled

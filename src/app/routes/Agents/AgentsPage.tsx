@@ -70,7 +70,7 @@ const TOOL_LABELS: Record<string, string> = {
   read_brand_kit: 'Read the brand kit',
   read_personal_notes: 'Read your private notes',
   save_personal_note: 'Save a private note',
-  delegate_to_specialists: 'Assign tasks to specialists',
+  delegate_to_specialists: 'Coordinate specialists with CrewAI',
   propose_task: 'Create tasks',
   propose_document: 'Save documents to Drive',
   propose_channel_message: 'Post messages',
@@ -302,9 +302,9 @@ function Directory(props: {
     <>
       <header className={s.header}>
         <div>
-          <div className={s.eyebrow}>Your Gemini team</div>
-          <h1>A general assistant and a full team of specialists.</h1>
-          <p className={s.muted}>Every agent runs on Gemini and works only with what you can access. Anything that changes data waits for your review.</p>
+          <div className={s.eyebrow}>Your CrewAI crew</div>
+          <h1>A coordinated crew of workspace specialists.</h1>
+          <p className={s.muted}>CrewAI coordinates the team using the model selected for each agent. Agents only see what you can access, and anything that changes data waits for your review.</p>
         </div>
         {props.admin && (
           <div className={s.actions}>

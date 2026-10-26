@@ -1,6 +1,6 @@
 import { DriveShare } from '@/features/platform/DriveShare';
 import { api } from '@/features/platform/client';
-import { useState, useRef, useCallback, useEffect, type FormEvent, type KeyboardEvent, type DragEvent } from 'react';
+import { useState, useRef, useCallback, useEffect, type ClipboardEvent, type FormEvent, type KeyboardEvent, type DragEvent } from 'react';
 import { useMessageContextSafe } from '@/app/providers/MessageProvider';
 import { useChannelContextSafe } from '@/app/providers/ChannelProvider';
 import { useEditSafe } from '@/app/providers/EditProvider';
@@ -214,11 +214,8 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
     }
   }, [content]);
 
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-
-    Array.from(files).forEach((file) => {
+  const queueFiles = useCallback((files: File[]) => {
+    files.forEach((file) => {
       if (!isFileSizeValid(file)) {
         alert(`File ${file.name} is too large (max 50MB)`);
         return;
@@ -239,11 +236,28 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
         setPendingFiles((prev) => [...prev, pending]);
       }
     });
+  }, []);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length > 0) queueFiles(files);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  }, []);
+  }, [queueFiles]);
+
+  const handlePaste = useCallback((e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const images = Array.from(e.clipboardData.items)
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+
+    if (images.length === 0) return;
+    e.preventDefault();
+    queueFiles(images);
+    setSendError(null);
+  }, [queueFiles]);
 
   const removePendingFile = useCallback((id: string) => {
     setPendingFiles((prev) => prev.filter((f) => f.id !== id));
@@ -276,31 +290,9 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
     e.preventDefault();
     setIsDragging(false);
 
-    const files = e.dataTransfer.files;
-    if (!files) return;
-
-    Array.from(files).forEach((file) => {
-      if (!isFileSizeValid(file)) {
-        alert(`File ${file.name} is too large (max 50MB)`);
-        return;
-      }
-
-      const id = generateFileId();
-      const normalizedFile = normalizeFileType(file);
-      const pending: PendingFile = { id, file: normalizedFile };
-
-      if (normalizedFile.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          pending.preview = ev.target?.result as string;
-          setPendingFiles((prev) => [...prev, pending]);
-        };
-        reader.readAsDataURL(normalizedFile);
-      } else {
-        setPendingFiles((prev) => [...prev, pending]);
-      }
-    });
-  }, []);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length > 0) queueFiles(files);
+  }, [queueFiles]);
 
   const uploadFiles = useCallback(async (messageId: string): Promise<boolean> => {
     if (pendingFiles.length === 0 || !channelId || !userId) return true;
@@ -560,6 +552,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {isDragging && <div className={styles.dropOverlay} role="status">Drop images or files to attach</div>}
       {pendingFiles.length > 0 && (
         <div className={styles.pendingFiles}>
           {pendingFiles.map((pf) => (
@@ -728,6 +721,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
               value={content}
               onChange={handleChange}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               placeholder={placeholder}
               rows={1}
               disabled={isSending}
@@ -844,7 +838,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
             <span>Tap send button · @ to mention</span>
           ) : (
             <>
-              <span>Shift + Enter for new line · @ to mention · drag files to attach</span>
+              <span>Shift + Enter for new line · @ to mention · paste or drag files to attach</span>
               {charCount > MAX_MESSAGE_LENGTH * 0.9 && (
                 <span className={`${styles.charCount} ${isOverLimit ? styles.charCountOver : ''}`}>
                   {charCount}/{MAX_MESSAGE_LENGTH}
