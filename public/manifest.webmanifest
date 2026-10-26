@@ -2,22 +2,36 @@
   "id": "/",
   "name": "Darkspace",
   "short_name": "Darkspace",
-  "description": "Chat, tasks, calendar, files and AI agents for your team.",
-  "start_url": "/",
+  "description": "Team chat with push notifications.",
+  "start_url": "/dm",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#111114",
   "theme_color": "#5B5BD6",
-  "categories": ["business", "productivity"],
+  "categories": [
+    "business",
+    "productivity"
+  ],
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
-    { "name": "Messages", "url": "/dm", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
-    { "name": "Tasks", "url": "/tasks", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
-    { "name": "Calendar", "url": "/calendar", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+    {
+      "name": "Messages",
+      "url": "/dm",
+      "icons": [
+        { "src": "/icons/icon-192.png", "sizes": "192x192" }
+      ]
+    },
+    {
+      "name": "General",
+      "url": "/channels/general",
+      "icons": [
+        { "src": "/icons/icon-192.png", "sizes": "192x192" }
+      ]
+    }
   ]
 }

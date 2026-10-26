@@ -8,6 +8,7 @@ import { useLayout } from '@/app/providers/LayoutProvider';
 import { useIsTablet } from '@/hooks/useBreakpoint';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { useFeatureAccess } from '@/lib/workspace/features';
+import { CHAT_ONLY, chatOnlyPath } from '@/lib/pwa';
 import { BellIcon, SettingsIcon } from '@/components/shared/Icons';
 import styles from './Sidebar.module.css';
 
@@ -71,7 +72,7 @@ export function Sidebar({ primaryNavigation, secondaryNavigation = [] }: Sidebar
   const tablet = useIsTablet();
   const collapsed = tablet || !isExpanded;
 
-  const section: Section = /^\/(channels|dm|messages|threads|saved-pinned)/.test(pathname)
+  const section: Section = CHAT_ONLY || /^\/(channels|dm|messages|threads|saved-pinned)/.test(pathname)
     ? 'chat'
     : /^\/(drive|files)/.test(pathname)
       ? 'drive'
@@ -89,7 +90,7 @@ export function Sidebar({ primaryNavigation, secondaryNavigation = [] }: Sidebar
     return pathname === path && new URLSearchParams(search).get('view') === new URLSearchParams(query).get('view');
   };
 
-  const link = (to: string, label: string, glyph: string) => features.pathHidden(to) ? null : (
+  const link = (to: string, label: string, glyph: string) => features.pathHidden(to) || (CHAT_ONLY && !chatOnlyPath(to)) ? null : (
     <NavLink
       key={to}
       to={to}
@@ -199,10 +200,12 @@ export function Sidebar({ primaryNavigation, secondaryNavigation = [] }: Sidebar
             <span className={styles.railIcon}><BellIcon /></span>
             <span className={styles.railLabel}>Activity</span>
           </NavLink>
-          <NavLink to="/settings" className={({ isActive }) => `${styles.railLink} ${isActive ? styles.railLinkActive : ''}`} title="Settings" aria-label="Settings">
-            <span className={styles.railIcon}><SettingsIcon /></span>
-            <span className={styles.railLabel}>Settings</span>
-          </NavLink>
+          {!CHAT_ONLY && (
+            <NavLink to="/settings" className={({ isActive }) => `${styles.railLink} ${isActive ? styles.railLinkActive : ''}`} title="Settings" aria-label="Settings">
+              <span className={styles.railIcon}><SettingsIcon /></span>
+              <span className={styles.railLabel}>Settings</span>
+            </NavLink>
+          )}
           <UserMenu collapsed />
         </div>
       </nav>

@@ -21,6 +21,12 @@ export function isStandalone(): boolean {
   );
 }
 
+// The installed phone/tablet app is a chat app: conversations plus the
+// notification settings push needs. Everything else stays in the browser.
+export const CHAT_ONLY = typeof window !== 'undefined' && !window.darkspaceDesktop && isStandalone();
+export const CHAT_HOME = '/dm';
+export const chatOnlyPath = (path: string) => /^\/(dm|channels|threads|messages|notifications|invitations|profile)(\/|$)/.test(path);
+
 export function isIOS(): boolean {
   const ua = navigator.userAgent;
   return /iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1);

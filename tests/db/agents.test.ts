@@ -74,7 +74,7 @@ describe('agent catalog', () => {
     const dir = await q<{ template_key: string; kind: string }>(bob, 'SELECT * FROM agent_directory($1)', [wsA]);
     expect(dir.filter((d) => d.kind === 'specialist').map((d) => d.template_key).sort()).toEqual([
       'business_researcher', 'commerce_manager', 'copywriter', 'creative_director', 'data_analyst', 'email_marketer',
-      'executive_assistant', 'growth_strategist', 'personal_coach', 'recruiter', 'sales_rep', 'seo_specialist',
+      'executive_assistant', 'gemini_assistant', 'growth_strategist', 'note_taker', 'personal_coach', 'recruiter', 'sales_rep', 'seo_specialist',
       'social_manager', 'software_engineer', 'support_specialist']);
     expect(dir.filter((d) => d.kind === 'coordinator').map((d) => d.template_key)).toEqual(['team_coordinator']);
     expect(await q(mallory, 'SELECT * FROM agent_directory($1)', [wsA])).toHaveLength(0);

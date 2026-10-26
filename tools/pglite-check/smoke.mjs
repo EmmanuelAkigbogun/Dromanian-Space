@@ -261,6 +261,19 @@ export default async function smoke(db, legacy) {
   await h.user(owner, `INSERT INTO crm_companies (workspace_id, name, owner_id, created_by) VALUES ($1, 'Globex', $2, $2)`, [wsA, owner.id]);
   check((await h.admin(`SELECT count(*)::int AS n FROM drive_items WHERE workspace_id = $1 AND name = 'Companies' AND parent_id IS NULL`, [wsA]))[0].n === 1, 'all companies share one Companies folder');
 
+  // Client CRMs (20261026000100)
+  await h.user(owner, 'UPDATE crm_companies SET is_client = true WHERE id = $1', [company.id]);
+  const foldersBefore = (await h.admin(`SELECT count(*)::int AS n FROM drive_items WHERE workspace_id = $1 AND kind = 'folder'`, [wsA]))[0].n;
+  const clientCo = (await h.user(owner, `INSERT INTO crm_companies (workspace_id, name, owner_id, created_by, client_id) VALUES ($1, 'Acme supplier', $2, $2, $3) RETURNING id, drive_folder_id`, [wsA, owner.id, company.id]))[0];
+  const foldersAfter = (await h.admin(`SELECT count(*)::int AS n FROM drive_items WHERE workspace_id = $1 AND kind = 'folder'`, [wsA]))[0].n;
+  check(clientCo.drive_folder_id === null && foldersAfter === foldersBefore, 'companies inside a client CRM get no Drive folder or task');
+  const ourCo = (await h.admin(`SELECT id FROM crm_companies WHERE workspace_id = $1 AND name = 'Globex'`, [wsA]))[0].id;
+  check(await h.denied(h.user(owner, `INSERT INTO crm_contacts (workspace_id, name, owner_id, created_by, client_id, company_id) VALUES ($1, 'Mixed', $2, $2, $3, $4)`, [wsA, owner.id, company.id, ourCo]), /different CRM/), 'records cannot link across CRMs');
+  await h.user(owner, `INSERT INTO crm_contacts (workspace_id, name, owner_id, created_by, client_id, company_id) VALUES ($1, 'Jane at supplier', $2, $2, $3, $4)`, [wsA, owner.id, company.id, clientCo.id]);
+  check((await h.user(member, 'SELECT id FROM crm_contacts WHERE client_id = $1', [company.id])).length === 1, 'a client CRM keeps its own contacts');
+  check(await h.denied(h.user(owner, `INSERT INTO crm_companies (workspace_id, name, owner_id, created_by, client_id) VALUES ($1, 'Nope', $2, $2, $3)`, [wsA, owner.id, ourCo]), /client CRM/), 'only companies marked as clients have a CRM');
+  check(await h.denied(h.user(owner, 'UPDATE crm_companies SET is_client = false WHERE id = $1', [company.id]), /still has records/), 'a client CRM with records cannot be removed');
+
   // Member features (20261025000400)
   check(await h.denied(h.user(member, `SELECT set_member_features($1, ARRAY['ai'])`, [wsA]), /owners and admins/), 'members cannot change features');
   check(await h.denied(h.user(owner, `SELECT set_member_features($1, ARRAY['games'])`, [wsA])), 'unknown features are refused');
