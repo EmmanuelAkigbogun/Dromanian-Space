@@ -274,6 +274,31 @@ export default async function smoke(db, legacy) {
   check(await h.denied(h.user(owner, `INSERT INTO crm_companies (workspace_id, name, owner_id, created_by, client_id) VALUES ($1, 'Nope', $2, $2, $3)`, [wsA, owner.id, ourCo]), /client CRM/), 'only companies marked as clients have a CRM');
   check(await h.denied(h.user(owner, 'UPDATE crm_companies SET is_client = false WHERE id = $1', [company.id]), /still has records/), 'a client CRM with records cannot be removed');
 
+  // CRM workspace (20261026000400)
+  const pipeline = (await h.user(owner, `SELECT crm_create_pipeline($1, 'Sales', ARRAY['New','Proposal','Won','Lost']) AS id`, [wsA]))[0].id;
+  const stages = await h.admin('SELECT id, name, is_won, is_lost, color FROM crm_stages WHERE pipeline_id = $1 ORDER BY position', [pipeline]);
+  check(stages.find((s) => s.name === 'Won')?.is_won && stages.find((s) => s.name === 'Lost')?.is_lost, 'won and lost stages are recognised');
+  check(await h.denied(h.user(member, `SELECT crm_save_stage($1, $2, NULL, 'Sneaky', 'sky')`, [wsA, pipeline])), 'members cannot change pipeline stages');
+  const extra = (await h.user(owner, `SELECT crm_save_stage($1, $2, NULL, 'Demo', 'teal') AS id`, [wsA, pipeline]))[0].id;
+  const wonCo = (await h.user(owner, `INSERT INTO crm_companies (workspace_id, name, owner_id, created_by) VALUES ($1, 'Initech', $2, $2) RETURNING id`, [wsA, owner.id]))[0].id;
+  const deal = (await h.user(owner, `INSERT INTO crm_deals (workspace_id, name, owner_id, created_by, pipeline_id, stage_id, company_id) VALUES ($1, 'Initech rollout', $2, $2, $3, $4, $5) RETURNING id`, [wsA, owner.id, pipeline, extra, wonCo]))[0].id;
+  check(await h.denied(h.user(owner, 'SELECT crm_delete_stage($1, $2, NULL)', [wsA, extra]), /another stage/), 'a stage with deals needs somewhere to move them');
+  await h.user(owner, 'UPDATE crm_deals SET stage_id = $1 WHERE id = $2', [stages.find((s) => s.name === 'Won').id, deal]);
+  check((await h.admin('SELECT customer_since FROM crm_companies WHERE id = $1', [wonCo]))[0].customer_since !== null, 'winning a deal makes its company a customer');
+  await h.user(owner, 'SELECT crm_delete_stage($1, $2, NULL)', [wsA, extra]);
+  await h.user(member, `INSERT INTO crm_notes (workspace_id, record_type, record_id, body, author_id) VALUES ($1, 'crm_deals', $2, 'Called, sending proposal', $3)`, [wsA, deal, member.id]);
+  check((await h.user(owner, 'SELECT id FROM crm_notes WHERE record_id = $1', [deal])).length === 1, 'members share notes on records');
+  check(await h.denied(h.user(member, `INSERT INTO crm_notes (workspace_id, record_type, record_id, body, author_id) VALUES ($1, 'crm_deals', $2, 'Forged', $3)`, [wsA, deal, owner.id]), /row-level security/), 'notes cannot be written as someone else');
+  check((await h.user(other, 'SELECT id FROM crm_notes WHERE record_id = $1', [deal])).length === 0, 'outsiders cannot read CRM notes');
+  check(await h.denied(h.user(member, `INSERT INTO crm_custom_fields (workspace_id, entity, key, label, field_type, created_by) VALUES ($1, 'companies', 'tier', 'Tier', 'select', $2)`, [wsA, member.id]), /row-level security/), 'only admins define custom properties');
+  await h.user(owner, `INSERT INTO crm_custom_fields (workspace_id, entity, key, label, field_type, options, created_by) VALUES ($1, 'companies', 'tier', 'Tier', 'select', '{"choices":["Gold","Silver"]}', $2)`, [wsA, owner.id]);
+  await h.user(owner, `UPDATE crm_companies SET custom = '{"tier":"Gold"}' WHERE id = $1`, [wonCo]);
+  check((await h.user(member, `SELECT id FROM crm_companies WHERE workspace_id = $1 AND custom->>'tier' = 'Gold'`, [wsA])).length === 1, 'records filter by custom property values');
+  await h.user(member, `INSERT INTO crm_views (workspace_id, entity, name, filters, created_by) VALUES ($1, 'companies', 'Gold customers', '[{"field":"custom.tier","op":"is","value":["Gold"]}]', $2)`, [wsA, member.id]);
+  check((await h.user(owner, 'SELECT id FROM crm_views WHERE workspace_id = $1', [wsA])).length === 1, 'saved views are shared with the workspace');
+  await h.user(owner, 'DELETE FROM crm_deals WHERE id = $1', [deal]);
+  check((await h.admin('SELECT id FROM crm_notes WHERE record_id = $1', [deal])).length === 0, 'notes go with their record');
+
   // CRM delete (20261026000300)
   const doomed = (await h.user(owner, `INSERT INTO crm_companies (workspace_id, name, owner_id, created_by) VALUES ($1, 'Short-lived Ltd', $2, $2) RETURNING id`, [wsA, owner.id]))[0].id;
   const keptContact = (await h.user(owner, `INSERT INTO crm_contacts (workspace_id, name, owner_id, created_by, company_id) VALUES ($1, 'Kept person', $2, $2, $3) RETURNING id`, [wsA, owner.id, doomed]))[0].id;
