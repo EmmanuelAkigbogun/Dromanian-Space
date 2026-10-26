@@ -153,7 +153,7 @@ export async function executeRun(
   // ---- Context ---------------------------------------------------------------
   const db = serviceClient();
   const [inputMsg, profile, workspace, history] = await Promise.all([
-    db.from('agent_messages').select('content').eq('id', run.input_message_id).single(),
+    db.from('agent_messages').select('content, scope').eq('id', run.input_message_id).single(),
     db.from('profiles').select('display_name, username').eq('id', run.requested_by).maybeSingle(),
     db.from('workspaces').select('name').eq('id', run.workspace_id).maybeSingle(),
     rpc<Array<{ role: 'user' | 'assistant'; content: string }>>('agent_history_for', { p_run_id: runId, p_limit: 24 }),
@@ -425,6 +425,14 @@ export async function executeRun(
         specialists: specialistConfigs,
         prompt: `${historyText}${userMessage}`,
         tools: toolSpecs(tools),
+        files: Array.isArray(inputMsg.data.scope?.attachments)
+          ? inputMsg.data.scope.attachments.map((item: any) => ({
+              path: String(item.path ?? ''),
+              name: String(item.name ?? ''),
+              mime_type: String(item.mime_type ?? ''),
+              size: Number(item.size ?? 0),
+            }))
+          : [],
       },
       {
         signal: controller.signal,

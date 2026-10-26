@@ -35,6 +35,17 @@
 .note { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
 .linkButton { background: none; border: 0; padding: 0; color: var(--color-text-secondary); cursor: pointer; font-size: 12px; text-decoration: underline; }
 
+.hiddenFileInput { display: none; }
+.imageDropActive { outline: 2px dashed var(--color-primary); outline-offset: 8px; border-radius: 8px; }
+.pendingImages, .messageImages { display: flex; flex-wrap: wrap; gap: 10px; }
+.pendingImage { position: relative; width: 112px; height: 86px; border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden; background: var(--color-surface-secondary); }
+.pendingImage img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pendingImage button { position: absolute; top: 5px; right: 5px; width: 24px; height: 24px; display: grid; place-items: center; border: 0; border-radius: 50%; background: rgba(0, 0, 0, 0.72); color: #fff; cursor: pointer; font-size: 17px; }
+.pendingImage span { position: absolute; right: 5px; bottom: 5px; padding: 2px 5px; border-radius: 4px; background: rgba(0, 0, 0, 0.72); color: #fff; font-size: 10px; }
+.messageImages { margin: 8px 0 12px; }
+.messageImages img, .imageLoading { width: min(100%, 360px); max-height: 360px; border-radius: 8px; object-fit: contain; background: var(--color-surface-secondary); }
+.imageLoading { min-height: 100px; display: grid; place-items: center; padding: 12px; color: var(--color-text-secondary); font-size: 12px; }
+
 @media (max-width: 960px) {
   .layout { grid-template-columns: 1fr; }
   .side { position: static; }

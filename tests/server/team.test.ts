@@ -136,6 +136,21 @@ describe('durable execution through the worker queue', () => {
 });
 
 describe('API with signed user tokens', () => {
+  it('rejects forged agent image attachments before a run is persisted', async () => {
+    await expect(startRun(user.id, {
+      workspace_id: ws,
+      agent_id: agents.support_specialist,
+      message: 'What is in this image?',
+      scope: { attachments: [{
+        path: `agent-images/${user.id}/missing.png`,
+        name: 'missing.png',
+        mime_type: 'image/png',
+        size: 123,
+      }] },
+      idempotency_key: randomUUID(),
+    })).rejects.toThrow('missing or does not match');
+  });
+
   it('reports honest readiness: connectors, site and tool availability', async () => {
     const response = await statusEndpoint(new Request(`http://localhost/api/ai/status?workspace_id=${ws}`, {
       headers: { authorization: `Bearer ${await token(user)}` },

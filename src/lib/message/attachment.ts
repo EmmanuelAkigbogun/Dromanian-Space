@@ -100,7 +100,16 @@ export function isSvgFile(fileName: string): boolean {
 // so every step (preview + storage metadata) uses image/svg+xml.
 export function normalizeFileType(file: File): File {
   if (isSvgFile(file.name) && file.type !== 'image/svg+xml') {
-    return new File([file], file.name, { type: 'image/svg+xml' });
+    return new File([file], file.name, { type: 'image/svg+xml', lastModified: file.lastModified });
+  }
+  const extension = ({
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+  } as Record<string, string>)[file.type];
+  if (extension && !/\.[a-z0-9]+$/i.test(file.name)) {
+    return new File([file], `clipboard-${Date.now()}.${extension}`, { type: file.type, lastModified: file.lastModified });
   }
   return file;
 }
@@ -116,9 +125,6 @@ function uploadWithProgress(
   onProgress: (percent: number) => void,
 ): Promise<boolean> {
   return new Promise((resolve) => {
-    const form = new FormData();
-    form.append('cacheControl', '3600');
-    form.append('', file);
     const xhr = new XMLHttpRequest();
     xhr.open('POST', url);
     Object.entries(headers).forEach(([key, value]) => {
@@ -132,7 +138,10 @@ function uploadWithProgress(
     xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
     xhr.onerror = () => resolve(false);
     xhr.onabort = () => resolve(false);
-    xhr.send(form);
+    // Darkspace's storage endpoint accepts the object bytes directly. Sending
+    // multipart/form-data here would persist the MIME boundaries as part of
+    // the image and make clipboard/drop attachments unreadable after upload.
+    xhr.send(file);
   });
 }
 

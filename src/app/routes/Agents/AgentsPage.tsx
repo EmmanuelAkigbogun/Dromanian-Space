@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useWorkspaceContext } from '@/app/providers/WorkspaceProvider';
@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { Dialog } from '@/components/ui/Dialog';
 import { Markdown } from '@/components/ui/Markdown';
 import { platform, result, api, errorText, type RpcRow, type Row } from '@/features/platform/client';
+import { getSignedUrl, normalizeFileType, removeStoragePath, uploadFile } from '@/lib/message';
 import s from '@/features/platform/Platform.module.css';
 import a from './Agents.module.css';
 
@@ -53,6 +54,38 @@ interface LiveTask {
   task_id: string;
   agent: string;
   status: string;
+}
+
+interface AgentImageAttachment {
+  path: string;
+  name: string;
+  mime_type: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+  size: number;
+}
+
+interface PendingAgentImage extends AgentImageAttachment {
+  id: string;
+  file: File;
+  preview: string;
+  path: string;
+  progress: number;
+}
+
+const AGENT_IMAGE_TYPES = new Set<AgentImageAttachment['mime_type']>(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+const MAX_AGENT_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_AGENT_IMAGES = 4;
+
+function agentImagesFromScope(scope: unknown): AgentImageAttachment[] {
+  if (!scope || typeof scope !== 'object' || Array.isArray(scope)) return [];
+  const attachments = (scope as { attachments?: unknown }).attachments;
+  if (!Array.isArray(attachments)) return [];
+  return attachments.filter((item): item is AgentImageAttachment => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    const value = item as Record<string, unknown>;
+    return typeof value.path === 'string' && typeof value.name === 'string'
+      && typeof value.mime_type === 'string' && AGENT_IMAGE_TYPES.has(value.mime_type as AgentImageAttachment['mime_type'])
+      && typeof value.size === 'number';
+  });
 }
 
 const TOOL_LABELS: Record<string, string> = {
@@ -400,12 +433,18 @@ function AgentView(props: {
   const [settings, setSettings] = useState(false);
   const [sources, setSources] = useState<string[]>(params.get('source') ? [params.get('source')!] : []);
   const [picker, setPicker] = useState(false);
+  const [images, setImages] = useState<PendingAgentImage[]>([]);
+  const [draggingImages, setDraggingImages] = useState(false);
   const mounted = useRef(true);
   const requestKey = useRef<string | null>(null);
+  const imageInput = useRef<HTMLInputElement>(null);
+  const imagesRef = useRef<PendingAgentImage[]>([]);
+  useEffect(() => { imagesRef.current = images; }, [images]);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
+      imagesRef.current.forEach((image) => URL.revokeObjectURL(image.preview));
     };
   }, []);
 
@@ -453,11 +492,90 @@ function AgentView(props: {
   const isTeam = agent?.kind === 'coordinator';
   const agentsById = new Map(props.directory.map((x) => [x.id, x]));
 
+  function clearImages() {
+    images.forEach((image) => URL.revokeObjectURL(image.preview));
+    setImages([]);
+  }
+
+  function queueImages(files: File[]) {
+    const accepted: PendingAgentImage[] = [];
+    const problems: string[] = [];
+    for (const sourceFile of files) {
+      const file = normalizeFileType(sourceFile);
+      if (!AGENT_IMAGE_TYPES.has(file.type as AgentImageAttachment['mime_type'])) {
+        problems.push(`${file.name || 'Clipboard image'} is not a supported PNG, JPEG, WebP, or GIF image.`);
+        continue;
+      }
+      if (file.size <= 0 || file.size > MAX_AGENT_IMAGE_BYTES) {
+        problems.push(`${file.name || 'Clipboard image'} must be smaller than 10 MB.`);
+        continue;
+      }
+      accepted.push({
+        id: crypto.randomUUID(),
+        file,
+        preview: URL.createObjectURL(file),
+        path: '',
+        name: file.name || `clipboard-${Date.now()}.png`,
+        mime_type: file.type as AgentImageAttachment['mime_type'],
+        size: file.size,
+        progress: 0,
+      });
+    }
+    const room = Math.max(0, MAX_AGENT_IMAGES - images.length);
+    accepted.slice(room).forEach((image) => URL.revokeObjectURL(image.preview));
+    if (accepted.length > room) problems.push(`You can attach up to ${MAX_AGENT_IMAGES} images at once.`);
+    if (room > 0) setImages((current) => [...current, ...accepted.slice(0, room)]);
+    if (problems.length) setError(problems[0]);
+    else setError('');
+    requestKey.current = null;
+  }
+
+  function removeImage(id: string) {
+    const image = images.find((item) => item.id === id);
+    if (!image) return;
+    URL.revokeObjectURL(image.preview);
+    if (image.path) void removeStoragePath(image.path);
+    setImages((current) => current.filter((item) => item.id !== id));
+    requestKey.current = null;
+  }
+
+  function pasteImages(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const itemImages = Array.from(e.clipboardData.items)
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+    const files = itemImages.length > 0
+      ? itemImages
+      : Array.from(e.clipboardData.files).filter((file) => file.type.startsWith('image/'));
+    if (!files.length) return;
+    e.preventDefault();
+    queueImages(files);
+  }
+
+  function dropImages(e: React.DragEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setDraggingImages(false);
+    queueImages(Array.from(e.dataTransfer.files));
+  }
+
+  async function uploadImages(): Promise<AgentImageAttachment[]> {
+    return Promise.all(images.map(async (image) => {
+      if (image.path) return image;
+      const path = await uploadFile(image.file, `agent-images/${userId}`, (progress) => {
+        setImages((current) => current.map((item) => item.id === image.id ? { ...item, progress } : item));
+      });
+      if (!path) throw new Error(`Could not upload ${image.name}.`);
+      setImages((current) => current.map((item) => item.id === image.id ? { ...item, path, progress: 100 } : item));
+      return { path, name: image.name, mime_type: image.mime_type, size: image.size };
+    }));
+  }
+
   async function handle(name: string, data: Record<string, unknown>) {
     if (!mounted.current) return;
     if (name === 'run') {
       requestKey.current = null;
       setMessage('');
+      clearImages();
       setFollowing(String(data.run_id));
       if (!conversationId) {
         const kept = new URLSearchParams(params);
@@ -503,7 +621,7 @@ function AgentView(props: {
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
-    if (!agent || !message.trim()) return;
+    if (!agent || (!message.trim() && images.length === 0)) return;
     setSending(true);
     setError('');
     setStream('');
@@ -511,13 +629,15 @@ function AgentView(props: {
     setProgress('Starting…');
     requestKey.current ??= crypto.randomUUID();
     try {
+      const attachments = await uploadImages();
       const response = await api('agents/run', {
         workspace_id: ws,
         agent_id: agent.id,
         conversation_id: conversationId ?? null,
-        message,
+        message: message.trim() || 'Please analyze the attached image.',
         scope: {
           item_ids: sources,
+          ...(attachments.length ? { attachments } : {}),
           ...(params.get('channel') ? { channel_id: params.get('channel') } : {}),
           ...(params.get('thread') ? { thread_root_id: params.get('thread') } : {}),
         },
@@ -647,7 +767,33 @@ function AgentView(props: {
             </details>
           )}
           {agent && (
-            <form className={s.form} onSubmit={send}>
+            <form
+              className={`${s.form} ${draggingImages ? a.imageDropActive : ''}`}
+              onSubmit={send}
+              onDragEnter={(e) => { e.preventDefault(); setDraggingImages(true); }}
+              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setDraggingImages(true); }}
+              onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDraggingImages(false); }}
+              onDrop={dropImages}
+            >
+              <input
+                ref={imageInput}
+                className={a.hiddenFileInput}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                multiple
+                onChange={(e) => { queueImages(Array.from(e.currentTarget.files ?? [])); e.currentTarget.value = ''; }}
+              />
+              {images.length > 0 && (
+                <div className={a.pendingImages} aria-label="Attached images">
+                  {images.map((image) => (
+                    <div className={a.pendingImage} key={image.id}>
+                      <img src={image.preview} alt={image.name} />
+                      <button type="button" onClick={() => removeImage(image.id)} aria-label={`Remove ${image.name}`}>×</button>
+                      {image.progress > 0 && image.progress < 100 && <span>{image.progress}%</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
               <label>
                 {isTeam ? 'Message the team' : `Message ${agent.name}`}
                 <textarea
@@ -658,13 +804,14 @@ function AgentView(props: {
                     setMessage(e.target.value);
                     requestKey.current = null;
                   }}
+                  onPaste={pasteImages}
                   maxLength={20000}
-                  required
                   disabled={sending}
                 />
               </label>
               <div className={s.actions}>
-                <button className={s.primary} disabled={!available || sending || !!running || !message.trim()}>Send</button>
+                <button type="button" className={s.button} onClick={() => imageInput.current?.click()} disabled={sending || images.length >= MAX_AGENT_IMAGES}>Attach image</button>
+                <button className={s.primary} disabled={!available || sending || !!running || (!message.trim() && images.length === 0)}>Send</button>
                 {running && (
                   <button type="button" className={s.button} onClick={() => void action(() => result(platform.rpc('agent_cancel_run', { p_run_id: running.id })))}>
                     Stop
@@ -790,9 +937,30 @@ function TimelineMessage({ m, agent, text, citations }: { m: TimelineRow; agent:
   return (
     <article className={`${s.message} ${m.role === 'user' ? s.user : ''}`}>
       <div className={s.eyebrow}>{m.role === 'user' ? 'You' : `${who} · ${m.status === 'streaming' ? 'working…' : m.status}`}</div>
+      {m.role === 'user' && <AgentMessageImages scope={m.scope} />}
       {m.role === 'user' ? m.content : text ? <Markdown text={text} /> : m.status === 'streaming' ? 'Working…' : ''}
       <Citations items={m.redacted ? [] : citations} />
     </article>
+  );
+}
+
+function AgentMessageImages({ scope }: { scope: unknown }) {
+  const attachments = useMemo(() => agentImagesFromScope(scope), [scope]);
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all(attachments.map(async (attachment) => [attachment.path, await getSignedUrl(attachment.path)] as const)).then((items) => {
+      if (!cancelled) setUrls(Object.fromEntries(items.filter((item): item is readonly [string, string] => Boolean(item[1]))));
+    });
+    return () => { cancelled = true; };
+  }, [attachments]);
+  if (!attachments.length) return null;
+  return (
+    <div className={a.messageImages}>
+      {attachments.map((attachment) => urls[attachment.path]
+        ? <img key={attachment.path} src={urls[attachment.path]} alt={attachment.name} />
+        : <div key={attachment.path} className={a.imageLoading}>Loading {attachment.name}…</div>)}
+    </div>
   );
 }
 

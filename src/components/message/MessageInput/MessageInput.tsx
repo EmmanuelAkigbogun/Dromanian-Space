@@ -248,10 +248,13 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
   }, [queueFiles]);
 
   const handlePaste = useCallback((e: ClipboardEvent<HTMLTextAreaElement>) => {
-    const images = Array.from(e.clipboardData.items)
+    const itemImages = Array.from(e.clipboardData.items)
       .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
       .map((item) => item.getAsFile())
       .filter((file): file is File => file !== null);
+    const images = itemImages.length > 0
+      ? itemImages
+      : Array.from(e.clipboardData.files).filter((file) => file.type.startsWith('image/'));
 
     if (images.length === 0) return;
     e.preventDefault();

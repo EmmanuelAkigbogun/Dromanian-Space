@@ -11,10 +11,12 @@ import urllib.error
 import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any, Literal
 
 from crewai import Agent, Crew, LLM, Process, Task
 from crewai.tools import BaseTool
+from crewai_files import ImageFile
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from pydantic import BaseModel, Field, PrivateAttr, create_model
@@ -187,6 +189,29 @@ def _usage(value: Any) -> dict[str, int]:
     }
 
 
+def _input_files(payload: dict[str, Any]) -> dict[str, ImageFile]:
+    storage = Path(os.getenv("STORAGE_ROOT", "/data/storage")).resolve()
+    base = (storage / "message-attachments" / "agent-images").resolve()
+    result: dict[str, ImageFile] = {}
+    for index, item in enumerate(payload.get("files", [])):
+        relative = str(item.get("path", ""))
+        mime_type = str(item.get("mime_type", ""))
+        claimed_size = int(item.get("size", 0))
+        if not relative.startswith("agent-images/") or "\\" in relative or mime_type not in {
+            "image/png", "image/jpeg", "image/webp", "image/gif"
+        }:
+            raise ValueError("invalid image attachment")
+        source = (storage / "message-attachments" / relative).resolve()
+        if base not in source.parents or not source.is_file():
+            raise ValueError("image attachment is outside storage or missing")
+        actual_size = source.stat().st_size
+        if actual_size <= 0 or actual_size > 10 * 1024 * 1024 or actual_size != claimed_size:
+            raise ValueError("image attachment has an invalid size")
+        name = str(item.get("name") or source.name)[:200]
+        result[f"image_{index + 1}_{name}"] = ImageFile(source=str(source))
+    return result
+
+
 def run_crew(payload: dict[str, Any], send: Any) -> None:
     run_id = payload["run_id"]
     callback_url = payload["callback_url"]
@@ -194,6 +219,7 @@ def run_crew(payload: dict[str, Any], send: Any) -> None:
     specs = {item["name"]: item for item in payload.get("tools", [])}
     manager_config = payload["agent"]
     is_team = manager_config.get("kind") == "coordinator" and bool(payload.get("specialists"))
+    input_files = _input_files(payload)
 
     manager = _agent(manager_config, specs, callback_url, callback_token, run_id, manager=is_team)
     if is_team:
@@ -233,7 +259,7 @@ def run_crew(payload: dict[str, Any], send: Any) -> None:
             share_crew=False,
         )
 
-    streaming = crew.kickoff()
+    streaming = crew.kickoff(input_files=input_files or None)
     if not is_team:
         for chunk in streaming:
             content = getattr(chunk, "content", "")

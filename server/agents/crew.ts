@@ -22,6 +22,7 @@ export interface CrewRunInput {
   specialists: CrewAgentConfig[];
   prompt: string;
   tools: ToolSpec[];
+  files?: Array<{ path: string; name: string; mime_type: string; size: number }>;
 }
 
 export interface CrewRunResult {

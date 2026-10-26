@@ -1,7 +1,15 @@
 import { z } from 'zod';
-import { rpc } from '../database.js';
+import { databasePool, rpc } from '../database.js';
+import { HttpError } from '../http.js';
 
 const uuid = z.string().uuid();
+const MAX_AGENT_IMAGE_BYTES = 10 * 1024 * 1024;
+const AgentImage = z.object({
+  path: z.string().min(1).max(500),
+  name: z.string().min(1).max(200),
+  mime_type: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']),
+  size: z.number().int().positive().max(MAX_AGENT_IMAGE_BYTES),
+});
 
 export const RunRequest = z.object({
   workspace_id: uuid,
@@ -13,6 +21,7 @@ export const RunRequest = z.object({
       item_ids: z.array(uuid).max(20).optional(),
       channel_id: uuid.optional(),
       thread_root_id: uuid.optional(),
+      attachments: z.array(AgentImage).max(4).optional(),
     })
     .optional(),
   origin: z
@@ -36,8 +45,32 @@ export interface StartedRun {
   reused: boolean;
 }
 
+async function verifyAgentImages(actorId: string, attachments: z.infer<typeof AgentImage>[] | undefined): Promise<void> {
+  if (!attachments?.length) return;
+  const expectedPrefix = `agent-images/${actorId}/`;
+  if (attachments.some((item) => !item.path.startsWith(expectedPrefix) || item.path.includes('..') || item.path.includes('\\'))) {
+    throw new HttpError(400, 'invalid_attachment', 'An attached image has an invalid storage path.');
+  }
+  const paths = attachments.map((item) => item.path);
+  if (new Set(paths).size !== paths.length) throw new HttpError(400, 'invalid_attachment', 'The same image was attached more than once.');
+  const rows = await databasePool().query<{ name: string; metadata: { size?: number; mimetype?: string } | null }>(
+    `SELECT name, metadata FROM storage.objects
+      WHERE bucket_id = 'message-attachments' AND name = ANY($1::text[])
+        AND (owner = $2::uuid OR owner_id = $2::text)`,
+    [paths, actorId],
+  );
+  const stored = new Map(rows.rows.map((row) => [row.name, row.metadata ?? {}]));
+  for (const item of attachments) {
+    const metadata = stored.get(item.path);
+    if (!metadata || Number(metadata.size) !== item.size || metadata.mimetype !== item.mime_type) {
+      throw new HttpError(400, 'invalid_attachment', 'An attached image is missing or does not match the uploaded file.');
+    }
+  }
+}
+
 /** Persists the conversation, prompt and run before any generation starts. */
 export async function startRun(actorId: string, body: RunRequest): Promise<StartedRun> {
+  await verifyAgentImages(actorId, body.scope?.attachments);
   return rpc<StartedRun>('agent_start_run', {
     p_actor: actorId,
     p_workspace_id: body.workspace_id,

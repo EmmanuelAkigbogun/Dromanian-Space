@@ -1,5 +1,7 @@
 import os
+import tempfile
 import unittest
+from pathlib import Path
 
 import appdirs
 
@@ -10,7 +12,7 @@ appdirs.user_data_dir = lambda *_args, **_kwargs: os.path.join(os.getcwd(), ".ru
 
 from pydantic import ValidationError
 
-from app import Crew, Process, Task, _agent, _model_from_schema, _model_name
+from app import Crew, Process, Task, _agent, _input_files, _model_from_schema, _model_name
 
 
 class CrewRuntimeTests(unittest.TestCase):
@@ -84,6 +86,36 @@ class CrewRuntimeTests(unittest.TestCase):
             stream=True, cache=False, memory=False, verbose=False, share_crew=False,
         )
         self.assertEqual(crew.process, Process.hierarchical)
+
+    def test_image_attachments_are_resolved_inside_private_storage(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            image = Path(root) / "message-attachments" / "agent-images" / "user-id" / "clipboard.png"
+            image.parent.mkdir(parents=True)
+            image.write_bytes(b"not-decoded-during-construction")
+            previous = os.environ.get("STORAGE_ROOT")
+            os.environ["STORAGE_ROOT"] = root
+            try:
+                files = _input_files({"files": [{
+                    "path": "agent-images/user-id/clipboard.png",
+                    "name": "clipboard.png",
+                    "mime_type": "image/png",
+                    "size": image.stat().st_size,
+                }]})
+            finally:
+                if previous is None:
+                    os.environ.pop("STORAGE_ROOT", None)
+                else:
+                    os.environ["STORAGE_ROOT"] = previous
+            self.assertEqual(list(files), ["image_1_clipboard.png"])
+
+    def test_image_attachments_cannot_escape_storage(self) -> None:
+        with self.assertRaises(ValueError):
+            _input_files({"files": [{
+                "path": "agent-images/../secret.png",
+                "name": "secret.png",
+                "mime_type": "image/png",
+                "size": 10,
+            }]})
 
 
 if __name__ == "__main__":
