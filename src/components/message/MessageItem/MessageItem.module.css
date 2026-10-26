@@ -323,3 +323,32 @@
 .message:hover .shortcutHint {
   opacity: 1;
 }
+
+/* Receipts under the sender's own messages: one tick sent, two delivered,
+   two in the accent colour read. */
+.receipt {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 2px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.receiptRead {
+  color: var(--color-primary);
+}
+
+.seenBy {
+  color: var(--color-text-muted);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

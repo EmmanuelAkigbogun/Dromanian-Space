@@ -29,6 +29,7 @@ import { ReactionsPopover } from '@/components/message/ReactionsPopover';
 import { RemoveEmbedConfirmDialog } from '@/components/message/RemoveEmbedConfirmDialog';
 import { LinkPreviewCard } from '@/components/message/LinkPreview';
 import { extractUrls, removeUrlsFromText } from '@/lib/message/richText';
+import type { ReceiptStatus } from '@/hooks/useChannelReceipts';
 import type { LinkDisplayMode, Message, Profile, Reaction } from '@/types';
 import styles from './MessageItem.module.css';
 
@@ -42,9 +43,24 @@ interface MessageItemProps {
   onStartEdit?: (message: Message) => void;
   highlight?: boolean;
   compact?: boolean;
+  /** Ticks under the caller's own messages. */
+  receipt?: ReceiptStatus;
+  /** "Seen by …", under the caller's latest message in a group. */
+  seenBy?: string;
 }
 
-export const MessageItem = memo(function MessageItem({ message, isOwn, profile, isGrouped, onDeleteMessage, onRemoveLink, onStartEdit, highlight, compact }: MessageItemProps) {
+const RECEIPT_LABELS: Record<ReceiptStatus, string> = { sent: 'Sent', delivered: 'Delivered', read: 'Read' };
+
+function Ticks({ status }: { status: ReceiptStatus }) {
+  return (
+    <svg width={status === 'sent' ? 12 : 16} height="12" viewBox={status === 'sent' ? '0 0 12 12' : '0 0 16 12'} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M1.5 6.5l3 3 6-7" />
+      {status !== 'sent' && <path d="M7.5 9.5l6-7" />}
+    </svg>
+  );
+}
+
+export const MessageItem = memo(function MessageItem({ message, isOwn, profile, isGrouped, onDeleteMessage, onRemoveLink, onStartEdit, highlight, compact, receipt, seenBy }: MessageItemProps) {
   const { updateMessage: ctxUpdateMessage, deleteMessage: ctxDeleteMessage } = useMessageSafe();
   const editCtx = useEditSafe();
   const { userId, userRole } = useAuth();
@@ -350,6 +366,13 @@ export const MessageItem = memo(function MessageItem({ message, isOwn, profile, 
                       <span className={styles.reactionCount}>+{reactionGroups.length - 3}</span>
                     </button>
                   )}
+                </div>
+              )}
+
+              {mine && receipt && (
+                <div className={`${styles.receipt} ${receipt === 'read' ? styles.receiptRead : ''}`} title={RECEIPT_LABELS[receipt]}>
+                  <Ticks status={receipt} />
+                  <span className={seenBy ? styles.seenBy : styles.srOnly}>{seenBy ?? RECEIPT_LABELS[receipt]}</span>
                 </div>
               )}
 

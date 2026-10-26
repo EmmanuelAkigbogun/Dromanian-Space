@@ -31,6 +31,7 @@ import { CallButton } from '@/components/call';
 import { useToast } from '@/components/ui/Toast';
 import { useAiSession } from '@/hooks/useAiSession/useAiSession';
 import { useFeatureAccess } from '@/lib/workspace/features';
+import { seenByLabel, useChannelReceipts } from '@/hooks/useChannelReceipts';
 import type { LinkDisplayMode, Message, Profile } from '@/types';
 import type { ConnectionStatus } from '@/app/providers/MessageProvider';
 import styles from './DmConversationView.module.css';
@@ -82,6 +83,8 @@ export function DmConversationView() {
   }, [currentParticipants]);
 
   const channelId = currentConversation?.channel_id;
+  const { receiptFor, lastOwnId } = useChannelReceipts(channelId, messages);
+  const nameOf = (id: string) => participantProfiles.get(id)?.display_name || participantProfiles.get(id)?.username || undefined;
   const { session: aiSession, agent: aiAgent, busy: aiBusy, start: startAiSession, finish: finishAiSession } = useAiSession(currentWorkspace?.id, channelId);
   const { toast } = useToast();
   const aiVisible = useFeatureAccess().canSee('ai');
@@ -696,12 +699,15 @@ export function DmConversationView() {
                   {item.type === 'date-separator' && <DateSeparator date={item.data as string} />}
                   {item.type === 'message' && (() => {
                     const data = item.data as { message: Message; isGrouped: boolean };
+                    const receipt = receiptFor(data.message);
                     return (
                       <MessageItem
                         message={data.message}
                         isOwn={data.message.user_id === userId}
                         profile={participantProfiles.get(data.message.user_id) ?? null}
                         isGrouped={data.isGrouped}
+                        receipt={receipt?.status}
+                        seenBy={data.message.id === lastOwnId ? seenByLabel(receipt, nameOf) : undefined}
                         onDeleteMessage={handleDeleteMessage}
                         onRemoveLink={handleRemoveLink}
                         onStartEdit={handleStartEdit}

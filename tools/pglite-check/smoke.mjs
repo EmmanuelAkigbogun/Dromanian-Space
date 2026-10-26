@@ -274,6 +274,31 @@ export default async function smoke(db, legacy) {
   check(await h.denied(h.user(owner, `INSERT INTO crm_companies (workspace_id, name, owner_id, created_by, client_id) VALUES ($1, 'Nope', $2, $2, $3)`, [wsA, owner.id, ourCo]), /client CRM/), 'only companies marked as clients have a CRM');
   check(await h.denied(h.user(owner, 'UPDATE crm_companies SET is_client = false WHERE id = $1', [company.id]), /still has records/), 'a client CRM with records cannot be removed');
 
+  // CRM delete (20261026000300)
+  const doomed = (await h.user(owner, `INSERT INTO crm_companies (workspace_id, name, owner_id, created_by) VALUES ($1, 'Short-lived Ltd', $2, $2) RETURNING id`, [wsA, owner.id]))[0].id;
+  const keptContact = (await h.user(owner, `INSERT INTO crm_contacts (workspace_id, name, owner_id, created_by, company_id) VALUES ($1, 'Kept person', $2, $2, $3) RETURNING id`, [wsA, owner.id, doomed]))[0].id;
+  await h.user(member, 'DELETE FROM crm_companies WHERE id = $1', [doomed]);
+  check((await h.admin('SELECT id FROM crm_companies WHERE id = $1', [doomed])).length === 1, 'members cannot delete CRM companies');
+  await h.user(owner, 'DELETE FROM crm_companies WHERE id = $1', [doomed]);
+  check((await h.admin('SELECT id FROM crm_companies WHERE id = $1', [doomed])).length === 0, 'admins can delete CRM companies');
+  check((await h.admin('SELECT company_id FROM crm_contacts WHERE id = $1', [keptContact]))[0]?.company_id === null, 'a deleted company leaves its contacts, unlinked');
+  check(await h.denied(h.user(owner, 'DELETE FROM crm_companies WHERE id = $1', [company.id]), /still has records/), 'a client company with its own records cannot be deleted');
+
+  // Receipts and direct-message push (20261026000200)
+  const dmMsg = (await h.admin(`INSERT INTO messages (channel_id, user_id, content) VALUES ($1, $2, 'Are you around?') RETURNING id, created_at`, [dm, owner.id]))[0];
+  check((await h.admin(`SELECT count(*)::int AS n FROM jobs WHERE kind = 'message.push' AND principal_id = $1 AND payload->>'message_id' = $2`, [member.id, dmMsg.id]))[0].n === 1, 'direct messages are pushed to the other participant');
+  check((await h.admin(`SELECT count(*)::int AS n FROM jobs WHERE kind = 'message.push' AND principal_id = $1 AND payload->>'message_id' = $2`, [owner.id, dmMsg.id]))[0].n === 0, 'senders get no push for their own message');
+  await h.user(member, 'SELECT mark_channel_seen($1, $2, false)', [dm, dmMsg.created_at]);
+  let seen = (await h.user(owner, 'SELECT * FROM channel_receipts($1)', [dm])).find((r) => r.user_id === member.id);
+  check(seen && new Date(seen.last_delivered_at) >= new Date(dmMsg.created_at) && new Date(seen.last_read_at) < new Date(dmMsg.created_at), 'a received message shows as delivered, not read');
+  await h.user(member, 'SELECT mark_channel_seen($1, $2, true)', [dm, dmMsg.created_at]);
+  seen = (await h.user(owner, 'SELECT * FROM channel_receipts($1)', [dm])).find((r) => r.user_id === member.id);
+  check(new Date(seen.last_read_at) >= new Date(dmMsg.created_at), 'an opened conversation shows as read');
+  check((await h.user(other, 'SELECT * FROM channel_receipts($1)', [dm])).length === 0, 'outsiders cannot see receipts');
+  await h.admin(`INSERT INTO messages (channel_id, user_id, content, created_at) VALUES ($1, $2, 'One more thing', now() + interval '2 seconds')`, [dm, owner.id]);
+  const before = (await h.admin('SELECT last_delivered_at FROM channel_members WHERE channel_id = $1 AND user_id = $2', [dm, member.id]))[0].last_delivered_at;
+  check((await h.user(member, 'SELECT mark_all_delivered() AS n'))[0].n >= 1 && (await h.admin('SELECT last_delivered_at FROM channel_members WHERE channel_id = $1 AND user_id = $2', [dm, member.id]))[0].last_delivered_at > before, 'a running app marks new messages delivered');
+
   // Member features (20261025000400)
   check(await h.denied(h.user(member, `SELECT set_member_features($1, ARRAY['ai'])`, [wsA]), /owners and admins/), 'members cannot change features');
   check(await h.denied(h.user(owner, `SELECT set_member_features($1, ARRAY['games'])`, [wsA])), 'unknown features are refused');

@@ -28,6 +28,8 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useAuth } from '@/hooks/useAuth';
 import { useFeatureAccess } from '@/lib/workspace/features';
 import { CHAT_HOME, CHAT_ONLY, chatOnlyPath } from '@/lib/pwa';
+import { PermissionsBanner } from '@/components/pwa/PermissionsBanner';
+import { useDeliveryTracker } from '@/hooks/useChannelReceipts';
 
 
 const CRMPage = lazy(() => import('@/app/routes/CRM/CRMPage'));
@@ -125,6 +127,7 @@ function AppLayoutWithThread() {
     if (!/^\/(channels|dm|threads)(\/|$)/.test(pathname)) closeThread();
   }, [pathname, closeThread]);
   useKeyboardShortcuts();
+  useDeliveryTracker();
 
   // Scheduled messages are delivered on the server only: by pg_cron, or by the
   // worker where pg_cron has no active job (never both). Browsers do not send them.
@@ -141,6 +144,7 @@ function AppLayoutWithThread() {
       rightPanelContent={activeThread ? <MessageProvider><ThreadPanel /></MessageProvider> : undefined}
       onRightPanelClose={closeThread}
     >
+      <PermissionsBanner />
       {pageHidden ? <Navigate to={CHAT_ONLY ? CHAT_HOME : '/'} replace /> : (
       <Suspense fallback={<p role="status">Loading workspace…</p>}><Routes>
         <Route path="/notifications" element={<Notifications />} />

@@ -4,7 +4,7 @@ import { handleKnowledgeExtract } from '../knowledge/worker.js';
 import { handleDrivePurge, handleGcObject } from '../drive/gc.js';
 import { executeRun } from '../agents/engine.js';
 import { handleAutomationCallback, queueCallbackForRun } from '../integrations/n8n.js';
-import { handleNotificationPush } from '../push.js';
+import { handleMessagePush, handleNotificationPush } from '../push.js';
 import { PermanentJobError, type JobHandler, type JobRow } from './types.js';
 
 const LEASE_SECONDS = 120;
@@ -33,6 +33,7 @@ const handlers: Record<string, JobHandler> = {
   'drive.purge': handleDrivePurge,
   'drive.gc_object': handleGcObject,
   'notification.push': handleNotificationPush,
+  'message.push': handleMessagePush,
 };
 
 export const JOB_KINDS = Object.keys(handlers);

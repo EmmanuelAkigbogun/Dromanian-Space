@@ -1,5 +1,5 @@
 // Streams rows that database functions write (notifications, agent replies,
-// AI sessions, task requests) to the people allowed to see them. The data
+// AI sessions, task requests, receipts) to the people allowed to see them. The data
 // proxy only publishes the browser's own table writes; these rows are
 // announced by triggers with pg_notify('app_changes', …) and fetched here.
 // Every API instance listens on its own connection and serves its own clients.
@@ -40,6 +40,13 @@ async function load(change: Change): Promise<{ row: Record<string, unknown>; aud
   }
   if (change.table === 'messages') {
     const row = (await db.query('SELECT * FROM public.messages WHERE id = $1::uuid', [change.id])).rows[0];
+    return row ? { row, audience: await channelMembers(row.channel_id) } : null;
+  }
+  if (change.table === 'channel_members') {
+    // Receipts: how far a member has received and read a conversation.
+    const row = (await db.query(
+      'SELECT id, channel_id, user_id, last_read_at, greatest(last_delivered_at, last_read_at) AS last_delivered_at FROM public.channel_members WHERE id = $1::uuid',
+      [change.id])).rows[0];
     return row ? { row, audience: await channelMembers(row.channel_id) } : null;
   }
   if (change.table === 'conversation_ai_sessions') {

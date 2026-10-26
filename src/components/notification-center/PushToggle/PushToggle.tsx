@@ -4,8 +4,8 @@ import { disablePush, enablePush, pushState, type PushState } from '@/lib/push';
 import styles from './PushToggle.module.css';
 
 const HINTS: Partial<Record<PushState, string>> = {
-  on: 'Push is on for this browser: you are notified of task assignments and approvals even when Darkspace is closed.',
-  off: 'Get a system notification when a task is assigned to you or needs your approval, even when Darkspace is closed.',
+  on: 'Push is on for this browser: you get new messages, mentions, tasks and approvals even when Darkspace is closed.',
+  off: 'Get a system notification for new messages, mentions and tasks, even when Darkspace is closed.',
   denied: 'Notifications are blocked for this site. Allow them in your browser’s site settings, then reload.',
 };
 

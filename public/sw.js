@@ -1,5 +1,6 @@
-// Service worker for Web Push only: it shows task notifications sent by the
-// server and opens the app at the notification's link. It caches nothing.
+// Service worker for Web Push only: it shows notifications sent by the server
+// (messages, mentions, tasks) even while the app is closed, and opens the app
+// at the notification's link. It caches nothing.
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
@@ -14,9 +15,11 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title || 'Darkspace', {
       body: data.body || '',
-      icon: '/favicon.svg',
-      badge: '/favicon.svg',
-      tag: data.id || undefined,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      // A conversation's messages replace each other instead of stacking up.
+      tag: data.tag || data.id || undefined,
+      renotify: !!data.tag,
       data: { url },
     }),
   );

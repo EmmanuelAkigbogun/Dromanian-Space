@@ -7,6 +7,7 @@ import { useProfiles } from '@/hooks/useProfiles';
 import { useDeepLinkScroll } from '@/hooks/useDeepLinkScroll';
 import { useThreadCounts } from '@/app/providers/ThreadProvider';
 import { usePrefetchAttachments } from '@/hooks/useMessageAttachments';
+import { seenByLabel, useChannelReceipts } from '@/hooks/useChannelReceipts';
 import { MessageItem } from '@/components/message/MessageItem';
 import { MessageInput } from '@/components/message/MessageInput';
 import { MessageEmpty } from '@/components/message/MessageEmpty';
@@ -46,6 +47,8 @@ export function MessageList() {
     [messages],
   );
   const { profiles } = useProfiles(uniqueUserIds);
+  const { receiptFor, lastOwnId } = useChannelReceipts(currentChannel?.id, messages);
+  const nameOf = (id: string) => profiles.get(id)?.display_name || profiles.get(id)?.username || undefined;
 
   const { setReplyCount } = useThreadCounts();
 
@@ -233,6 +236,7 @@ export function MessageList() {
                 {item.type === 'date-separator' && <DateSeparator date={item.data} />}
                 {item.type === 'message' && (() => {
                   const data = item.data as { message: Message; isGrouped: boolean };
+                  const receipt = receiptFor(data.message);
                   return (
                     <MessageItem
                       message={data.message}
@@ -240,6 +244,8 @@ export function MessageList() {
                       profile={profiles.get(data.message.user_id) ?? null}
                       isGrouped={data.isGrouped}
                       highlight={highlightId === data.message.id}
+                      receipt={receipt?.status}
+                      seenBy={data.message.id === lastOwnId ? seenByLabel(receipt, nameOf) : undefined}
                     />
                   );
                 })()}
