@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { platform } from '@/lib/platform';
 
-export type Feature = 'ai' | 'crm' | 'drive' | 'calendar' | 'projects' | 'automation';
+export type Feature = 'ai' | 'crm' | 'drive' | 'calendar' | 'projects' | 'automation' | 'social';
 
 export const FEATURES: Array<{ key: Feature; label: string; description: string }> = [
   {
@@ -18,6 +18,7 @@ export const FEATURES: Array<{ key: Feature; label: string; description: string 
   { key: 'calendar', label: 'Calendar', description: 'Events, reminders and scheduled messages.' },
   { key: 'projects', label: 'Projects', description: 'Project boards, milestones and members.' },
   { key: 'automation', label: 'Automation', description: 'Workflow rules and automation integrations.' },
+  { key: 'social', label: 'Social', description: 'Connected social accounts, scheduled posts and publishing results.' },
 ];
 
 /** The first path segment that belongs to each feature. */
@@ -28,6 +29,7 @@ const ROUTE_FEATURES: Array<[RegExp, Feature]> = [
   [/^\/calendar(\/|$)/, 'calendar'],
   [/^\/projects(\/|$)/, 'projects'],
   [/^\/automation(\/|$)/, 'automation'],
+  [/^\/social(\/|$)/, 'social'],
 ];
 
 export function featureForPath(path: string): Feature | null {

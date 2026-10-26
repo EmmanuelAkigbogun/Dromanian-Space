@@ -43,6 +43,8 @@ const GLYPHS: Record<string, ReactNode> = {
   team: <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />,
   building: <path d="M3 21h18M5 21V5a2 2 0 012-2h10a2 2 0 012 2v16M9 7h1M14 7h1M9 11h1M14 11h1M9 15h1M14 15h1" />,
   deal: <path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" />,
+  compose: <path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L8 18l-4 1 1-4z" />,
+  accounts: <path d="M18 8a3 3 0 100-6 3 3 0 000 6zM6 15a3 3 0 100-6 3 3 0 000 6zM18 22a3 3 0 100-6 3 3 0 000 6zM8.7 13.7l6.6-4.4M8.7 16.3l6.6 4.4" />,
   more: <path d="M12 5v.01M12 12v.01M12 19v.01" />,
 };
 
@@ -54,13 +56,14 @@ function Glyph({ name }: { name: string }) {
   );
 }
 
-type Section = 'chat' | 'drive' | 'agents' | 'crm' | 'workspace';
+type Section = 'chat' | 'drive' | 'agents' | 'crm' | 'social' | 'workspace';
 
 const SECTION_TITLES: Record<Section, { title: string; hint: string }> = {
   chat: { title: 'Conversations', hint: 'Channels and direct messages' },
   drive: { title: 'Drive', hint: 'Files and documents' },
   agents: { title: 'Agents', hint: 'Your AI specialists' },
   crm: { title: 'CRM', hint: 'Contacts, companies and deals' },
+  social: { title: 'Social', hint: 'Publish for every managed brand' },
   workspace: { title: 'Workspace', hint: 'Plan and track the work' },
 };
 
@@ -80,7 +83,9 @@ export function Sidebar({ primaryNavigation, secondaryNavigation = [] }: Sidebar
         ? 'agents'
         : pathname.startsWith('/crm')
           ? 'crm'
-          : 'workspace';
+          : pathname.startsWith('/social')
+            ? 'social'
+            : 'workspace';
   // Projects, calendar and channels live in the submenu rather than the rail.
   const rail = primaryNavigation.filter((n) => !['/projects', '/calendar', '/channels'].includes(n.to));
 
@@ -157,6 +162,14 @@ export function Sidebar({ primaryNavigation, secondaryNavigation = [] }: Sidebar
         {link('/crm/companies', 'Companies', 'building')}
         {link('/crm/contacts', 'Contacts', 'user')}
         {link('/crm/deals', 'Deals', 'deal')}
+      </>,
+    ),
+    social: group(
+      'Publishing',
+      <>
+        {link('/social#compose', 'Compose', 'compose')}
+        {link('/social#posts', 'Scheduled & published', 'clock')}
+        {link('/social#accounts', 'Social accounts', 'accounts')}
       </>,
     ),
     workspace: group(

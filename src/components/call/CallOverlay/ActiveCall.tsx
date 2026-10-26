@@ -34,9 +34,11 @@ interface VideoTileProps {
   isSpeaking?: boolean;
   handRaised?: boolean;
   isScreenSharing?: boolean;
+  /** Opens the tile on the full-window stage. */
+  onExpand?: () => void;
 }
 
-function VideoTileImpl({ stream, label, isMuted, isLocal, isSpeaking, handRaised, isScreenSharing }: VideoTileProps) {
+function VideoTileImpl({ stream, label, isMuted, isLocal, isSpeaking, handRaised, isScreenSharing, onExpand }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [trackVersion, setTrackVersion] = useState(0);
 
@@ -60,7 +62,15 @@ function VideoTileImpl({ stream, label, isMuted, isLocal, isSpeaking, handRaised
   const hasVideo = stream?.getVideoTracks().some((t) => t.enabled) ?? false;
 
   return (
-    <div className={`${styles.videoTile} ${isLocal ? styles.localTile : ''} ${isSpeaking ? styles.speakingTile : ''}`}>
+    <div className={`${styles.videoTile} ${isLocal ? styles.localTile : ''} ${isSpeaking ? styles.speakingTile : ''}`} onDoubleClick={onExpand}>
+      {onExpand && hasVideo && (
+        <button type="button" className={`${styles.expandButton} ${isScreenSharing ? styles.expandButtonShown : ''}`} onClick={onExpand} aria-label={`Expand ${label}`} title="Expand">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+          </svg>
+          {isScreenSharing && <span>Expand</span>}
+        </button>
+      )}
       {isScreenSharing && (
         <div className={styles.screenShareBadge}>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -72,7 +82,7 @@ function VideoTileImpl({ stream, label, isMuted, isLocal, isSpeaking, handRaised
         </div>
       )}
       {hasVideo ? (
-        <video ref={videoRef} autoPlay playsInline muted className={styles.videoElement} />
+        <video ref={videoRef} autoPlay playsInline muted className={`${styles.videoElement} ${isScreenSharing ? styles.videoContain : ''}`} />
       ) : (
         <div className={styles.videoPlaceholder}>
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -150,6 +160,28 @@ export function ActiveCall() {
   } = useCallContext();
 
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [stage, setStage] = useState<string | null>(null);
+  const [stageFullscreen, setStageFullscreen] = useState(false);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const closeStage = useCallback(() => {
+    if (document.fullscreenElement === stageRef.current) void document.exitFullscreen();
+    setStage(null);
+  }, []);
+  const toggleStageFullscreen = async () => {
+    if (!stageRef.current) return;
+    if (document.fullscreenElement === stageRef.current) await document.exitFullscreen();
+    else await stageRef.current.requestFullscreen().catch(() => undefined);
+  };
+  useEffect(() => {
+    const onChange = () => setStageFullscreen(!!stageRef.current && document.fullscreenElement === stageRef.current);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !document.fullscreenElement) setStage(null); };
+    document.addEventListener('fullscreenchange', onChange);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, []);
   const [showParticipants, setShowParticipants] = useState(false);
   const [handRaised, setHandRaised] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
@@ -344,8 +376,7 @@ export function ActiveCall() {
     [connectedParticipants, userId],
   );
 
-  const renderVideoGrid = () => {
-    const allTiles = [
+  const stageTiles = () => [
       { userId: '__local__', stream: localStream, label: 'You', isMuted, isLocal: true as const, handRaised: false, isScreenSharing: isScreenSharing },
       ...remoteParticipants.map((p) => ({
         userId: p.user_id,
@@ -357,6 +388,9 @@ export function ActiveCall() {
         isScreenSharing: remoteScreenSharers.get(p.user_id) ?? false,
       })),
     ];
+
+  const renderVideoGrid = () => {
+    const allTiles = stageTiles();
 
     if (layoutMode === 'spotlight' && activeSpeakerId) {
       const spotlightUser = allTiles.find((t) => t.userId === activeSpeakerId) ?? allTiles[0];
@@ -372,6 +406,7 @@ export function ActiveCall() {
               isSpeaking={speakingUsers.has(spotlightUser.userId)}
               handRaised={spotlightUser.handRaised}
               isScreenSharing={spotlightUser.isScreenSharing}
+              onExpand={() => setStage(spotlightUser.userId)}
             />
           </div>
           <div className={styles.spotlightSidebar}>
@@ -385,6 +420,7 @@ export function ActiveCall() {
                 isSpeaking={speakingUsers.has(t.userId)}
                 handRaised={t.handRaised}
                 isScreenSharing={t.isScreenSharing}
+                onExpand={() => setStage(t.userId)}
               />
             ))}
           </div>
@@ -406,6 +442,7 @@ export function ActiveCall() {
               isSpeaking={speakingUsers.has(speakerTile.userId)}
               handRaised={speakerTile.handRaised}
               isScreenSharing={speakerTile.isScreenSharing}
+              onExpand={() => setStage(speakerTile.userId)}
             />
           </div>
           {others.length > 0 && (
@@ -420,6 +457,7 @@ export function ActiveCall() {
                   isSpeaking={speakingUsers.has(t.userId)}
                   handRaised={t.handRaised}
                   isScreenSharing={t.isScreenSharing}
+                  onExpand={() => setStage(t.userId)}
                 />
               ))}
             </div>
@@ -440,14 +478,66 @@ export function ActiveCall() {
             isSpeaking={speakingUsers.has(t.userId)}
             handRaised={t.handRaised}
             isScreenSharing={t.isScreenSharing}
+            onExpand={() => setStage(t.userId)}
           />
         ))}
       </div>
     );
   };
 
+  // The full-window stage: one person's video or screen as large as it fits.
+  const renderStage = () => {
+    if (!stage) return null;
+    const tiles = stageTiles();
+    const main = tiles.find((t) => t.userId === stage);
+    if (!main) return null;
+    const others = tiles.filter((t) => t.userId !== stage && t.stream?.getVideoTracks().some((v) => v.enabled));
+    return (
+      <div ref={stageRef} className={styles.stage} role="dialog" aria-modal="true" aria-label={`${main.label} — expanded`}>
+        <div className={styles.stageHeader}>
+          <span>{main.isScreenSharing ? `${main.label} — screen` : main.label}</span>
+          <span className={styles.stageActions}>
+            <button type="button" className={styles.stageButton} onClick={() => void toggleStageFullscreen()}>
+              {stageFullscreen ? 'Exit full screen' : 'Full screen'}
+            </button>
+            <button type="button" className={styles.stageButton} onClick={closeStage} aria-label="Close expanded view">Close</button>
+          </span>
+        </div>
+        <div className={styles.stageMain}>
+          <VideoTile
+            stream={main.stream}
+            label={main.label}
+            isMuted={main.isMuted}
+            isLocal={main.isLocal}
+            isSpeaking={speakingUsers.has(main.userId)}
+            handRaised={main.handRaised}
+            isScreenSharing={main.isScreenSharing}
+          />
+        </div>
+        {others.length > 0 && (
+          <div className={styles.stageStrip}>
+            {others.map((t) => (
+              <VideoTile
+                key={t.userId}
+                stream={t.stream}
+                label={t.label}
+                isMuted={t.isMuted}
+                isLocal={t.isLocal}
+                isSpeaking={speakingUsers.has(t.userId)}
+                handRaised={t.handRaised}
+                isScreenSharing={t.isScreenSharing}
+                onExpand={() => setStage(t.userId)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div ref={containerRef} className={`${styles.container} ${hasAnyVideo ? styles.videoMode : ''} ${isFullscreen ? styles.fullscreen : ''}`}>
+      {renderStage()}
       {floatingReactions.map((r) => (
         <div key={r.id} className={styles.floatingReaction} style={{ left: `${r.x}%` }}>
           {r.emoji}

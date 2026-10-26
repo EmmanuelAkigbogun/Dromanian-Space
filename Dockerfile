@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 FROM node:24.15.0-bookworm-slim AS deps
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
@@ -13,10 +14,15 @@ ENV VITE_APP_NAME=${VITE_APP_NAME} VITE_APP_URL=${VITE_APP_URL}
 RUN npm run build && npm run build:server
 
 FROM node:24.15.0-bookworm-slim AS server
-ENV NODE_ENV=production
+ENV NODE_ENV=production \
+    PUPPETEER_SKIP_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends chromium ca-certificates fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/dist-server ./dist-server
 COPY --from=build /app/server/templates ./server/templates
 USER node

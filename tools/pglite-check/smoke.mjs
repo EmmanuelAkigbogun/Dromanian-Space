@@ -317,6 +317,24 @@ export default async function smoke(db, legacy) {
   const pc = (await h.admin(`SELECT * FROM crm_companies WHERE workspace_id = $1 AND name = 'Consstar Construct'`, [wsA]))[0];
   check(pc?.has_linkedin === true && pc.prospect_type === 'Potential direct buyer' && pc.contact_sources === 'https://consstar.ro/contact', 'companies keep the prospect-list columns');
 
+  // Social (20261026000700)
+  const managed = (await h.user(owner, `INSERT INTO crm_companies (workspace_id, name, owner_id, created_by) VALUES ($1, 'Managed Brand', $2, $2) RETURNING id`, [wsA, owner.id]))[0].id;
+  check(await h.denied(h.user(member, `INSERT INTO social_accounts (workspace_id, company_id, platform, label, created_by) VALUES ($1, $2, 'x', '@brand', $3)`, [wsA, managed, member.id]), /row-level security/), 'only admins connect social accounts');
+  const acct = (await h.user(owner, `INSERT INTO social_accounts (workspace_id, company_id, platform, label, created_by, status) VALUES ($1, $2, 'linkedin', 'Managed Brand page', $3, 'connected') RETURNING id, status`, [wsA, managed, owner.id]))[0];
+  check(acct.status === 'needs_login', 'new accounts start without a login');
+  check(await h.denied(h.user(owner, `INSERT INTO social_accounts (workspace_id, company_id, platform, label, created_by) VALUES ($1, $2, 'x', 'Client book co', $3)`, [wsA, clientCo.id, owner.id]), /our CRM/), 'social accounts belong to our own CRM companies');
+  check(await h.denied(h.user(owner, 'SELECT * FROM social_account_sessions')), 'clients cannot read social sessions');
+  const later = new Date(Date.now() + 3600e3).toISOString();
+  const postId = (await h.user(member, 'SELECT social_schedule_post($1, $2, $3, NULL, $4, $5) AS id', [wsA, managed, 'Launch day!', [acct.id], later]))[0].id;
+  check((await h.admin(`SELECT count(*)::int AS n FROM jobs WHERE kind = 'social.publish' AND payload->>'target_id' IN (SELECT id::text FROM social_post_targets WHERE post_id = $1)`, [postId]))[0].n === 1, 'scheduling queues one publish per account');
+  check((await h.user(other, 'SELECT id FROM social_posts WHERE id = $1', [postId])).length === 0, 'outsiders cannot see social posts');
+  check(await h.denied(h.user(member, 'SELECT social_schedule_post($1, NULL, $2, NULL, $3)', [wsA, 'Wrong brand', [acct.id]]), /accounts of this company/), 'posts only go to the chosen company’s accounts');
+  await h.user(member, 'SELECT social_cancel_post($1)', [postId]);
+  check((await h.admin('SELECT status FROM social_posts WHERE id = $1', [postId]))[0].status === 'cancelled', 'cancelled posts stop');
+  await h.admin(`INSERT INTO workspace_member_features (workspace_id, hidden) VALUES ($1, '{social}') ON CONFLICT (workspace_id) DO UPDATE SET hidden = '{social}'`, [wsA]);
+  check((await h.user(member, 'SELECT id FROM social_posts WHERE workspace_id = $1', [wsA])).length === 0, 'hiding Social hides it from the team');
+  await h.admin(`UPDATE workspace_member_features SET hidden = '{}' WHERE workspace_id = $1`, [wsA]);
+
   // CRM delete (20261026000300)
   const doomed = (await h.user(owner, `INSERT INTO crm_companies (workspace_id, name, owner_id, created_by) VALUES ($1, 'Short-lived Ltd', $2, $2) RETURNING id`, [wsA, owner.id]))[0].id;
   const keptContact = (await h.user(owner, `INSERT INTO crm_contacts (workspace_id, name, owner_id, created_by, company_id) VALUES ($1, 'Kept person', $2, $2, $3) RETURNING id`, [wsA, owner.id, doomed]))[0].id;

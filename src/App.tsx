@@ -23,7 +23,7 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { PublicRoute } from '@/components/auth/PublicRoute';
 import { OnboardingWrapper } from '@/components/auth/OnboardingWrapper';
 import { WorkspaceGuard } from '@/components/workspace';
-import { HomeIcon, MessageIcon, UsersIcon, BellIcon, SettingsIcon, UserIcon, FolderIcon, MailIcon, TaskIcon, ProjectIcon, CalendarIcon, AutomationIcon, AiIcon, BookmarkIcon, PhoneIcon } from '@/components/shared/Icons';
+import { HomeIcon, MessageIcon, UsersIcon, BellIcon, SettingsIcon, UserIcon, FolderIcon, MailIcon, TaskIcon, ProjectIcon, CalendarIcon, AutomationIcon, AiIcon, BookmarkIcon, PhoneIcon, SocialIcon } from '@/components/shared/Icons';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useAuth } from '@/hooks/useAuth';
 import { useFeatureAccess } from '@/lib/workspace/features';
@@ -63,6 +63,7 @@ const CalendarPage = lazy(() => import('@/app/routes/Calendar').then((m) => ({ d
 const AutomationPage = lazy(() => import('@/app/routes/Automation').then((m) => ({ default: m.AutomationPage })));
 const SavedPinnedPage = lazy(() => import('@/app/routes/SavedPinned').then((m) => ({ default: m.SavedPinnedPage })));
 const CallsPage = lazy(() => import('@/app/routes/Calls').then((m) => ({ default: m.CallsPage })));
+const SocialPage = lazy(() => import('@/app/routes/Social').then((m) => ({ default: m.SocialPage })));
 
 function DesktopIntegration() {
   const navigate = useNavigate();
@@ -103,6 +104,7 @@ const primaryNavigation = [
   { to: '/calendar', icon: <CalendarIcon />, label: 'Calendar' },
   { to: '/drive', icon: <FolderIcon />, label: 'Drive' },
   { to: '/crm', icon: <UsersIcon />, label: 'CRM' },
+  { to: '/social', icon: <SocialIcon />, label: 'Social' },
 ];
 
 const secondaryNavigation = [
@@ -182,6 +184,7 @@ function AppLayoutWithThread() {
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/projects/:projectId" element={<ProjectViewPage />} />
               <Route path="/automation" element={<AutomationPage />} />
+              <Route path="/social" element={<SocialPage />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </WorkspaceGuard>

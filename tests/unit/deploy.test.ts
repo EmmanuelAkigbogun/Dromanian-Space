@@ -27,6 +27,13 @@ describe('standalone compose safety', () => {
     expect(compose).toContain('APP_JWT_SECRET: ${APP_JWT_SECRET:?APP_JWT_SECRET}');
   });
 
+  it('ships one system Chromium without downloading Puppeteer browsers', () => {
+    const dockerfile = read('Dockerfile');
+    expect(dockerfile).toContain('PUPPETEER_SKIP_DOWNLOAD=true');
+    expect(dockerfile).toContain('PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium');
+    expect(dockerfile).toMatch(/apt-get install[^\n]*chromium/);
+  });
+
   it('contains no external auth or managed backend service', () => {
     expect(compose).not.toMatch(/gotrue|studio|realtime|storage-api|supabase\//i);
   });

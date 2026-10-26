@@ -667,3 +667,118 @@
     flex-shrink: 0;
   }
 }
+
+/* Screens are shown whole, never cropped. */
+.videoContain {
+  object-fit: contain;
+  background: #000;
+}
+
+.expandButton {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.videoTile:hover .expandButton,
+.expandButton:focus-visible,
+.expandButtonShown {
+  opacity: 1;
+}
+
+.expandButton:hover {
+  background: rgba(0, 0, 0, 0.85);
+}
+
+/* The expanded view fills the window; Full screen fills the display. */
+.stage {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  display: flex;
+  flex-direction: column;
+  background: #0b0b10;
+  color: #fff;
+}
+
+.stageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.stageActions {
+  display: flex;
+  gap: 8px;
+}
+
+.stageButton {
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.stageButton:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.stageMain {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+}
+
+.stageMain .videoTile {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  aspect-ratio: auto;
+  border: none;
+  border-radius: var(--radius-md);
+  background: #000;
+}
+
+.stageMain .videoElement {
+  object-fit: contain;
+}
+
+.stageStrip {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  overflow-x: auto;
+  padding: 10px 16px 14px;
+}
+
+.stageStrip .videoTile {
+  flex-shrink: 0;
+  width: 160px;
+  max-width: 160px;
+  aspect-ratio: 16 / 9;
+  cursor: pointer;
+}

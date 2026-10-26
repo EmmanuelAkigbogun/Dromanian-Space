@@ -23,6 +23,7 @@ const PAGE_TITLES: Array<[RegExp, string]> = [
   [/^\/calendar/, 'Calendar'],
   [/^\/(drive|files)/, 'Drive'],
   [/^\/crm/, 'CRM'],
+  [/^\/social/, 'Social'],
   [/^\/calls|^\/new-call|^\/call-history/, 'Calls'],
   [/^\/saved-pinned/, 'Saved & pinned'],
   [/^\/automation/, 'Automation'],

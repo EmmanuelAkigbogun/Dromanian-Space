@@ -9,6 +9,7 @@ import * as sessions from '../api/agents/sessions.js';
 import * as push from '../api/push.js';
 import * as drive from '../api/drive.js';
 import * as office from '../api/office.js';
+import * as social from '../api/social.js';
 import * as jobs from '../api/jobs/run.js';
 import * as n8n from '../api/integrations/n8n.js';
 import * as auth from '../api/auth.js';
@@ -33,6 +34,13 @@ export const ROUTES: Record<string, Partial<Record<ApiMethod, Handler>>> = {
   '/api/office/config': { POST: office.config },
   '/api/office/file': { GET: office.file },
   '/api/office/callback': { POST: office.callback },
+  '/api/social/status': { GET: social.status },
+  '/api/social/login/start': { POST: social.start },
+  '/api/social/login/frame': { GET: social.frame },
+  '/api/social/login/input': { POST: social.input },
+  '/api/social/login/finish': { POST: social.finish },
+  '/api/social/login/cancel': { POST: social.cancel },
+  '/api/social/cookies': { POST: social.cookies },
   '/api/jobs/run': jobs,
   '/api/integrations/n8n/runs': n8n,
   '/api/auth/signup': { POST: auth.signup },

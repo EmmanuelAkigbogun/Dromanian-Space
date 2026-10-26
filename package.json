@@ -30,6 +30,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
     "@google/genai": "^2.30.0",
+    "@profullstack/social-poster": "1.1.0",
     "@tanstack/react-query": "^5.101.2",
     "@tanstack/react-virtual": "^3.14.6",
     "fflate": "^0.8.3",
