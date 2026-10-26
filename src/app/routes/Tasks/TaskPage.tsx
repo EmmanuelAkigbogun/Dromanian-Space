@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useWorkspace } from '@/hooks/useWorkspace';
@@ -16,7 +16,7 @@ import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
 import { Switch } from '@/components/ui/Switch';
 import type { Task, TaskStatus, TaskPriority } from '@/types/task';
-import { TASK_STATUS_OPTIONS, TASK_PRIORITY_OPTIONS } from '@/types/task';
+import { TASK_STATUS_OPTIONS, TASK_PRIORITY_OPTIONS, getStatusColor } from '@/types/task';
 import styles from './TaskPage.module.css';
 
 export function TaskPage() {
@@ -45,7 +45,8 @@ export function TaskPage() {
   const [view, setView] = useState<'list' | 'board'>('board');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [statusFilter, setStatusFilter] = useState('');
+  // Status is chosen with the notebook tabs (client-side); the server filter stays open.
+  const statusFilter: string = '';
   const [priorityFilter, setPriorityFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
@@ -106,6 +107,24 @@ export function TaskPage() {
     [setSearchParams],
   );
 
+  // Notebook tabs: one per status, filtered here so every tab keeps its count.
+  const [statusTab, setStatusTab] = useState('all');
+  const statusTabs = useMemo(() => {
+    const count = (status: string) => tasks.filter((t) => t.status === status).length;
+    const builtIn = TASK_STATUS_OPTIONS
+      // Backlog and Cancelled only appear when something is in them.
+      .filter((o) => !['backlog', 'cancelled'].includes(o.value) || count(o.value) > 0)
+      .map((o) => ({ value: o.value as string, label: o.label, color: getStatusColor(o.value), count: count(o.value) }));
+    const custom = customStatusOptions
+      .filter((o) => count(o.value) > 0)
+      .map((o) => ({ value: o.value, label: o.label, color: 'var(--color-primary)', count: count(o.value) }));
+    return [{ value: 'all', label: 'All', color: 'var(--color-primary)', count: tasks.length }, ...builtIn, ...custom];
+  }, [tasks, customStatusOptions]);
+  const tabTasks = useMemo(() => (statusTab === 'all' ? tasks : tasks.filter((t) => t.status === statusTab)), [tasks, statusTab]);
+  useEffect(() => {
+    if (!statusTabs.some((t) => t.value === statusTab)) setStatusTab('all');
+  }, [statusTabs, statusTab]);
+
   const handleCustomStatusesChange = useCallback(() => {
     setCustomStatusesVersion((v) => v + 1);
   }, []);
@@ -113,19 +132,6 @@ export function TaskPage() {
   const handleViewChange = useCallback((newView: 'list' | 'board') => {
     setView(newView);
   }, []);
-
-  const handleStatusFilter = useCallback(
-    (value: string) => {
-      setStatusFilter(value);
-      setFilters({
-        status: (value as TaskStatus) || undefined,
-        priority: (priorityFilter as TaskPriority) || undefined,
-        search: searchQuery || undefined,
-        includeArchived: showArchived || undefined,
-      });
-    },
-    [priorityFilter, searchQuery, showArchived, setFilters],
-  );
 
   const handlePriorityFilter = useCallback(
     (value: string) => {
@@ -252,17 +258,6 @@ export function TaskPage() {
         <div className={styles.filterSelect}>
           <Select
             options={[
-              { value: '', label: 'All Statuses' },
-              ...TASK_STATUS_OPTIONS,
-              ...customStatusOptions,
-            ]}
-            value={statusFilter}
-            onChange={(e) => handleStatusFilter(e.target.value)}
-          />
-        </div>
-        <div className={styles.filterSelect}>
-          <Select
-            options={[
               { value: '', label: 'All Priorities' },
               ...TASK_PRIORITY_OPTIONS.map((p) => ({ value: p.value, label: p.label })),
             ]}
@@ -279,7 +274,27 @@ export function TaskPage() {
         </label>
       </div>
 
-      <div className={styles.content}>
+      {!isLoading && !error && tasks.length > 0 && (
+        <div className={styles.notebookTabs} role="tablist" aria-label="Task status">
+          {statusTabs.map((t) => (
+            <button
+              key={t.value}
+              type="button"
+              role="tab"
+              aria-selected={statusTab === t.value}
+              className={`${styles.notebookTab} ${statusTab === t.value ? styles.notebookTabActive : ''}`}
+              style={{ '--tab-color': t.color } as React.CSSProperties}
+              onClick={() => setStatusTab(t.value)}
+            >
+              {t.value !== 'all' && <span className={styles.notebookDot} aria-hidden="true" />}
+              {t.label}
+              <span className={styles.notebookCount}>{t.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className={`${styles.content} ${!isLoading && !error && tasks.length > 0 ? styles.notebookPage : ''}`}>
         {isLoading ? (
           <div className={styles.loadingState}>
             <Spinner size="lg" label="Loading tasks..." />
@@ -315,10 +330,15 @@ export function TaskPage() {
               Create Task
             </button>
           </div>
+        ) : tabTasks.length === 0 ? (
+          <div className={styles.emptyState}>
+            <p className={styles.emptyTitle}>Nothing in {statusTabs.find((t) => t.value === statusTab)?.label ?? 'this tab'}</p>
+            <p className={styles.emptyDescription}>Tasks move here when their status changes.</p>
+          </div>
         ) : view === 'list' ? (
-          <TaskList tasks={tasks} onTaskClick={handleTaskClick} onRestore={showArchived ? handleRestore : undefined} customStatusesVersion={customStatusesVersion} />
+          <TaskList tasks={tabTasks} onTaskClick={handleTaskClick} onRestore={showArchived ? handleRestore : undefined} customStatusesVersion={customStatusesVersion} />
         ) : (
-          <TaskBoard tasks={tasks} onTaskClick={handleTaskClick} onStatusChange={updateTaskStatus} onRestore={showArchived ? handleRestore : undefined} onDuplicate={duplicateTask} customStatusesVersion={customStatusesVersion} />
+          <TaskBoard tasks={tabTasks} onTaskClick={handleTaskClick} onStatusChange={updateTaskStatus} onRestore={showArchived ? handleRestore : undefined} onDuplicate={duplicateTask} customStatusesVersion={customStatusesVersion} />
         )}
       </div>
       </>

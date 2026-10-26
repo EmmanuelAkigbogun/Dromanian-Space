@@ -244,3 +244,84 @@
     display: none;
   }
 }
+
+/* Hover: the card grows in place to show everything (full title, the start
+   of the description, dates, people, label names) and pushes the cards below
+   it down. Mouse and keyboard only; on touch, tapping opens the task. */
+.more {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 180ms ease;
+}
+
+.moreInner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (hover: hover) {
+  .card:hover .more,
+  .card:focus-visible .more {
+    grid-template-rows: 1fr;
+    /* A short delay, so sweeping the mouse across the board doesn't jolt it. */
+    transition-delay: 250ms;
+  }
+
+  .card:hover .title,
+  .card:focus-visible .title {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  /* Keep the priority dot on the first line of a wrapped title. */
+  .card:hover .titleRow,
+  .card:focus-visible .titleRow {
+    align-items: flex-start;
+  }
+
+  .card:hover .titleRow .priorityDot,
+  .card:focus-visible .titleRow .priorityDot {
+    margin-top: 6px;
+  }
+}
+
+.moreDescription {
+  margin: var(--space-1) 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.moreMeta {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+}
+
+.moreLabels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 2px;
+}
+
+.moreLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-secondary);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .more {
+    transition: none;
+  }
+}

@@ -1,7 +1,12 @@
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--space-3);
+  /* Masonry (see useMasonry): 1px rows that each card spans by its height,
+     so a card opened on hover makes the others re-flow into the gaps. */
+  grid-auto-rows: 1px;
+  align-items: start;
+  column-gap: var(--space-3);
+  row-gap: 0;
 }
 
 .card {

@@ -138,6 +138,15 @@ export const TaskCard = memo(function TaskCard({
     !isOverdue &&
     new Date(task.due_date).getTime() - new Date().getTime() < 3 * 24 * 60 * 60 * 1000;
 
+  // Plain-text start of the description for the hover view.
+  const descriptionPreview = (task.description ?? '')
+    .replace(/[#*_`>[\]()-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 280);
+  const people = Object.values(assigneeNames).map((a) => a.name);
+  const hasMore = !!descriptionPreview || !!task.due_date || people.length > 0 || labels.length > 0;
+
   const assigneeEntries = Object.entries(assigneeNames).slice(0, 3);
   const extraCount = Object.keys(assigneeNames).length - 3;
 
@@ -213,6 +222,32 @@ export const TaskCard = memo(function TaskCard({
             </div>
           )}
         </div>
+
+        {/* Opens on hover, growing the card and pushing the ones below it down. */}
+        {!isDragging && hasMore && (
+          <div className={styles.more} aria-hidden="true">
+            <div className={styles.moreInner}>
+              {descriptionPreview && <p className={styles.moreDescription}>{descriptionPreview}</p>}
+              {(task.due_date || people.length > 0) && (
+                <p className={styles.moreMeta}>
+                  {task.due_date && <>Due {new Date(task.due_date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</>}
+                  {task.due_date && people.length > 0 && ' · '}
+                  {people.join(', ')}
+                </p>
+              )}
+              {labels.length > 0 && (
+                <div className={styles.moreLabels}>
+                  {labels.map((label) => (
+                    <span key={label.id} className={styles.moreLabel}>
+                      <span className={styles.labelDot} style={{ backgroundColor: label.color }} />
+                      {label.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className={styles.rightSection}>

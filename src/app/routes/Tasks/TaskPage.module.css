@@ -273,3 +273,91 @@
   cursor: pointer;
   white-space: nowrap;
 }
+
+/* Notebook: status tabs sit on top of the board like binder dividers. The
+   active tab takes the page's colour and joins it; its status colour runs
+   along its top edge. */
+.notebookTabs {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  margin-bottom: -1px;
+  padding: 0 var(--space-3);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+
+.notebookTabs::-webkit-scrollbar {
+  display: none;
+}
+
+.notebookTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--color-border);
+  border-bottom: none;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--color-surface);
+  box-shadow: inset 0 -1px 0 var(--color-border);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast), padding var(--transition-fast);
+}
+
+.notebookTab:hover {
+  background: var(--color-surface-tertiary);
+  color: var(--color-text);
+}
+
+.notebookTab:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+.notebookTabActive,
+.notebookTabActive:hover {
+  padding-top: 10px;
+  background: var(--color-surface-secondary);
+  box-shadow: inset 0 3px 0 var(--tab-color);
+  color: var(--color-text);
+  font-weight: var(--font-weight-medium);
+}
+
+.notebookDot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--tab-color);
+}
+
+.notebookCount {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-tertiary);
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  line-height: 18px;
+  text-align: center;
+  color: var(--color-text-secondary);
+}
+
+.notebookTabActive .notebookCount {
+  background: color-mix(in srgb, var(--tab-color) 16%, var(--color-surface));
+  color: var(--color-text);
+}
+
+.notebookPage {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: 0 var(--radius-xl) var(--radius-xl) var(--radius-xl);
+  background: var(--color-surface-secondary);
+}
+

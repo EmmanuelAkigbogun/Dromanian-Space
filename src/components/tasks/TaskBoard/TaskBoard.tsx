@@ -1,8 +1,58 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 import { TaskCard } from '@/components/tasks/TaskCard';
 import { platform } from '@/lib/platform';
 import type { Task, TaskStatus } from '@/types/task';
 import styles from './TaskBoard.module.css';
+
+/** Vertical space between cards, in px (the grid's rows are 1px tall). */
+const CARD_GAP = 12;
+
+/**
+ * Masonry: each card spans as many 1px rows as it is tall, so cards keep
+ * their order but fill the highest free gap. When a card grows (hover) or
+ * shrinks, the others glide from where they were to their new place.
+ */
+function useMasonry(gridRef: RefObject<HTMLDivElement | null>, itemCount: number) {
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const items = () => [...grid.children] as HTMLElement[];
+
+    const layout = (animate: boolean) => {
+      const els = items();
+      const before = animate && !reduceMotion ? new Map(els.map((el) => [el, el.getBoundingClientRect()])) : null;
+      for (const el of els) {
+        el.getAnimations().forEach((a) => a.cancel());
+        el.style.gridRowEnd = `span ${Math.ceil(el.getBoundingClientRect().height + CARD_GAP)}`;
+      }
+      if (!before) return;
+      for (const el of els) {
+        const from = before.get(el)!;
+        const to = el.getBoundingClientRect();
+        const dx = from.left - to.left;
+        const dy = from.top - to.top;
+        if (Math.abs(dx) + Math.abs(dy) < 1) continue;
+        el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }], {
+          duration: 260,
+          easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)',
+        });
+      }
+    };
+
+    layout(false);
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => layout(true));
+    });
+    items().forEach((el) => observer.observe(el));
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [gridRef, itemCount]);
+}
 
 interface TaskBoardProps {
   tasks: Task[];
@@ -18,6 +68,8 @@ interface TaskBoardProps {
 export function TaskBoard({ tasks, onTaskClick, onStatusChange, onEdit, onRestore, onDuplicate, customStatusesVersion = 0, statusOrder = null }: TaskBoardProps) {
   const [taskCustomStatuses, setTaskCustomStatuses] = useState<Record<string, { id: string; name: string }[]>>({});
   const [hiddenStatuses, setHiddenStatuses] = useState<Record<string, string[]>>({});
+  const gridRef = useRef<HTMLDivElement>(null);
+  useMasonry(gridRef, tasks.length);
 
   useEffect(() => {
     if (tasks.length === 0) return;
@@ -63,7 +115,7 @@ export function TaskBoard({ tasks, onTaskClick, onStatusChange, onEdit, onRestor
   }
 
   return (
-    <div className={styles.grid}>
+    <div ref={gridRef} className={styles.grid}>
       {tasks.map((task) => (
         <TaskCard
           key={task.id}
