@@ -7,8 +7,11 @@ import { Dialog } from '@/components/ui/Dialog';
 import { platform, result, api, errorText, type RpcRow } from '@/features/platform/client';
 import { DriveItem } from './DriveItem';
 import s from '@/features/platform/Platform.module.css';
+import d from './DrivePage.module.css';
 
 type Item = RpcRow<'drive_list'>;
+type CreateKind = 'folder'|'document'|'docx'|'xlsx'|'pptx';
+const CREATE_LABELS: Record<CreateKind,string> = { folder:'folder', document:'document', docx:'Word document', xlsx:'Excel spreadsheet', pptx:'PowerPoint presentation' };
 export const driveViews = [['workspace','Workspace files'],['my','My files'],['shared','Shared with me'],['recent','Recent'],['starred','Starred'],['trash','Trash']] as const;
 export default function DrivePage() {
   const { currentWorkspace } = useWorkspaceContext();
@@ -27,7 +30,9 @@ function DriveBrowser({ workspaceId: ws, userId, itemId, folderId }: {workspaceI
   const [sort, setSort] = useState('name');
   const [page, setPage] = useState(0);
   const [grid, setGrid] = useState(false);
-  const [create, setCreate] = useState<'folder'|'document'|null>(null);
+  const [create, setCreate] = useState<CreateKind|null>(null);
+  const [newMenu, setNewMenu] = useState(false);
+  const office = useQuery({ queryKey:['platform','office-status'], staleTime:300000, retry:false, queryFn: async () => (await (await api('office/status')).json()) as {enabled:boolean} });
   const [name,setName] = useState('');
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState('');
@@ -43,6 +48,13 @@ function DriveBrowser({ workspaceId: ws, userId, itemId, folderId }: {workspaceI
   async function createItem(e:React.FormEvent) {
     e.preventDefault(); setBusy(true);setError('');
     try {
+      if (create === 'docx' || create === 'xlsx' || create === 'pptx') {
+        // A blank Office file, opened straight in the editor.
+        const created = await (await api('drive/new-office',{workspace_id:ws,parent_id:folderId ?? null,kind:create,name})).json() as {item_id:string};
+        await refresh();setCreate(null);setName('');
+        navigate(`/drive/item/${created.item_id}?edit=1`);
+        return;
+      }
       const item = create === 'folder' ? await result(platform.rpc('drive_create_folder',{p_workspace_id:ws,p_parent_id:folderId ?? null,p_name:name})) : await result(platform.rpc('drive_create_document',{p_workspace_id:ws,p_parent_id:folderId ?? null,p_title:name,p_body:''}));
       await refresh();setCreate(null);setName('');
       navigate(`/drive/${item.kind==='folder'?'folder':'item'}/${item.id}`);
@@ -88,7 +100,7 @@ function DriveBrowser({ workspaceId: ws, userId, itemId, folderId }: {workspaceI
   const itemLink=(i:Item)=>`/drive/${i.kind==='folder'?'folder':'item'}/${i.id}`;
   return <div className={s.page} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(!busy)void uploadFiles([...e.dataTransfer.files]);}}>
     <header className={s.header}><div><div className={s.eyebrow}>Shared knowledge · Drive</div><h1>{folderId ? crumbs.data?.at(-1)?.name ?? 'Folder' : driveViews.find(v=>v[0]===view)?.[1] ?? 'Drive'}</h1><p className={s.muted}>Files are stored on this server. Your files stay private to you until you share them with a person, channel, project, or the workspace.</p></div><div className={s.actions}>
-      <button className={s.button} onClick={()=>setCreate('folder')}>New folder</button><button className={s.button} onClick={()=>setCreate('document')}>New document</button>
+      <div className={d.newMenu}><button className={s.button} aria-haspopup="menu" aria-expanded={newMenu} onClick={()=>setNewMenu(v=>!v)}>+ New</button>{newMenu&&<div className={d.menu} role="menu" onMouseLeave={()=>setNewMenu(false)}>{(['folder','document',...(office.data?.enabled?['docx','xlsx','pptx'] as const:[])] as CreateKind[]).map(k=><button key={k} role="menuitem" className={d.menuItem} onClick={()=>{setNewMenu(false);setName('');setCreate(k);}}><span className={d.menuIcon} data-kind={k}>{k==='folder'?'▱':k==='document'?'≡':k==='docx'?'W':k==='xlsx'?'X':'P'}</span>{k==='document'?'Document (Markdown)':CREATE_LABELS[k][0].toUpperCase()+CREATE_LABELS[k].slice(1)}</button>)}</div>}</div>
       <button className={s.primary} type="button" disabled={busy} onClick={()=>uploadInput.current?.click()}>
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 20h14"/></svg>
         {busy?'Uploading…':'Upload from computer'}
@@ -102,6 +114,6 @@ function DriveBrowser({ workspaceId: ws, userId, itemId, folderId }: {workspaceI
     {uploads.map((u,i)=><div className={s.notice} key={i}><strong>{u.name}</strong> · {u.error ?? (u.progress===100?'Uploaded · indexing separately':`${u.progress}%`)} {u.progress<100&&!u.error&&busy&&<button className={s.button} onClick={()=>abort.current?.abort()}>Cancel current upload</button>}{u.error&&!busy&&<button className={s.button} onClick={()=>void uploadFiles([u.file])}>Retry</button>}</div>)}
     {files.isPending?<p role="status">Loading files…</p>:!files.data?.length?<div className={s.empty}><h2>No files here yet</h2><p>{view==='workspace'?'Files appear here when explicitly shared with the workspace.':'Upload a file or create a document to get started.'}</p><button className={s.primary} type="button" disabled={busy} onClick={()=>uploadInput.current?.click()}>Upload from your device</button></div>:grid?<div className={s.grid}>{files.data.map(i=><article className={s.card} key={i.id}><div className={s.badge}>{i.kind==='folder'?'▱':i.kind==='document'?'≡':'↗'}</div><h2><Link className={s.link} to={itemLink(i)}>{i.name}</Link></h2><p className={s.muted}>{i.owner_name} · {i.kind}</p></article>)}</div>:<div className={s.tableWrap}><table className={s.table}><thead><tr><th>Name</th><th>Owner</th><th>Modified</th><th>Size</th><th>Actions</th></tr></thead><tbody>{files.data.map(i=><tr key={i.id}><td><Link className={s.link} to={itemLink(i)}>{i.kind==='folder'?'▱':'≡'} {i.name}</Link><div className={s.muted}>{i.kind}</div></td><td>{i.owner_name}</td><td>{new Date(i.updated_at).toLocaleDateString()}</td><td>{i.size_bytes?`${Math.ceil(i.size_bytes/1024)} KB`:'—'}</td><td>{view==='trash'?<button className={s.button} onClick={()=>void action(()=>result(platform.rpc('drive_restore',{p_item_id:i.id})))}>Restore</button>:<button className={s.button} aria-label={`${i.starred?'Unstar':'Star'} ${i.name}`} onClick={()=>void action(()=>result(platform.rpc('drive_toggle_star',{p_item_id:i.id})))}>{i.starred?'★':'☆'}</button>}</td></tr>)}</tbody></table></div>}
     <div className={s.toolbar}><button className={s.button} disabled={page===0} onClick={()=>setPage(page-1)}>Previous</button><span className={s.muted}>Page {page+1} · {files.data?.[0]?.total_count ?? 0} items</span><button className={s.button} disabled={(page+1)*50>=(files.data?.[0]?.total_count ?? 0)} onClick={()=>setPage(page+1)}>Next</button></div>
-    <Dialog open={!!create} onClose={()=>setCreate(null)} title={`New ${create}`}><form className={s.form} onSubmit={createItem}><label>Name<input autoFocus className={s.input} value={name} onChange={e=>setName(e.target.value)} maxLength={255} required/></label>{error&&<p role="alert">{error}</p>}<button className={s.primary} disabled={busy}>Create {create}</button></form></Dialog>
+    <Dialog open={!!create} onClose={()=>setCreate(null)} title={create ? `New ${CREATE_LABELS[create]}` : ''}><form className={s.form} onSubmit={createItem}><label>Name<input autoFocus className={s.input} value={name} onChange={e=>setName(e.target.value)} maxLength={255} required/></label>{error&&<p role="alert">{error}</p>}<button className={s.primary} disabled={busy}>{busy?'Creating…':`Create ${create ? CREATE_LABELS[create] : ''}`}</button></form></Dialog>
   </div>;
 }

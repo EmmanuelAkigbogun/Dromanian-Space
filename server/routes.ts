@@ -28,6 +28,7 @@ export const ROUTES: Record<string, Partial<Record<ApiMethod, Handler>>> = {
   '/api/agents/sessions': sessions,
   '/api/push': push,
   '/api/drive/unzip': { POST: drive.unzip },
+  '/api/drive/new-office': { POST: drive.newOfficeFile },
   '/api/office/status': { GET: office.status },
   '/api/office/config': { POST: office.config },
   '/api/office/file': { GET: office.file },

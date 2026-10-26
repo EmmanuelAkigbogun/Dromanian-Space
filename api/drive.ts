@@ -1,11 +1,40 @@
 // POST /api/drive/unzip — extracts a .zip in Drive into a new folder next to
 // it (named after the archive), keeping its folder structure. Runs as the
 // signed-in person: they need to open the archive and edit its folder.
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { unzipSync } from 'fflate';
 import { z } from 'zod';
 import { authenticate } from '../server/database.js';
 import { createFolder, extensionOf, fileForUser, MAX_FILE_BYTES, mimeFor, readStoredFile, saveFile } from '../server/drive-files.js';
 import { errorResponse, HttpError, json, readJson } from '../server/http.js';
+
+const TEMPLATES = path.resolve(process.cwd(), 'server', 'templates');
+const NewFile = z.object({
+  workspace_id: z.string().uuid(),
+  parent_id: z.string().uuid().nullable(),
+  kind: z.enum(['docx', 'xlsx', 'pptx']),
+  name: z.string().trim().max(200).optional(),
+});
+const DEFAULT_NAMES = { docx: 'Untitled document', xlsx: 'Untitled spreadsheet', pptx: 'Untitled presentation' } as const;
+
+/**
+ * POST /api/drive/new-office — a blank Word, Excel or PowerPoint file in the
+ * given folder (ONLYOFFICE's own empty templates), ready to open in the editor.
+ */
+export async function newOfficeFile(request: Request): Promise<Response> {
+  try {
+    const user = await authenticate(request);
+    const body = await readJson(request, NewFile);
+    const base = (body.name || DEFAULT_NAMES[body.kind]).replace(/\.(docx|xlsx|pptx)$/i, '');
+    const name = `${base}.${body.kind}`;
+    const data = await readFile(path.join(TEMPLATES, `blank.${body.kind}`));
+    const saved = await saveFile(user, { workspaceId: body.workspace_id, parentId: body.parent_id, name, mimeType: mimeFor(name), data });
+    return json({ item_id: saved.item_id, name }, 201);
+  } catch (err) {
+    return errorResponse(err);
+  }
+}
 
 const MAX_ENTRIES = 500;
 const MAX_TOTAL_BYTES = 1024 * 1024 * 1024;

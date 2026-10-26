@@ -18,6 +18,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 COPY --from=build /app/dist-server ./dist-server
+COPY --from=build /app/server/templates ./server/templates
 USER node
 EXPOSE 3000
 CMD ["node", "--enable-source-maps", "dist-server/main.mjs"]

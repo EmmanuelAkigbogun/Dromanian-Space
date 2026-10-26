@@ -9,3 +9,8 @@
 *.exs text eol=lf
 deploy/** text eol=lf
 Dockerfile text eol=lf
+
+# Blank Office templates for new Drive files.
+*.docx binary
+*.xlsx binary
+*.pptx binary
