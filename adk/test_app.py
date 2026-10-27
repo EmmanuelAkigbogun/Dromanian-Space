@@ -33,6 +33,16 @@ def test_agent_names_are_valid_and_stable():
     assert app._agent_name("23 Sales", 2).startswith("agent_23_sales_")
 
 
+def test_gemini_model_candidates_use_approved_flash_fallbacks():
+    assert app._model_candidates("gemini-3.8-flash") == [
+        "gemini-3.8-flash",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
+    ]
+    assert app._model_candidates("gemini-3.6-flash") == ["gemini-3.6-flash", "gemini-3.5-flash-lite"]
+    assert app._model_candidates("claude-sonnet-5-5") == ["claude-sonnet-5-5"]
+
+
 def test_dynamic_adk_agent_preserves_tools_and_specialists():
     spec = {
         "read_file": {
@@ -239,4 +249,6 @@ async def test_adk_runner_retries_transient_provider_failure(monkeypatch):
     )
     assert RetryRunner.attempts == 2
     assert any(event.get("stage") == "retrying_provider" for event in events)
-    assert next(event for event in events if event["type"] == "result")["text"] == "Hey!"
+    result = next(event for event in events if event["type"] == "result")
+    assert result["text"] == "Hey!"
+    assert result["model"] == "gemini-3.6-flash"

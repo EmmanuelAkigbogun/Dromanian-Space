@@ -32,6 +32,7 @@ from google.genai import types
 
 APP_NAME = "darkspace"
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
+RESILIENT_GEMINI_MODELS = ("gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite")
 
 
 def _json_line(value: dict[str, Any]) -> bytes:
@@ -253,6 +254,14 @@ def _is_retryable_provider_error(error: Exception) -> bool:
     )
 
 
+def _model_candidates(requested: str) -> list[str]:
+    if not requested.lower().startswith("gemini"):
+        return [requested]
+    if requested in RESILIENT_GEMINI_MODELS:
+        return list(RESILIENT_GEMINI_MODELS[RESILIENT_GEMINI_MODELS.index(requested) :])
+    return list(dict.fromkeys((requested, *RESILIENT_GEMINI_MODELS[1:])))
+
+
 async def _run_adk_async(payload: dict[str, Any], send: Any) -> None:
     run_id = str(payload["run_id"])
     specs = {item["name"]: item for item in payload.get("tools", [])}
@@ -261,15 +270,6 @@ async def _run_adk_async(payload: dict[str, Any], send: Any) -> None:
     specialist_configs = payload.get("specialists", [])[:20] if is_team else []
 
     send({"type": "stage", "stage": "preparing", "label": "Preparing the agent"})
-    agent, display_names = _build_agent(
-        manager_config,
-        specs,
-        str(payload["callback_url"]),
-        str(payload["callback_token"]),
-        run_id,
-        index=0,
-        specialists=specialist_configs,
-    )
     abort_signal = asyncio.Event()
     usage = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
     streamed_text = ""
@@ -279,9 +279,33 @@ async def _run_adk_async(payload: dict[str, Any], send: Any) -> None:
     max_calls = max(1, min(int(manager_config.get("max_iter", 12)), 30))
 
     message = _message(payload)
-    max_attempts = max(1, min(int(os.getenv("ADK_PROVIDER_MAX_ATTEMPTS", "3")), 5))
+    manager_candidates = _model_candidates(str(manager_config["model"]))
+    configured_attempts = max(1, min(int(os.getenv("ADK_PROVIDER_MAX_ATTEMPTS", "3")), 5))
+    if str(manager_config["model"]).lower().startswith("gemini"):
+        max_attempts = min(configured_attempts, len(manager_candidates))
+    else:
+        max_attempts = configured_attempts
+        manager_candidates = [manager_candidates[0]] * max_attempts
     retry_base_seconds = max(0.0, min(float(os.getenv("ADK_PROVIDER_RETRY_BASE_SECONDS", "1")), 10.0))
+    resolved_model = manager_candidates[0]
     for attempt in range(1, max_attempts + 1):
+        resolved_model = manager_candidates[attempt - 1]
+        attempt_manager = {**manager_config, "model": resolved_model}
+        attempt_specialists = []
+        for specialist in specialist_configs:
+            specialist_candidates = _model_candidates(str(specialist["model"]))
+            attempt_specialists.append(
+                {**specialist, "model": specialist_candidates[min(attempt - 1, len(specialist_candidates) - 1)]}
+            )
+        agent, display_names = _build_agent(
+            attempt_manager,
+            specs,
+            str(payload["callback_url"]),
+            str(payload["callback_token"]),
+            run_id,
+            index=0,
+            specialists=attempt_specialists,
+        )
         session_service = InMemorySessionService()
         await session_service.create_session(app_name=APP_NAME, user_id=run_id, session_id=run_id)
         runner = Runner(app_name=APP_NAME, agent=agent, session_service=session_service)
@@ -320,7 +344,7 @@ async def _run_adk_async(payload: dict[str, Any], send: Any) -> None:
                 {
                     "type": "stage",
                     "stage": "retrying_provider",
-                    "label": f"The AI provider is busy; retrying ({attempt + 1}/{max_attempts})",
+                    "label": f"The AI provider is busy; trying another Gemini model ({attempt + 1}/{max_attempts})",
                 }
             )
             await asyncio.sleep(retry_base_seconds * (2 ** (attempt - 1)))
@@ -337,7 +361,7 @@ async def _run_adk_async(payload: dict[str, Any], send: Any) -> None:
     if not result_text:
         raise RuntimeError("Google ADK ended without a final response.")
     send({"type": "stage", "stage": "finalizing", "label": "Finishing the answer"})
-    send({"type": "result", "text": result_text, "usage": usage, "model": manager_config["model"]})
+    send({"type": "result", "text": result_text, "usage": usage, "model": resolved_model})
 
 
 def run_adk(payload: dict[str, Any], send: Any) -> None:
