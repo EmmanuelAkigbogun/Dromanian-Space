@@ -170,9 +170,18 @@ END $$;
 REVOKE ALL ON FUNCTION public.agent_execute_proposal(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.agent_execute_proposal(uuid), public.agent_execute_proposal_pre_drive(uuid) TO service_role;
 
--- Delete the coding agent itself, not merely disable or hide it. Dependent
--- versions, conversations and runs follow the schema's existing cascades.
-DELETE FROM public.workspace_agents
+-- Delete the coding agent from the catalog and every runnable/visible roster.
+-- A detached tombstone keeps old chats, run evidence and audit references
+-- intact; it has no template, is disabled, archived and cannot be selected.
+UPDATE public.workspace_agents
+SET template_key = NULL,
+    name = 'Deleted agent',
+    handle = 'deleted-' || left(replace(id::text, '-', ''), 24),
+    description = '',
+    category = 'Deleted',
+    status = 'disabled',
+    archived_at = coalesce(archived_at, now()),
+    updated_at = now()
 WHERE is_builtin AND template_key = 'cerebras_engineer';
 DELETE FROM public.agent_templates WHERE key = 'cerebras_engineer';
 
