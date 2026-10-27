@@ -234,6 +234,25 @@ def _add_usage(total: dict[str, int], metadata: Any) -> None:
     total["cache_read_tokens"] += int(getattr(metadata, "cached_content_token_count", 0) or 0)
 
 
+def _is_retryable_provider_error(error: Exception) -> bool:
+    message = f"{type(error).__name__}: {error}".lower()
+    return any(
+        marker in message
+        for marker in (
+            "429",
+            "500 service unavailable",
+            "502",
+            "503",
+            "504",
+            "deadline exceeded",
+            "high demand",
+            "resource_exhausted",
+            "temporarily unavailable",
+            "unavailable",
+        )
+    )
+
+
 async def _run_adk_async(payload: dict[str, Any], send: Any) -> None:
     run_id = str(payload["run_id"])
     specs = {item["name"]: item for item in payload.get("tools", [])}
@@ -251,9 +270,6 @@ async def _run_adk_async(payload: dict[str, Any], send: Any) -> None:
         index=0,
         specialists=specialist_configs,
     )
-    session_service = InMemorySessionService()
-    await session_service.create_session(app_name=APP_NAME, user_id=run_id, session_id=run_id)
-    runner = Runner(app_name=APP_NAME, agent=agent, session_service=session_service)
     abort_signal = asyncio.Event()
     usage = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
     streamed_text = ""
@@ -262,34 +278,56 @@ async def _run_adk_async(payload: dict[str, Any], send: Any) -> None:
     active_team: set[str] = set()
     max_calls = max(1, min(int(manager_config.get("max_iter", 12)), 30))
 
-    send({"type": "stage", "stage": "contacting_provider", "label": "Waiting for the AI provider"})
-    events = runner.run_async(
-        user_id=run_id,
-        session_id=run_id,
-        new_message=_message(payload),
-        run_config=RunConfig(streaming_mode=StreamingMode.SSE, max_llm_calls=max_calls),
-        abort_signal=abort_signal,
-    )
-    try:
-        async for event in events:
-            _add_usage(usage, getattr(event, "usage_metadata", None))
-            author = str(getattr(event, "author", "") or "")
-            if author and author != agent.name and author in display_names and author not in active_team:
-                active_team.add(author)
-                send({"type": "team", "agent": display_names[author], "status": "working"})
-            text = _event_text(event)
-            partial = bool(getattr(event, "partial", False))
-            if text and partial and (not is_team or author == agent.name):
-                if not generating:
-                    send({"type": "stage", "stage": "generating", "label": "Writing the answer"})
-                    generating = True
-                streamed_text += text
-                send({"type": "delta", "text": text})
-            if text and event.is_final_response():
-                final_text = text
-    finally:
-        abort_signal.set()
-        await runner.close()
+    message = _message(payload)
+    max_attempts = max(1, min(int(os.getenv("ADK_PROVIDER_MAX_ATTEMPTS", "3")), 5))
+    retry_base_seconds = max(0.0, min(float(os.getenv("ADK_PROVIDER_RETRY_BASE_SECONDS", "1")), 10.0))
+    for attempt in range(1, max_attempts + 1):
+        session_service = InMemorySessionService()
+        await session_service.create_session(app_name=APP_NAME, user_id=run_id, session_id=run_id)
+        runner = Runner(app_name=APP_NAME, agent=agent, session_service=session_service)
+        send({"type": "stage", "stage": "contacting_provider", "label": "Waiting for the AI provider"})
+        events = runner.run_async(
+            user_id=run_id,
+            session_id=run_id,
+            new_message=message,
+            run_config=RunConfig(streaming_mode=StreamingMode.SSE, max_llm_calls=max_calls),
+            abort_signal=abort_signal,
+        )
+        try:
+            async for event in events:
+                _add_usage(usage, getattr(event, "usage_metadata", None))
+                author = str(getattr(event, "author", "") or "")
+                if author and author != agent.name and author in display_names and author not in active_team:
+                    active_team.add(author)
+                    send({"type": "team", "agent": display_names[author], "status": "working"})
+                text = _event_text(event)
+                partial = bool(getattr(event, "partial", False))
+                if text and partial and (not is_team or author == agent.name):
+                    if not generating:
+                        send({"type": "stage", "stage": "generating", "label": "Writing the answer"})
+                        generating = True
+                    streamed_text += text
+                    send({"type": "delta", "text": text})
+                if text and event.is_final_response():
+                    final_text = text
+            break
+        except Exception as error:
+            can_retry = attempt < max_attempts and not streamed_text and _is_retryable_provider_error(error)
+            if not can_retry:
+                abort_signal.set()
+                raise
+            send(
+                {
+                    "type": "stage",
+                    "stage": "retrying_provider",
+                    "label": f"The AI provider is busy; retrying ({attempt + 1}/{max_attempts})",
+                }
+            )
+            await asyncio.sleep(retry_base_seconds * (2 ** (attempt - 1)))
+        finally:
+            await runner.close()
+
+    abort_signal.set()
 
     result_text = streamed_text
     if final_text and final_text not in streamed_text:

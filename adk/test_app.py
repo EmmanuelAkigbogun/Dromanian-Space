@@ -189,3 +189,54 @@ async def test_adk_runner_streams_existing_ndjson_contract(monkeypatch):
     }
     assert [event["text"] for event in events if event["type"] == "delta"] == ["Hello"]
     assert next(event for event in events if event["type"] == "result")["text"] == "Hello!"
+
+
+@pytest.mark.asyncio
+async def test_adk_runner_retries_transient_provider_failure(monkeypatch):
+    class Sessions:
+        async def create_session(self, **_kwargs):
+            return None
+
+    class Event:
+        author = "haven_00000000"
+        content = SimpleNamespace(parts=[SimpleNamespace(text="Hey!")])
+        partial = False
+        usage_metadata = None
+
+        def is_final_response(self):
+            return True
+
+    class RetryRunner:
+        attempts = 0
+
+        def __init__(self, **_kwargs):
+            pass
+
+        async def run_async(self, **_kwargs):
+            RetryRunner.attempts += 1
+            if RetryRunner.attempts == 1:
+                raise RuntimeError("503 Service Unavailable: high demand")
+            yield Event()
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(app, "InMemorySessionService", Sessions)
+    monkeypatch.setattr(app, "Runner", RetryRunner)
+    monkeypatch.setenv("ADK_PROVIDER_RETRY_BASE_SECONDS", "0")
+    events = []
+    await app._run_adk_async(
+        {
+            "run_id": "00000000-0000-4000-8000-000000000002",
+            "prompt": "hey",
+            "agent": config(),
+            "specialists": [],
+            "tools": [],
+            "callback_url": "http://worker:3001/tool",
+            "callback_token": "token",
+        },
+        events.append,
+    )
+    assert RetryRunner.attempts == 2
+    assert any(event.get("stage") == "retrying_provider" for event in events)
+    assert next(event for event in events if event["type"] == "result")["text"] == "Hey!"
