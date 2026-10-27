@@ -84,11 +84,11 @@ export default async function smoke(db, legacy) {
   await h.svc(`SELECT ai_report_platform('{"anthropic":false,"openai":true}', 'gpt-5.4')`);
   const fresh = await h.createWorkspace(other, 'Fresh');
   const s = (await h.svc('SELECT (ai_settings_for($1)).*', [fresh]))[0];
-  check(s.default_model === 'gpt-5.4' && s.allowed_models.every((m) => m.startsWith('gpt-')), `OpenAI-only server: new workspace defaults to gpt-5.4 (allowed: ${s.allowed_models.join(', ')})`);
+  check(s.default_model === 'gpt-5.4' && s.allowed_models.includes('gpt-oss-120b'), `OpenAI platform default keeps the Cerebras team model allowed (${s.allowed_models.join(', ')})`);
   const seeded = await h.admin(`SELECT DISTINCT v.model FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1`, [fresh]);
-  check(seeded.length === 1 && seeded[0].model === 'gpt-5.4', 'OpenAI-only server: seeded agents use gpt-5.4');
-  const run = (await h.svc(`SELECT agent_start_run($1, $2, (SELECT id FROM workspace_agents WHERE workspace_id = $2 AND handle = 'vera'), NULL, 'hi', '{}', 'interactive', '{}', '{"type":"private"}', $3, 1000) AS r`, [other.id, fresh, randomUUID()]))[0].r;
-  check(Boolean(run.run_id), 'OpenAI-only server: an agent run can start in the new workspace');
+  check(seeded.length === 1 && seeded[0].model === 'gpt-oss-120b', 'new built-ins remain pinned to Cerebras gpt-oss-120b');
+  const run = (await h.svc(`SELECT agent_start_run($1, $2, (SELECT id FROM workspace_agents WHERE workspace_id = $2 AND handle = 'cerebras-research'), NULL, 'hi', '{}', 'interactive', '{}', '{"type":"private"}', $3, 1000) AS r`, [other.id, fresh, randomUUID()]))[0].r;
+  check(Boolean(run.run_id), 'a Cerebras agent run can start in the new workspace');
   await h.svc(`SELECT ai_report_platform('{"anthropic":true,"openai":false}', 'claude-opus-5-5')`);
   check(await h.denied(h.user(owner, `SELECT ai_update_settings($1, '{"allowed_models":["claude-opus-5-5","llama3"],"default_model":"claude-opus-5-5"}')`, [wsA])), 'unsupported provider models are rejected');
 
@@ -116,13 +116,13 @@ export default async function smoke(db, legacy) {
   check(await h.denied(h.user(owner, `SELECT ai_apply_model_to_agents($1, 'gpt-5.4')`, [wsA])), 'models outside the allowed list are refused');
   const n = (await h.user(owner, `SELECT ai_apply_model_to_agents($1, 'claude-sonnet-5-5') AS n`, [wsA]))[0].n;
   const after = await h.admin(`SELECT DISTINCT v.model FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1 AND a.archived_at IS NULL`, [wsA]);
-  check(n >= 16 && after.length === 1 && after[0].model === 'claude-sonnet-5-5', `admin switched ${n} agents to Sonnet 5.5`);
+  check(n >= 5 && after.length === 1 && after[0].model === 'claude-sonnet-5-5', `admin switched ${n} agents to Sonnet 5.5`);
   const bModels = await h.admin(`SELECT DISTINCT v.model FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1`, [wsB]);
   check(!bModels.some((r) => r.model === 'claude-sonnet-5-5'), 'workspace B agents are unaffected');
 
   // Roster
   const handles = (await h.admin(`SELECT handle FROM workspace_agents WHERE workspace_id = $1 AND is_builtin AND archived_at IS NULL ORDER BY handle`, [wsB])).map((r) => r.handle);
-  check(['gemini', 'kai', 'nova', 'vera', 'scribe', 'team'].every((x) => handles.includes(x)) && handles.length === 18, `roster: Gemini assistant + 16 specialists + team lead (${handles.join(', ')})`);
+  check(JSON.stringify(handles) === JSON.stringify(['cerebras-analyst', 'cerebras-engineer', 'cerebras-research', 'cerebras-team', 'cerebras-writer']), `roster: five Cerebras agents (${handles.join(', ')})`);
 
   // Automation keys
   check(await h.denied(h.user(member, `SELECT automation_key_create($1, 'n8n')`, [wsA])), 'members cannot create automation keys');
@@ -135,8 +135,8 @@ export default async function smoke(db, legacy) {
   check(await h.denied(h.user(other, 'SELECT * FROM automation_keys_list($1)', [wsA])), 'other workspaces cannot list keys');
   check(await h.denied(h.user(owner, 'SELECT automation_key_for($1)', [key.id])), 'signature material is server-only');
   const req = `req-${randomUUID()}`;
-  const first = (await h.svc(`SELECT automation_start_run($1, $2, 'vera', 'Research our market', NULL) AS r`, [key.id, req]))[0].r;
-  const again = (await h.svc(`SELECT automation_start_run($1, $2, 'vera', 'Research our market', NULL) AS r`, [key.id, req]))[0].r;
+  const first = (await h.svc(`SELECT automation_start_run($1, $2, 'cerebras-research', 'Research our market', NULL) AS r`, [key.id, req]))[0].r;
+  const again = (await h.svc(`SELECT automation_start_run($1, $2, 'cerebras-research', 'Research our market', NULL) AS r`, [key.id, req]))[0].r;
   check(first.run_id && again.run_id === first.run_id && again.reused === true, 'repeating a request id returns the same run (no duplicate execution)');
   const r = (await h.admin('SELECT requested_by, trigger, workspace_id FROM agent_runs WHERE id = $1', [first.run_id]))[0];
   check(r.requested_by === owner.id && r.trigger === 'automation' && r.workspace_id === wsA, 'automation runs act as the key owner in the key\'s workspace');
@@ -151,13 +151,13 @@ export default async function smoke(db, legacy) {
   check((await h.admin('SELECT status FROM automation_requests WHERE id = $1', [cb.request_id]))[0].status === 'no_callback', 'delivery outcome is recorded');
   check(await h.denied(h.user(other, 'SELECT automation_key_revoke($1)', [key.id]), /not found/), 'other workspaces cannot revoke the key');
   await h.user(owner, 'SELECT automation_key_revoke($1)', [key.id]);
-  check(await h.denied(h.svc(`SELECT automation_start_run($1, $2, 'vera', 'x', NULL)`, [key.id, `req-${randomUUID()}`])), 'revoked keys stop working');
+  check(await h.denied(h.svc(`SELECT automation_start_run($1, $2, 'cerebras-research', 'x', NULL)`, [key.id, `req-${randomUUID()}`])), 'revoked keys stop working');
   const adm = await h.createUser('temp-admin');
   await h.admin(`INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'admin')`, [wsA, adm.id]);
   const k2 = (await h.user(adm, `SELECT automation_key_create($1, 'temp') AS r`, [wsA]))[0].r;
   await h.admin('DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2', [wsA, adm.id]);
   check((await h.svc('SELECT automation_key_for($1) AS r', [k2.id]))[0].r.active === false, 'a key is inactive once its owner leaves the workspace');
-  check(await h.denied(h.svc(`SELECT automation_start_run($1, $2, 'vera', 'x', NULL)`, [k2.id, `req-${randomUUID()}`])), 'and cannot start runs');
+  check(await h.denied(h.svc(`SELECT automation_start_run($1, $2, 'cerebras-research', 'x', NULL)`, [k2.id, `req-${randomUUID()}`])), 'and cannot start runs');
 
   // Project managers and task requests (20261024000100)
   const approver = async (u) => (await h.user(u, 'SELECT is_task_approver($1, $2) AS a', [wsA, u.id]))[0].a;
@@ -166,8 +166,8 @@ export default async function smoke(db, legacy) {
   check(await h.denied(h.user(owner, 'SELECT set_project_manager($1, $2, true)', [wsA, other.id]), /not a member/), 'only workspace members can be project managers');
   await h.user(owner, 'SELECT set_project_manager($1, $2, true)', [wsA, member.id]);
   check((await approver(member)) && !(await approver(owner)), 'once chosen, only project managers approve tasks');
-  const scribe = (await h.admin(`SELECT id FROM workspace_agents WHERE workspace_id = $1 AND template_key = 'note_taker'`, [wsA]))[0]?.id;
-  check(Boolean(scribe), 'every workspace gets Scribe');
+  const scribe = (await h.admin(`SELECT id FROM workspace_agents WHERE workspace_id = $1 AND template_key = 'cerebras_writer'`, [wsA]))[0]?.id;
+  check(Boolean(scribe), 'every workspace gets the Content & Notes Specialist');
   const startScribe = async (u, scope = {}, trigger = 'interactive') => {
     const started = (await h.svc(`SELECT agent_start_run($1, $2, $3, NULL, 'Extract the tasks', $4, $5, '{}', '{"type":"private"}', $6, 1000) AS r`,
       [u.id, wsA, scribe, scope, trigger, randomUUID()]))[0].r;

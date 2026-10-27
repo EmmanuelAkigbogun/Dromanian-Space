@@ -118,8 +118,8 @@ export function ChannelView() {
             {isUserMember && features.canSee('ai') && (
               <Button
                 variant="secondary"
-                title="Scribe summarizes this channel and sends the action items to project managers for approval"
-                onClick={() => navigate(`/agents/scribe?channel=${currentChannel.id}&prompt=notes`)}
+                title="The notes specialist summarizes this channel and sends action items to project managers for approval"
+                onClick={() => navigate(`/agents/cerebras-writer?channel=${currentChannel.id}&prompt=notes`)}
               >
                 Take notes
               </Button>

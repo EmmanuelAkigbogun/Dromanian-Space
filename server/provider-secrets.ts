@@ -6,7 +6,7 @@ import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-export type RuntimeProvider = 'anthropic' | 'openai' | 'gemini';
+export type RuntimeProvider = 'anthropic' | 'openai' | 'gemini' | 'cerebras';
 
 interface SealedValue {
   iv: string;
@@ -74,18 +74,26 @@ export function providerApiKey(provider: RuntimeProvider): string | null {
   const saved = savedProviderKey(provider)?.trim();
   if (saved) return saved;
   const environmentName = providerEnvironmentName(provider);
-  return process.env[environmentName]?.trim() || (provider === 'gemini' ? process.env.GEMINI_API?.trim() : '') || null;
+  return process.env[environmentName]?.trim()
+    || (provider === 'gemini' ? process.env.GEMINI_API?.trim() : '')
+    || (provider === 'cerebras' ? process.env.CEREBRAS_DIGITALROMANIAN?.trim() : '')
+    || null;
 }
 
 export function providerKeySource(provider: RuntimeProvider): 'saved' | 'environment' | 'none' {
   if (savedProviderKey(provider)) return 'saved';
   const environmentName = providerEnvironmentName(provider);
-  return process.env[environmentName]?.trim() || (provider === 'gemini' && process.env.GEMINI_API?.trim()) ? 'environment' : 'none';
+  return process.env[environmentName]?.trim()
+    || (provider === 'gemini' && process.env.GEMINI_API?.trim())
+    || (provider === 'cerebras' && process.env.CEREBRAS_DIGITALROMANIAN?.trim())
+    ? 'environment'
+    : 'none';
 }
 
 function providerEnvironmentName(provider: RuntimeProvider): string {
   if (provider === 'anthropic') return 'ANTHROPIC_API_KEY';
   if (provider === 'openai') return 'OPENAI_API_KEY';
+  if (provider === 'cerebras') return 'CEREBRAS_API_KEY';
   return 'GEMINI_API_KEY';
 }
 

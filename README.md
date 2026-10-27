@@ -1,6 +1,6 @@
 # Dromanian Space
 
-A React/TypeScript workspace with messaging, tasks, projects, Drive documents and files, CRM, and a permission-aware Google ADK agent team using Gemini by default: a general-purpose assistant, fifteen business specialists (executive assistant, social media, copywriting, SEO, sales development, customer support, data analysis, business research, HR, creative direction, software engineering, marketing strategy, commerce, email marketing, personal coaching), and a coordinator that delegates between them. See [implementation status](docs/IMPLEMENTATION_STATUS.md) for completed work and remaining scope.
+A React/TypeScript workspace with messaging, tasks, projects, Drive documents and files, CRM, and a permission-aware five-agent Google ADK team on Cerebras `gpt-oss-120b`: Team Coordinator, Research Specialist, Data Analyst, Content & Notes Specialist, and Software Engineer. See [implementation status](docs/IMPLEMENTATION_STATUS.md) for completed work and remaining scope.
 
 ## Local preview
 
@@ -22,7 +22,7 @@ node --import tsx scripts/seed-preview.ts
 
 The email and password are saved in `.local/preview.json`. Re-running the seed creates additional fixtures; it does not replace an existing account. Do not run `database:local -- reset` to restart the preview: it deletes the local database. Use `stop` / `start` instead.
 
-The deployed agent roster uses a server-side Google Gemini key, with `gemini-3.8-flash` as the primary model and Gemini-only capacity fallbacks (see [AI providers](docs/AI_PROVIDERS.md)). A platform administrator can enter the key in the Agents settings UI, where it is encrypted on this server and never returned to the browser. `GEMINI_API` and `GEMINI_API_KEY` are also accepted as server environment variables. Voyage embeddings are optional. Never place server keys in `VITE_` variables.
+The deployed roster uses a server-side Cerebras key and pins all five built-ins to `gpt-oss-120b` (see [AI providers](docs/AI_PROVIDERS.md)). A platform administrator can enter the key in the Agents settings UI, where it is encrypted on this server and never returned to the browser. `CEREBRAS_API_KEY` and the compatibility alias `CEREBRAS_DIGITALROMANIAN` are also accepted as server environment variables. Voyage embeddings are optional. Never place server keys in `VITE_` variables.
 
 The local stack supports database authorization, password login and filesystem storage. It does not emulate production SSE, email delivery, TURN or backup infrastructure.
 

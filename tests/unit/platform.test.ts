@@ -8,8 +8,8 @@ import { providerApiKey } from '../../server/provider-secrets.js';
 import { clientAddress, limitFor, rateLimitSubject, RateLimiter } from '../../server/rate-limit.js';
 import { checkCallbackUrl, sign } from '../../server/integrations/n8n.js';
 
-const VARS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GEMINI_API', 'AI_DEFAULT_PROVIDER', 'AI_DEFAULT_ANTHROPIC_MODEL', 'AI_DEFAULT_OPENAI_MODEL', 'AI_DEFAULT_GEMINI_MODEL',
-  'DATABASE_URL', 'DATABASE_REST_URL', 'APP_JWT_SECRET', 'N8N_BASE_URL', 'VITE_OPENAI_API_KEY', 'VITE_GEMINI_API_KEY', 'VITE_GEMINI_API'];
+const VARS = ['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GEMINI_API', 'CEREBRAS_API_KEY', 'CEREBRAS_DIGITALROMANIAN', 'AI_DEFAULT_PROVIDER', 'AI_DEFAULT_ANTHROPIC_MODEL', 'AI_DEFAULT_OPENAI_MODEL', 'AI_DEFAULT_GEMINI_MODEL', 'AI_DEFAULT_CEREBRAS_MODEL',
+  'DATABASE_URL', 'DATABASE_REST_URL', 'APP_JWT_SECRET', 'N8N_BASE_URL', 'VITE_OPENAI_API_KEY', 'VITE_GEMINI_API_KEY', 'VITE_GEMINI_API', 'VITE_CEREBRAS_API_KEY', 'VITE_CEREBRAS_DIGITALROMANIAN'];
 const saved = Object.fromEntries(VARS.map((v) => [v, process.env[v]]));
 function setEnv(vars: Record<string, string | undefined>) {
   for (const v of VARS) delete process.env[v];
@@ -30,6 +30,8 @@ describe('provider routing', () => {
     expect(providerNameFor('gpt-5.4-mini')).toBe('openai');
     expect(providerNameFor('o4-mini')).toBe('openai');
     expect(providerNameFor('gemini-3.8-flash')).toBe('gemini');
+    expect(providerNameFor('gpt-oss-120b')).toBe('cerebras');
+    expect(providerNameFor('cerebras/gpt-oss-120b')).toBe('cerebras');
     expect(providerNameFor('llama3')).toBeNull();
   });
 
@@ -43,6 +45,9 @@ describe('provider routing', () => {
     setEnv({ GEMINI_API: 'AIza-compatibility-key', AI_DEFAULT_PROVIDER: 'gemini' });
     expect(providerApiKey('gemini')).toBe('AIza-compatibility-key');
     expect(platformDefaultModel()).toBe('gemini-3.8-flash');
+    setEnv({ CEREBRAS_DIGITALROMANIAN: 'csk-compatibility-key', AI_DEFAULT_PROVIDER: 'cerebras' });
+    expect(providerApiKey('cerebras')).toBe('csk-compatibility-key');
+    expect(platformDefaultModel()).toBe('gpt-oss-120b');
   });
 });
 

@@ -130,8 +130,8 @@ const CONNECTED_ACTIONS: Record<string, string> = {
 };
 
 
-const PROVIDER_KEY: Record<string, string> = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY' };
-const PROVIDER_NAME: Record<string, string> = { anthropic: 'Anthropic', openai: 'OpenAI', gemini: 'Google Gemini' };
+const PROVIDER_KEY: Record<string, string> = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY', cerebras: 'CEREBRAS_API_KEY' };
+const PROVIDER_NAME: Record<string, string> = { anthropic: 'Anthropic', openai: 'OpenAI', gemini: 'Google Gemini', cerebras: 'Cerebras Cloud' };
 
 function modelLabel(id: string, status: Status | undefined): string {
   const m = status?.models?.find((x) => x.id === id);
@@ -1122,7 +1122,7 @@ function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Stat
     brand_kit_folder_id: status.brand_kit.folder_id ?? '',
   });
   const [applyToAgents, setApplyToAgents] = useState(false);
-  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({ anthropic: '', openai: '', gemini: '' });
+  const [providerKeys, setProviderKeys] = useState<Record<string, string>>({ anthropic: '', openai: '', gemini: '', cerebras: '' });
   const [providerKeyBusy, setProviderKeyBusy] = useState<string | null>(null);
   const [providerKeyNotice, setProviderKeyNotice] = useState('');
   const [error, setError] = useState('');
@@ -1146,7 +1146,7 @@ function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Stat
       return { ...f, allowed_models: allowed, default_model: allowed.includes(f.default_model) ? f.default_model : (allowed[0] ?? f.default_model) };
     });
   }
-  async function updateProviderKey(provider: 'anthropic' | 'openai' | 'gemini', remove = false) {
+  async function updateProviderKey(provider: 'anthropic' | 'openai' | 'gemini' | 'cerebras', remove = false) {
     setProviderKeyBusy(provider);
     setProviderKeyNotice('');
     setError('');
@@ -1203,7 +1203,7 @@ function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Stat
           <p className={s.muted}>API keys are sent once to this server, encrypted at rest, and never returned to the browser. Choose which models agents in this workspace may use.</p>
           {status.provider_key_management?.allowed && (
             <div className={s.stack} style={{ marginTop: 12 }}>
-              {(['anthropic', 'openai', 'gemini'] as const).map((provider) => {
+              {(['anthropic', 'openai', 'gemini', 'cerebras'] as const).map((provider) => {
                 const state = status.provider_key_management?.providers.find((p) => p.name === provider);
                 const configured = state?.source === 'saved' || state?.source === 'environment';
                 return (

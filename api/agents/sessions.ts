@@ -34,7 +34,7 @@ const NOTES_PROMPT =
 async function noteTaker(channelId: string): Promise<string> {
   const found = await databasePool().query(
     `SELECT a.id FROM public.direct_conversations dc
-       JOIN public.workspace_agents a ON a.workspace_id = dc.workspace_id AND a.template_key = 'note_taker' AND a.is_builtin
+       JOIN public.workspace_agents a ON a.workspace_id = dc.workspace_id AND a.template_key = 'cerebras_writer' AND a.is_builtin
       WHERE dc.channel_id = $1::uuid AND a.archived_at IS NULL`,
     [channelId],
   );

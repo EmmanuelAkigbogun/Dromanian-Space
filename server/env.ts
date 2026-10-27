@@ -8,7 +8,7 @@ function read(name: string): string | null {
   return value ? value : null;
 }
 
-export type ProviderName = 'anthropic' | 'openai' | 'gemini';
+export type ProviderName = 'anthropic' | 'openai' | 'gemini' | 'cerebras';
 
 export interface ServerEnv {
   databaseUrl: string | null;
@@ -25,6 +25,7 @@ export interface ServerEnv {
   openaiOrganization: string | null;
   openaiProject: string | null;
   geminiApiKey: string | null;
+  cerebrasApiKey: string | null;
   /** Provider and model new workspaces start with (existing workspaces keep their choice). */
   defaultProvider: ProviderName;
   defaultModels: Record<ProviderName, string>;
@@ -46,6 +47,7 @@ export function env(): ServerEnv {
     cached.anthropicApiKey = providerApiKey('anthropic');
     cached.openaiApiKey = providerApiKey('openai');
     cached.geminiApiKey = providerApiKey('gemini');
+    cached.cerebrasApiKey = providerApiKey('cerebras');
     return cached;
   }
   const provider = read('AI_DEFAULT_PROVIDER');
@@ -62,11 +64,13 @@ export function env(): ServerEnv {
     openaiOrganization: read('OPENAI_ORG_ID'),
     openaiProject: read('OPENAI_PROJECT_ID'),
     geminiApiKey: providerApiKey('gemini'),
-    defaultProvider: provider === 'openai' || provider === 'gemini' ? provider : 'anthropic',
+    cerebrasApiKey: providerApiKey('cerebras'),
+    defaultProvider: provider === 'openai' || provider === 'gemini' || provider === 'cerebras' ? provider : 'anthropic',
     defaultModels: {
       anthropic: read('AI_DEFAULT_ANTHROPIC_MODEL') ?? 'claude-opus-5-5',
       openai: read('AI_DEFAULT_OPENAI_MODEL') ?? 'gpt-5.4',
       gemini: read('AI_DEFAULT_GEMINI_MODEL') ?? 'gemini-3.8-flash',
+      cerebras: read('AI_DEFAULT_CEREBRAS_MODEL') ?? 'gpt-oss-120b',
     },
     voyageApiKey: read('VOYAGE_API_KEY'),
     embeddingModel: read('EMBEDDING_MODEL') ?? 'voyage-3.5',

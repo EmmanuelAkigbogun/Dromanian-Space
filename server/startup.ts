@@ -24,7 +24,7 @@ export function checkEnv(): EnvProblem[] {
   if (!e.appJwtSecret || e.appJwtSecret.length < 32) fatal('APP_JWT_SECRET must contain at least 32 characters.');
 
   const raw = process.env.AI_DEFAULT_PROVIDER?.trim();
-  if (raw && raw !== 'anthropic' && raw !== 'openai' && raw !== 'gemini') fatal(`AI_DEFAULT_PROVIDER must be "anthropic", "openai", or "gemini", not "${raw}".`);
+  if (raw && !['anthropic', 'openai', 'gemini', 'cerebras'].includes(raw)) fatal(`AI_DEFAULT_PROVIDER must be "anthropic", "openai", "gemini", or "cerebras", not "${raw}".`);
   for (const [provider, model] of Object.entries(e.defaultModels)) {
     if (providerNameFor(model) !== provider) {
       fatal(`AI_DEFAULT_${provider.toUpperCase()}_MODEL "${model}" is not a ${provider} model id.`);
@@ -32,12 +32,12 @@ export function checkEnv(): EnvProblem[] {
   }
   const states = providerStates();
   if (!states.some((s) => s.configured)) {
-    warn('No AI provider key is set (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or GEMINI_API); agents will show a setup state.');
+    warn('No AI provider key is set (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY/GEMINI_API, or CEREBRAS_API_KEY/CEREBRAS_DIGITALROMANIAN); agents will show a setup state.');
   } else if (!states.find((s) => s.name === e.defaultProvider)?.configured) {
     warn(`AI_DEFAULT_PROVIDER is ${e.defaultProvider} but its key is missing; new workspaces default to the configured provider.`);
   }
   if (e.n8nBaseUrl && !/^https?:\/\/[^/]+/.test(e.n8nBaseUrl)) fatal('N8N_BASE_URL must be an absolute http(s) URL.');
-  for (const name of ['VITE_DATABASE_URL', 'VITE_APP_JWT_SECRET', 'VITE_ANTHROPIC_API_KEY', 'VITE_OPENAI_API_KEY', 'VITE_GEMINI_API_KEY', 'VITE_GEMINI_API']) {
+  for (const name of ['VITE_DATABASE_URL', 'VITE_APP_JWT_SECRET', 'VITE_ANTHROPIC_API_KEY', 'VITE_OPENAI_API_KEY', 'VITE_GEMINI_API_KEY', 'VITE_GEMINI_API', 'VITE_CEREBRAS_API_KEY', 'VITE_CEREBRAS_DIGITALROMANIAN']) {
     if (process.env[name]) fatal(`${name} must not exist: VITE_ variables are compiled into the browser bundle.`);
   }
   return problems;

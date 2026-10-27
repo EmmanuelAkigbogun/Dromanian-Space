@@ -40,7 +40,12 @@ def _json_line(value: dict[str, Any]) -> bytes:
 
 
 def _provider_key(provider: str) -> str | None:
-    environment = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "gemini": "GEMINI_API_KEY"}[provider]
+    environment = {
+        "openai": "OPENAI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+        "gemini": "GEMINI_API_KEY",
+        "cerebras": "CEREBRAS_API_KEY",
+    }[provider]
     root = os.getenv("STORAGE_ROOT", "/data/storage")
     try:
         with open(os.path.join(root, ".config", "ai-provider-keys.json"), encoding="utf-8") as handle:
@@ -53,7 +58,11 @@ def _provider_key(provider: str) -> str | None:
             return AESGCM(key).decrypt(iv, ciphertext, f"provider:{provider}:v1".encode()).decode()
     except (FileNotFoundError, InvalidTag, KeyError, ValueError, json.JSONDecodeError):
         pass
-    return os.getenv(environment) or (os.getenv("GEMINI_API") if provider == "gemini" else None)
+    return (
+        os.getenv(environment)
+        or (os.getenv("GEMINI_API") if provider == "gemini" else None)
+        or (os.getenv("CEREBRAS_DIGITALROMANIAN") if provider == "cerebras" else None)
+    )
 
 
 def _model(model: str) -> Gemini | LiteLlm:
@@ -67,6 +76,10 @@ def _model(model: str) -> Gemini | LiteLlm:
         if key := _provider_key("anthropic"):
             os.environ["ANTHROPIC_API_KEY"] = key
         return LiteLlm(model=model if "/" in model else f"anthropic/{model}")
+    if lower == "gpt-oss-120b" or lower.startswith("cerebras/"):
+        if key := _provider_key("cerebras"):
+            os.environ["CEREBRAS_API_KEY"] = key
+        return LiteLlm(model=model if lower.startswith("cerebras/") else f"cerebras/{model}")
     if key := _provider_key("openai"):
         os.environ["OPENAI_API_KEY"] = key
     return LiteLlm(model=model if "/" in model else f"openai/{model}")

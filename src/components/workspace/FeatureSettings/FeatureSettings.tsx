@@ -7,11 +7,12 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 import { FEATURES, useFeatureAccess, useSaveFeatures, type Feature } from '@/lib/workspace/features';
 import styles from './FeatureSettings.module.css';
 
-type ProviderName = 'anthropic' | 'openai' | 'gemini';
+type ProviderName = 'anthropic' | 'openai' | 'gemini' | 'cerebras';
 const PROVIDERS: Array<{ name: ProviderName; label: string; hint: string }> = [
   { name: 'gemini', label: 'Google Gemini', hint: 'Key from aistudio.google.com' },
   { name: 'anthropic', label: 'Anthropic (Claude)', hint: 'Key from console.anthropic.com' },
   { name: 'openai', label: 'OpenAI', hint: 'Key from platform.openai.com' },
+  { name: 'cerebras', label: 'Cerebras Cloud', hint: 'Key from cloud.cerebras.ai' },
 ];
 
 interface AiStatus {

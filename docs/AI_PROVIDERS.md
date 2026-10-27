@@ -1,11 +1,11 @@
 # AI providers
 
-Agents run on external model APIs: **Anthropic (Claude)**, **OpenAI**, and **Google Gemini**. All can be configured at
+Agents run on external model APIs: **Cerebras Cloud**, **Anthropic (Claude)**, **OpenAI**, and **Google Gemini**. All can be configured at
 once. Each agent version stores a model id, and the provider follows from it (`claude-…` is
 Anthropic; `gpt-…`, `o…` and `chatgpt-…` are OpenAI). So specialists in one Team Chat run can use
-different providers. Model ids beginning with `gemini-` use Google Gemini. No GPU and no local model server are needed.
+different providers. Model ids beginning with `gemini-` use Google Gemini; `gpt-oss-120b` and `cerebras/...` use Cerebras. No GPU and no local model server are needed.
 
-The current production policy is Gemini-only: every built-in agent uses `gemini-3.8-flash`, and workspace model choices are restricted to Gemini Flash models. The other adapters remain in the codebase for compatibility, but they are not assigned to the built-in roster.
+The current production roster is Cerebras-first: the five built-in agents use `gpt-oss-120b`. Older built-ins are retired from the active roster while their conversations and runs remain readable.
 
 ## Server configuration (api and worker)
 
@@ -20,7 +20,10 @@ The current production policy is Gemini-only: every built-in agent uses `gemini-
 | `GEMINI_API_KEY` | Enables Google Gemini models. |
 | `GEMINI_API` | Compatibility alias for `GEMINI_API_KEY` (accepted for existing Coolify setups). |
 | `AI_DEFAULT_GEMINI_MODEL` | Default Gemini model for new workspaces (`gemini-3.8-flash`). |
-| `AI_DEFAULT_PROVIDER` | `anthropic`, `openai`, or `gemini`: which default applies to new workspaces. If it has no key, another configured provider is used. |
+| `CEREBRAS_API_KEY` | Enables Cerebras Cloud models. |
+| `CEREBRAS_DIGITALROMANIAN` | Compatibility alias for `CEREBRAS_API_KEY`. |
+| `AI_DEFAULT_CEREBRAS_MODEL` | Default Cerebras model (`gpt-oss-120b`). |
+| `AI_DEFAULT_PROVIDER` | `cerebras`, `anthropic`, `openai`, or `gemini`: which default applies to new workspaces. If it has no key, another configured provider is used. |
 
 Keys are server-only. The platform administrator can enter or replace them in **Agents → AI
 settings**. The browser submits a key once over the authenticated same-origin API; the key is
@@ -29,7 +32,7 @@ never returned to the browser, logged, or stored as plaintext. Both the API and 
 replacement without a redeploy.
 
 Coolify runtime secrets remain supported as a fallback. A key saved through AI settings overrides
-the matching `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY` environment variable. At startup the server
+the matching `CEREBRAS_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY` environment variable. At startup the server
 records only which providers are configured (booleans) and the platform default model.
 `GET /api/health` and `/api/ready` report the same booleans.
 
@@ -77,6 +80,8 @@ authoritative. Token budgets (`monthly_token_budget`, `per_user_daily_token_budg
 concurrency limit apply to every provider.
 
 ## How each provider is called
+
+Cerebras runs through the isolated Google ADK service using the pinned LiteLLM adapter and the model id `cerebras/gpt-oss-120b`. The key remains server-only, tools return through the authenticated worker bridge, and persistent state continues to live in this deployment's database.
 
 Gemini uses the streaming Interactions API from `@google/genai`, sends the stateless transcript on every turn, exposes workspace actions as function tools, and uses Google's search tool when web research is enabled. Agent effort maps to Gemini's thinking level.
 

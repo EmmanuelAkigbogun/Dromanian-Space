@@ -43,6 +43,13 @@ def test_gemini_model_candidates_use_approved_flash_fallbacks():
     assert app._model_candidates("claude-sonnet-5-5") == ["claude-sonnet-5-5"]
 
 
+def test_cerebras_model_uses_litellm_provider_prefix(monkeypatch):
+    monkeypatch.setenv("CEREBRAS_DIGITALROMANIAN", "csk-test-key")
+    model = app._model("gpt-oss-120b")
+    assert model.model == "cerebras/gpt-oss-120b"
+    assert os.environ["CEREBRAS_API_KEY"] == "csk-test-key"
+
+
 def test_run_config_bounds_sdk_retries_and_request_time(monkeypatch):
     monkeypatch.setenv("ADK_PROVIDER_REQUEST_TIMEOUT_MS", "45000")
     run_config = app._run_config(7)

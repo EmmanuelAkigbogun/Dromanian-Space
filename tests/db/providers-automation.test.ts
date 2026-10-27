@@ -30,6 +30,7 @@ describe('model catalog and platform state', () => {
     const models = await q<{ id: string; provider: string }>(member, 'SELECT id, provider FROM ai_models ORDER BY sort_order');
     expect(models.find((m) => m.id === 'claude-opus-5-5')?.provider).toBe('anthropic');
     expect(models.find((m) => m.id === 'gpt-5.4')?.provider).toBe('openai');
+    expect(models.find((m) => m.id === 'gpt-oss-120b')?.provider).toBe('cerebras');
     await expectDenied(q(owner, `SELECT ai_report_platform('{"openai":true}', 'gpt-5.4')`));
     await expectDenied(q(owner, `UPDATE ai_models SET input_per_mtok = 0 WHERE id = 'claude-opus-5-5' RETURNING id`));
   });
@@ -53,11 +54,11 @@ describe('model catalog and platform state', () => {
       const s = (await service('SELECT (ai_settings_for($1)).*', [fresh]))[0];
       expect(s.default_model).toBe('gpt-5.4');
       expect(s.allowed_models).toContain('gpt-5.4');
-      expect((s.allowed_models as string[]).every((m) => m.startsWith('gpt-'))).toBe(true);
-      // Agents are seeded from the same settings row, so they can run.
+      expect(s.allowed_models).toContain('gpt-oss-120b');
+      // Built-ins keep their Cerebras model even when another platform default is reported.
       const seeded = await service(
         `SELECT DISTINCT v.model FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1`, [fresh]);
-      expect(seeded.map((r) => r.model)).toEqual(['gpt-5.4']);
+      expect(seeded.map((r) => r.model)).toEqual(['gpt-oss-120b']);
       const unchanged = (await service('SELECT default_model FROM workspace_ai_settings WHERE workspace_id = $1', [wsA]))[0];
       expect(unchanged?.default_model).toBe(before?.default_model);
     } finally {
@@ -103,7 +104,7 @@ describe('switching agent models', () => {
     await expectDenied(q(other, `SELECT ai_apply_model_to_agents($1, 'claude-sonnet-5-5')`, [wsA]), /admins/);
     await expectDenied(q(owner, `SELECT ai_apply_model_to_agents($1, 'gpt-5.4')`, [wsA]), /not allowed/);
     const changed = (await q<{ n: number }>(owner, `SELECT ai_apply_model_to_agents($1, 'claude-sonnet-5-5') AS n`, [wsA]))[0].n;
-    expect(changed).toBeGreaterThanOrEqual(15);
+    expect(changed).toBeGreaterThanOrEqual(5);
     const models = await admin<{ model: string }>(
       `SELECT v.model FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id
        WHERE a.workspace_id = $1 AND a.archived_at IS NULL`, [wsA]);
@@ -114,27 +115,17 @@ describe('switching agent models', () => {
   });
 });
 
-describe('expanded roster', () => {
-  it('adds the general Gemini assistant to every workspace', async () => {
+describe('Cerebras roster', () => {
+  it('adds exactly the five Cerebras agents to every workspace', async () => {
     const rows = await admin<{ handle: string; job: string; tools: string[] }>(
       `SELECT a.handle, t.job, v.tools
        FROM workspace_agents a
        JOIN agent_templates t ON t.key = a.template_key
        JOIN workspace_agent_versions v ON v.id = a.current_version_id
-       WHERE a.workspace_id = $1 AND a.template_key = 'gemini_assistant'`, [wsA]);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ handle: 'gemini', job: 'General AI Assistant' });
-    expect(rows[0].tools).toEqual(expect.arrayContaining(['search_workspace', 'read_file', 'web_search', 'propose_document']));
-  });
-
-  it('adds the researcher, creative director and engineer with their tools', async () => {
-    const rows = await admin<{ template_key: string; handle: string; tools: string[] }>(
-      `SELECT a.template_key, a.handle, v.tools FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id
-       WHERE a.workspace_id = $1 AND a.template_key IN ('business_researcher', 'creative_director', 'software_engineer')`, [wsB]);
-    expect(rows.map((r) => r.handle).sort()).toEqual(['kai', 'nova', 'vera']);
-    for (const r of rows) expect(r.tools.some((t) => t.startsWith('propose_'))).toBe(true);
-    const talia = await admin<{ job: string }>(`SELECT job FROM agent_templates WHERE key = 'recruiter'`);
-    expect(talia[0].job).toBe('HR Assistant');
+       WHERE a.workspace_id = $1 AND a.is_builtin AND a.archived_at IS NULL ORDER BY a.handle`, [wsA]);
+    expect(rows.map((r) => r.handle)).toEqual([
+      'cerebras-analyst', 'cerebras-engineer', 'cerebras-research', 'cerebras-team', 'cerebras-writer']);
+    expect(rows.every((r) => r.tools.length > 0)).toBe(true);
   });
 });
 
@@ -157,9 +148,9 @@ describe('signed automation keys', () => {
   it('starts one run per request id and only with agents of the key\'s workspace', async () => {
     const requestId = `req-${randomUUID()}`;
     const first = (await svc<{ r: { run_id: string; reused: boolean } }>(
-      `SELECT automation_start_run($1, $2, 'vera', 'Research our market', NULL) AS r`, [keyA.id, requestId]))[0].r;
+      `SELECT automation_start_run($1, $2, 'cerebras-research', 'Research our market', NULL) AS r`, [keyA.id, requestId]))[0].r;
     const again = (await svc<{ r: { run_id: string; reused: boolean } }>(
-      `SELECT automation_start_run($1, $2, 'vera', 'Research our market', NULL) AS r`, [keyA.id, requestId]))[0].r;
+      `SELECT automation_start_run($1, $2, 'cerebras-research', 'Research our market', NULL) AS r`, [keyA.id, requestId]))[0].r;
     expect(again.run_id).toBe(first.run_id);
     expect(again.reused).toBe(true);
     const run = (await admin<{ requested_by: string; trigger: string; workspace_id: string }>(
@@ -181,7 +172,7 @@ describe('signed automation keys', () => {
   it('stops working when revoked or when its owner leaves the workspace', async () => {
     await expectDenied(q(other, 'SELECT automation_key_revoke($1)', [keyA.id]));
     await q(owner, 'SELECT automation_key_revoke($1)', [keyA.id]);
-    await expectDenied(svc(`SELECT automation_start_run($1, $2, 'vera', 'x', NULL)`, [keyA.id, `req-${randomUUID()}`]), /not active/);
+    await expectDenied(svc(`SELECT automation_start_run($1, $2, 'cerebras-research', 'x', NULL)`, [keyA.id, `req-${randomUUID()}`]), /not active/);
 
     const adminUser = await createUser('p-admin');
     await addMember(wsA, adminUser, 'admin');
@@ -189,7 +180,7 @@ describe('signed automation keys', () => {
     await admin('DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2', [wsA, adminUser.id]);
     const state = (await svc<{ r: { active: boolean } }>('SELECT automation_key_for($1) AS r', [key.id]))[0].r;
     expect(state.active).toBe(false);
-    await expectDenied(svc(`SELECT automation_start_run($1, $2, 'vera', 'x', NULL)`, [key.id, `req-${randomUUID()}`]), /member/);
+    await expectDenied(svc(`SELECT automation_start_run($1, $2, 'cerebras-research', 'x', NULL)`, [key.id, `req-${randomUUID()}`]), /member/);
   });
 
   it('is not callable anonymously', async () => {

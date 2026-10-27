@@ -11,13 +11,13 @@ The private `adk` service exposes the same authenticated contract used by the wo
 - `POST /cancel/:run_id` terminates the isolated process for that run.
 - Tool calls return to the worker's private `/tool` bridge with a per-run bearer token. The worker executes each tool under the requester's permissions and existing approval rules.
 
-Each run uses an ADK `Runner` and in-memory session because durable state already lives in the Darkspace database. A coordinator becomes an ADK agent with specialist `sub_agents`; specialist descriptions drive delegation. Gemini is the default model. Existing OpenAI and Anthropic agent selections remain supported through ADK's LiteLLM model adapter.
+Each run uses an ADK `Runner` and in-memory session because durable state already lives in the Darkspace database. A coordinator becomes an ADK agent with specialist `sub_agents`; specialist descriptions drive delegation. Cerebras `gpt-oss-120b` is the built-in team's default model through ADK's pinned LiteLLM adapter. Existing Gemini, OpenAI and Anthropic model selections remain supported.
 
 ## Credentials and data
 
-The runtime reuses the existing server-only provider configuration. It first checks the encrypted provider-key file under the mounted storage root, then the existing environment variables. Gemini's compatibility alias `GEMINI_API` remains accepted. Keys are never sent to the browser or written to repository files.
+The runtime reuses the existing server-only provider configuration. It first checks the encrypted provider-key file under the mounted storage root, then the existing environment variables. Cerebras accepts `CEREBRAS_API_KEY` and the compatibility alias `CEREBRAS_DIGITALROMANIAN`; Gemini's `GEMINI_API` alias also remains accepted. Keys are never sent to the browser or written to repository files.
 
-No schema or data migration is required. Existing agents, versions, conversations, run events, sources, citations and usage records retain their identifiers and storage locations.
+The Cerebras roster migration archives older built-ins without deleting their conversations, runs, events, sources, citations or usage. Persistent storage locations and access rules remain unchanged.
 
 ## Pinned deployment
 
@@ -34,7 +34,7 @@ cd adk && uv sync --locked && uv run pytest -q
 docker compose build adk api worker web
 ```
 
-Then exercise `/health`, a direct Gemini prompt, a workspace read tool, a coordinator delegation, image input and cancellation in a non-production environment. Production should be switched only after those checks pass.
+Then exercise `/health`, a direct Cerebras prompt, a workspace read tool, a coordinator delegation, image input and cancellation in a non-production environment. Production should be switched only after those checks pass.
 
 ## Implementation references
 

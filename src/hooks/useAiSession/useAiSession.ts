@@ -36,7 +36,7 @@ export function useAiSession(workspaceId: string | undefined, channelId: string 
     let cancelled = false;
     platform.rpc<Array<{ id: string; name: string; template_key: string | null; status: string }>>('agent_directory', { p_workspace_id: workspaceId }).then(({ data }) => {
       if (cancelled) return;
-      const found = (data ?? []).find((a) => a.template_key === 'note_taker' && a.status === 'active');
+      const found = (data ?? []).find((a) => a.template_key === 'cerebras_writer' && a.status === 'active');
       setAgent(found ? { id: found.id, name: found.name } : null);
     });
     return () => {
