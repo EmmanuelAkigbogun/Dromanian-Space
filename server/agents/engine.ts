@@ -92,7 +92,8 @@ async function sessionTranscript(ctx: RunContext, sessionId: string, channelId: 
 
 function errorMessage(err: unknown): { code: string; message: string } {
   if (err instanceof Error && /auth|api key|unauthor/i.test(err.message)) return { code: 'auth', message: 'The configured AI provider rejected its credentials.' };
-  if (err instanceof Error && /rate limit/i.test(err.message)) return { code: 'rate_limited', message: 'The AI provider is rate limited. Try again shortly.' };
+  if (err instanceof Error && /rate limit|resource.?exhausted|quota|\b429\b/i.test(err.message)) return { code: 'rate_limited', message: 'The AI provider is rate limited. Try again shortly.' };
+  if (err instanceof Error && /timed? ?out|timeout/i.test(err.message)) return { code: 'provider_timeout', message: 'The AI provider took too long to respond. Try again shortly.' };
   if (err instanceof Error && /CrewAI runtime returned HTTP|fetch failed|ECONNREFUSED/i.test(err.message)) {
     return { code: 'crew_unavailable', message: 'The CrewAI runtime is temporarily unavailable. Try again.' };
   }
@@ -120,6 +121,12 @@ export async function executeRun(
   const version = claim.version;
   const agent = claim.agent;
   emit('status', { status: 'running' });
+  const setStage = async (stage: string, label: string) => {
+    const data = { stage, label };
+    emit('stage', data);
+    await rpc('agent_add_event', { p_run_id: runId, p_type: 'stage', p_data: data });
+  };
+  await setStage('loading_context', 'Loading the conversation');
 
   const finish = async (status: string, content: string | null, usage: TurnUsage | null, model: string | null, code?: string, message?: string) => {
     const final = await rpc<string>('agent_finish_run', {
@@ -418,6 +425,7 @@ export async function executeRun(
       : '';
     const crew = opts.crew ?? (opts.provider ? providerCrewRunner(opts.provider) : remoteCrewRunner);
     const liveTeam = new Map<string, { task_id: string; agent: string; status: string }>();
+    await setStage('starting_crew', isCoordinator ? 'Starting the crew' : `Starting ${agent.name}`);
     const result = await crew.run(
       {
         run_id: runId,
@@ -436,6 +444,9 @@ export async function executeRun(
       },
       {
         signal: controller.signal,
+        onStage(stage, label) {
+          void setStage(stage, label).catch(() => undefined);
+        },
         onDelta(delta) {
           turnText += delta;
           emit('delta', { text: delta });

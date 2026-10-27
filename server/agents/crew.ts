@@ -34,6 +34,7 @@ export interface CrewRunResult {
 export interface CrewRunCallbacks {
   signal: AbortSignal;
   onDelta(text: string): void;
+  onStage?(stage: string, label: string): void;
   onTeam?(agent: string, status: string): void;
   callTool(call: { id: string; name: string; input: unknown }): Promise<{ content: string; isError?: boolean }>;
 }
@@ -60,8 +61,17 @@ export function providerCrewRunner(provider: ModelProvider): CrewRunner {
       let text = '';
       let usage: TurnUsage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 };
       let model = input.agent.model;
+      callbacks.onStage?.('contacting_provider', 'Waiting for the AI provider');
+      let receivedText = false;
       for (;;) {
-        const turn = await session.next({ signal: callbacks.signal, onText: callbacks.onDelta });
+        const turn = await session.next({
+          signal: callbacks.signal,
+          onText(text) {
+            if (!receivedText) callbacks.onStage?.('generating', 'Writing the answer');
+            receivedText = true;
+            callbacks.onDelta(text);
+          },
+        });
         text += turn.text;
         usage = {
           input_tokens: usage.input_tokens + turn.usage.input_tokens,
@@ -161,13 +171,21 @@ export const remoteCrewRunner: CrewRunner = {
     active.set(input.run_id, { token, callTool: callbacks.callTool });
     const base = (process.env.CREWAI_URL ?? 'http://crew:8000').replace(/\/$/, '');
     const callbackHost = process.env.CREW_TOOL_CALLBACK_URL ?? `http://worker:${process.env.CREW_TOOL_PORT ?? 3001}/tool`;
+    const authorization = `Bearer ${process.env.CREW_INTERNAL_TOKEN ?? process.env.APP_JWT_SECRET ?? ''}`;
+    const cancel = () => {
+      void fetch(`${base}/cancel/${encodeURIComponent(input.run_id)}`, {
+        method: 'POST',
+        headers: { authorization },
+      }).catch(() => undefined);
+    };
+    callbacks.signal.addEventListener('abort', cancel, { once: true });
     try {
       const response = await fetch(`${base}/run`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
           accept: 'application/x-ndjson',
-          authorization: `Bearer ${process.env.CREW_INTERNAL_TOKEN ?? process.env.APP_JWT_SECRET ?? ''}`,
+          authorization,
         },
         body: JSON.stringify({ ...input, callback_url: callbackHost, callback_token: token.toString('hex') }),
         signal: callbacks.signal,
@@ -181,6 +199,9 @@ export const remoteCrewRunner: CrewRunner = {
       let result: CrewRunResult | null = null;
       const receive = (event: Record<string, unknown>) => {
         if (event.type === 'delta' && typeof event.text === 'string') callbacks.onDelta(event.text);
+        if (event.type === 'stage' && typeof event.stage === 'string') {
+          callbacks.onStage?.(event.stage, String(event.label ?? event.stage));
+        }
         if (event.type === 'team' && typeof event.agent === 'string') callbacks.onTeam?.(event.agent, String(event.status ?? 'working'));
         if (event.type === 'error') throw new Error(String(event.message ?? 'CrewAI execution failed.'));
         if (event.type === 'result') {
@@ -215,6 +236,7 @@ export const remoteCrewRunner: CrewRunner = {
       if (!result) throw new Error('CrewAI ended without a result.');
       return result;
     } finally {
+      callbacks.signal.removeEventListener('abort', cancel);
       active.delete(input.run_id);
     }
   },

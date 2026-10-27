@@ -30,6 +30,14 @@
 .task { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 13px; }
 .task span:last-child { color: var(--color-text-secondary); font-size: 12px; white-space: nowrap; }
 
+.runStatus { display: flex; align-items: center; gap: 12px; margin: 12px 0; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-border)); border-radius: 10px; background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface)); }
+.runStatusText { display: grid; gap: 3px; min-width: 0; flex: 1; }
+.runStatusText strong { font-size: 13px; font-weight: 600; }
+.runStatusText span { color: var(--color-text-secondary); font-size: 12px; line-height: 1.45; }
+.runSpinner { width: 18px; height: 18px; flex: 0 0 18px; border: 2px solid color-mix(in srgb, var(--color-primary) 25%, transparent); border-top-color: var(--color-primary); border-radius: 50%; animation: agent-spin .8s linear infinite; }
+@keyframes agent-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .runSpinner { animation: none; border-color: var(--color-primary); } }
+
 .picker { display: grid; gap: 8px; }
 .picker label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .note { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }

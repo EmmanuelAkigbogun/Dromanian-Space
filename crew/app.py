@@ -5,7 +5,9 @@ import hashlib
 import hmac
 import json
 import os
+import subprocess
 import sys
+import threading
 import traceback
 import urllib.error
 import urllib.request
@@ -138,7 +140,16 @@ def _provider_key(provider: str) -> str | None:
 
 def _llm(model: str, effort: str | None) -> LLM:
     name = _model_name(model)
-    options: dict[str, Any] = {"model": name, "stream": True}
+    options: dict[str, Any] = {
+        "model": name,
+        "stream": True,
+        # Bound a single provider request. The agent's execution limit remains
+        # the outer budget for multi-step/tool runs.
+        "timeout": max(10, min(int(os.getenv("CREW_LLM_TIMEOUT_SECONDS", "45")), 120)),
+        # One retry means at most two provider attempts. Do not stack a second
+        # retry loop at the Agent level by default.
+        "max_retries": max(0, min(int(os.getenv("CREW_LLM_RETRIES", "1")), 2)),
+    }
     provider = "anthropic" if name.startswith("anthropic/") else ("gemini" if name.startswith("gemini/") else "openai")
     if key := _provider_key(provider):
         options["api_key"] = key
@@ -172,6 +183,7 @@ def _agent(
         allow_delegation=manager,
         max_iter=max(1, min(int(config.get("max_iter", 12)), 30)),
         max_execution_time=max(30, min(int(config.get("max_execution_time", 540)), 900)),
+        max_retry_limit=max(0, min(int(os.getenv("CREW_AGENT_RETRIES", "0")), 2)),
         respect_context_window=True,
         verbose=False,
         cache=False,
@@ -221,6 +233,7 @@ def run_crew(payload: dict[str, Any], send: Any) -> None:
     is_team = manager_config.get("kind") == "coordinator" and bool(payload.get("specialists"))
     input_files = _input_files(payload)
 
+    send({"type": "stage", "stage": "preparing", "label": "Preparing the agent"})
     manager = _agent(manager_config, specs, callback_url, callback_token, run_id, manager=is_team)
     if is_team:
         specialists = [
@@ -259,12 +272,17 @@ def run_crew(payload: dict[str, Any], send: Any) -> None:
             share_crew=False,
         )
 
+    send({"type": "stage", "stage": "contacting_provider", "label": "Waiting for the AI provider"})
     streaming = crew.kickoff(input_files=input_files or None)
+    generating = False
     if not is_team:
         for chunk in streaming:
             content = getattr(chunk, "content", "")
             chunk_type = str(getattr(chunk, "chunk_type", ""))
             if content and "TOOL_CALL" not in chunk_type:
+                if not generating:
+                    send({"type": "stage", "stage": "generating", "label": "Writing the answer"})
+                    generating = True
                 send({"type": "delta", "text": content})
     else:
         for chunk in streaming:
@@ -272,6 +290,7 @@ def run_crew(payload: dict[str, Any], send: Any) -> None:
             if role:
                 send({"type": "team", "agent": role, "status": "working"})
 
+    send({"type": "stage", "stage": "finalizing", "label": "Finishing the answer"})
     result = streaming.result
     send(
         {
@@ -281,6 +300,40 @@ def run_crew(payload: dict[str, Any], send: Any) -> None:
             "model": manager_config["model"],
         }
     )
+
+
+_active_processes: dict[str, subprocess.Popen[bytes]] = {}
+_active_lock = threading.Lock()
+
+
+def _terminate(run_id: str) -> bool:
+    with _active_lock:
+        process = _active_processes.get(run_id)
+    if process is None or process.poll() is not None:
+        return False
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+    return True
+
+
+def _child_main() -> None:
+    payload = json.loads(sys.stdin.buffer.read())
+    protocol = sys.stdout.buffer
+    # Keep dependency logs out of the NDJSON protocol stream.
+    sys.stdout = sys.stderr
+
+    def send(value: dict[str, Any]) -> None:
+        protocol.write(_json_line(value))
+        protocol.flush()
+
+    try:
+        run_crew(payload, send)
+    except Exception as error:
+        print(traceback.format_exc(), file=sys.stderr, flush=True)
+        send({"type": "error", "code": "crew_error", "message": str(error)[:1000]})
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -307,13 +360,23 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self) -> None:
-        if self.path != "/run":
+        if self.path != "/run" and not self.path.startswith("/cancel/"):
             self.send_error(404)
             return
         expected = os.getenv("CREW_INTERNAL_TOKEN", "")
         supplied = self.headers.get("authorization", "").removeprefix("Bearer ")
         if not expected or not hmac.compare_digest(supplied, expected):
             self.send_error(401)
+            return
+        if self.path.startswith("/cancel/"):
+            run_id = self.path.removeprefix("/cancel/")
+            stopped = _terminate(run_id)
+            body = json.dumps({"ok": True, "stopped": stopped}).encode()
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
         try:
             payload = self._body()
@@ -334,21 +397,39 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("connection", "close")
         self.end_headers()
 
-        def send(value: dict[str, Any]) -> None:
-            self.wfile.write(_json_line(value))
-            self.wfile.flush()
-
+        process: subprocess.Popen[bytes] | None = None
+        run_id = str(payload["run_id"])
         try:
-            run_crew(payload, send)
+            process = subprocess.Popen(
+                [sys.executable, str(Path(__file__).resolve()), "--execute-run"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+            )
+            with _active_lock:
+                _active_processes[run_id] = process
+            assert process.stdin is not None and process.stdout is not None
+            process.stdin.write(json.dumps(payload, separators=(",", ":")).encode())
+            process.stdin.close()
+            for line in iter(process.stdout.readline, b""):
+                self.wfile.write(line)
+                self.wfile.flush()
+            process.wait()
         except (BrokenPipeError, ConnectionResetError):
+            _terminate(run_id)
             return
         except Exception as error:
             print(traceback.format_exc(), file=sys.stderr, flush=True)
             try:
-                send({"type": "error", "code": "crew_error", "message": str(error)[:1000]})
+                self.wfile.write(_json_line({"type": "error", "code": "crew_error", "message": str(error)[:1000]}))
+                self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
                 pass
         finally:
+            with _active_lock:
+                if _active_processes.get(run_id) is process:
+                    _active_processes.pop(run_id, None)
+            if process is not None and process.poll() is None:
+                process.terminate()
             self.close_connection = True
 
 
@@ -362,4 +443,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    if "--execute-run" in sys.argv:
+        _child_main()
+    else:
+        main()

@@ -30,19 +30,21 @@ describe('CrewAI runner contract', () => {
     const provider: ModelProvider = {
       name: 'test', configured: () => true,
       startSession: () => ({
-        async next() {
+        async next(options) {
           step++;
-          return step === 1
-            ? result({ stop: 'tool_use', toolCalls: [{ id: 'call-1', name: 'read_file', input: { item_id: 'doc-1' } }] })
-            : result({ text: 'The policy is available.', usage: { ...emptyUsage(), output_tokens: 7 } });
+          if (step === 1) return result({ stop: 'tool_use', toolCalls: [{ id: 'call-1', name: 'read_file', input: { item_id: 'doc-1' } }] });
+          options.onText('The policy is available.');
+          return result({ text: 'The policy is available.', usage: { ...emptyUsage(), output_tokens: 7 } });
         },
         addToolResults(values) { toolResults.push(...values.map((value) => value.content)); },
       }),
     };
     const calls: string[] = [];
+    const stages: string[] = [];
     const output = await providerCrewRunner(provider).run(input, {
       signal: new AbortController().signal,
       onDelta: () => undefined,
+      onStage(stage) { stages.push(stage); },
       async callTool(call) {
         calls.push(call.name);
         return { content: 'Policy: approved.' };
@@ -50,6 +52,7 @@ describe('CrewAI runner contract', () => {
     });
     expect(calls).toEqual(['read_file']);
     expect(toolResults).toEqual(['Policy: approved.']);
+    expect(stages).toEqual(['contacting_provider', 'generating']);
     expect(output).toMatchObject({ text: 'The policy is available.', model: 'test-model', usage: { output_tokens: 7 } });
   });
 });

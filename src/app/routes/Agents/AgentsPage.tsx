@@ -429,6 +429,8 @@ function AgentView(props: {
   const [following, setFollowing] = useState<string | null>(null);
   const [stream, setStream] = useState('');
   const [progress, setProgress] = useState('');
+  const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [liveTeam, setLiveTeam] = useState<LiveTask[]>([]);
   const [settings, setSettings] = useState(false);
   const [sources, setSources] = useState<string[]>(params.get('source') ? [params.get('source')!] : []);
@@ -487,6 +489,16 @@ function AgentView(props: {
 
   const refresh = () => cache.invalidateQueries({ queryKey: base });
   const running = activity.data?.top.find((r) => ['running', 'queued'].includes(r.status));
+  const activeRunId = following ?? running?.id ?? null;
+  useEffect(() => {
+    if (!sending && !activeRunId) return;
+    const started = runStartedAt ?? (running?.created_at ? new Date(running.created_at).getTime() : Date.now());
+    if (runStartedAt === null) setRunStartedAt(started);
+    const update = () => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - started) / 1000)));
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [sending, activeRunId, runStartedAt, running?.created_at]);
   const { blocking, notes: limits } = agent ? readiness(agent, props.status) : { blocking: ['This agent was retired.'], notes: [] };
   const available = !blocking.length;
   const isTeam = agent?.kind === 'coordinator';
@@ -577,6 +589,8 @@ function AgentView(props: {
       setMessage('');
       clearImages();
       setFollowing(String(data.run_id));
+      setProgress('Waiting for a worker');
+      setRunStartedAt(Date.now());
       if (!conversationId) {
         const kept = new URLSearchParams(params);
         kept.delete('prompt');
@@ -584,11 +598,16 @@ function AgentView(props: {
       }
       await refresh();
     } else if (name === 'snapshot') setStream(String(data.text ?? ''));
-    else if (name === 'tool' && data.label) setProgress(String(data.label));
+    else if (name === 'status' && data.status === 'running') setProgress('Loading the conversation');
+    else if (name === 'stage' && data.label) setProgress(String(data.label));
+    else if (name === 'tool' && data.label) {
+      setProgress(data.phase === 'finished' ? 'Continuing with the result' : String(data.label));
+    }
     else if (name === 'team') setLiveTeam((data.tasks as LiveTask[]) ?? []);
     else if (name === 'warning' && data.message) setProgress(String(data.message));
     else if (name === 'done') {
       setProgress('');
+      setElapsedSeconds(0);
       if (data.error_message) setError(String(data.error_message));
     }
   }
@@ -626,7 +645,9 @@ function AgentView(props: {
     setError('');
     setStream('');
     setLiveTeam([]);
-    setProgress('Starting…');
+    setProgress(images.length ? 'Uploading your images' : 'Saving your request');
+    setRunStartedAt(Date.now());
+    setElapsedSeconds(0);
     requestKey.current ??= crypto.randomUUID();
     try {
       const attachments = await uploadImages();
@@ -746,7 +767,26 @@ function AgentView(props: {
               ))}
             </section>
           )}
-          {(sending || running) && <p role="status" className={s.muted}>{progress || 'Working…'}</p>}
+          {(sending || activeRunId) && (
+            <section className={a.runStatus}>
+              <span className={a.runSpinner} aria-hidden="true" />
+              <div role="status" aria-live="polite" className={a.runStatusText}>
+                <strong>{progress || 'Working on your request'}</strong>
+                <span>
+                  {elapsedSeconds < 15
+                    ? `${elapsedSeconds}s elapsed`
+                    : elapsedSeconds < 45
+                      ? `${elapsedSeconds}s elapsed · Your request is safely saved.`
+                      : `${elapsedSeconds}s elapsed · The AI provider is taking longer than usual. You can leave this page; the run will continue.`}
+                </span>
+              </div>
+              {activeRunId && (
+                <button type="button" className={s.button} onClick={() => void action(() => result(platform.rpc('agent_cancel_run', { p_run_id: activeRunId })))}>
+                  Stop
+                </button>
+              )}
+            </section>
+          )}
           {activity.data?.proposals.map((p) => <Proposal key={p.id} proposal={p} onChange={refresh} />)}
           {activity.data?.top[0] && (
             <details className={s.notice}>
@@ -812,11 +852,6 @@ function AgentView(props: {
               <div className={s.actions}>
                 <button type="button" className={s.button} onClick={() => imageInput.current?.click()} disabled={sending || images.length >= MAX_AGENT_IMAGES}>Attach image</button>
                 <button className={s.primary} disabled={!available || sending || !!running || (!message.trim() && images.length === 0)}>Send</button>
-                {running && (
-                  <button type="button" className={s.button} onClick={() => void action(() => result(platform.rpc('agent_cancel_run', { p_run_id: running.id })))}>
-                    Stop
-                  </button>
-                )}
                 <span className={s.muted}>{blocking[0] ?? 'Actions wait for your review before anything changes.'}</span>
               </div>
             </form>
@@ -929,7 +964,7 @@ function TimelineMessage({ m, agent, text, citations }: { m: TimelineRow; agent:
           {agent && <Avatar agent={agent} small />}
           {m.role === 'user' ? `Task for ${who}` : `${who} · ${m.status === 'streaming' ? 'working…' : m.status}`}
         </div>
-        {m.role === 'user' ? m.content : text ? <Markdown text={text} /> : 'Working…'}
+        {m.role === 'user' ? m.content : text ? <Markdown text={text} /> : 'Waiting for the first response…'}
         <Citations items={m.redacted ? [] : citations} />
       </div>
     );
@@ -938,7 +973,7 @@ function TimelineMessage({ m, agent, text, citations }: { m: TimelineRow; agent:
     <article className={`${s.message} ${m.role === 'user' ? s.user : ''}`}>
       <div className={s.eyebrow}>{m.role === 'user' ? 'You' : `${who} · ${m.status === 'streaming' ? 'working…' : m.status}`}</div>
       {m.role === 'user' && <AgentMessageImages scope={m.scope} />}
-      {m.role === 'user' ? m.content : text ? <Markdown text={text} /> : m.status === 'streaming' ? 'Working…' : ''}
+      {m.role === 'user' ? m.content : text ? <Markdown text={text} /> : m.status === 'streaming' ? 'Waiting for the first response…' : ''}
       <Citations items={m.redacted ? [] : citations} />
     </article>
   );
