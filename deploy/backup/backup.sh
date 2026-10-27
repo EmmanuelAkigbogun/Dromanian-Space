@@ -31,6 +31,7 @@ RETENTION_DAYS=${RETENTION_DAYS:-14}
 RCLONE_REMOTE=${RCLONE_REMOTE:-}
 WORKER_CONTAINER=${WORKER_CONTAINER:-}
 N8N_DB_CONTAINER=${N8N_DB_CONTAINER:-}
+N8N_COMPOSE_PROJECT=${N8N_COMPOSE_PROJECT:-}
 HEALTHCHECK_URL=${HEALTHCHECK_URL:-}
 
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
@@ -117,6 +118,13 @@ tar -C "$CONFIG_DIR" --exclude='./*.lock' -cf "$work/config.tar" .
 if $paused; then docker unpause "$WORKER_CONTAINER" >/dev/null && paused=false; fi
 
 parts=(globals.sql database.dump storage.tar config.tar)
+if [[ -z "$N8N_DB_CONTAINER" && -n "$N8N_COMPOSE_PROJECT" ]]; then
+  N8N_DB_CONTAINER=$(docker ps \
+    --filter "label=com.docker.compose.project=$N8N_COMPOSE_PROJECT" \
+    --filter 'label=com.docker.compose.service=n8n-db' \
+    --format '{{.Names}}' | head -1)
+  [[ -n "$N8N_DB_CONTAINER" ]] || { echo "n8n database container not found for project $N8N_COMPOSE_PROJECT" >&2; exit 1; }
+fi
 if [[ -n "$N8N_DB_CONTAINER" ]]; then
   step="dumping the n8n database"
   docker exec "$N8N_DB_CONTAINER" pg_dump -U n8n -d n8n -Fc > "$work/n8n.dump"

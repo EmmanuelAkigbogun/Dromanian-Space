@@ -35,6 +35,8 @@ app's jobs. Every request carries a `request_id`, and the app starts at most one
 n8n has its own PostgreSQL (never the application database), keeps 14 days of execution data, and has
 execution timeouts (5 minutes by default, 1 hour at most). Its database is included in backups when
 `N8N_DB_CONTAINER` is set in `backup.env`.
+For Coolify's timestamped container names, set `N8N_COMPOSE_PROJECT` to the n8n application UUID
+instead; the backup resolves the running `n8n-db` container from its Compose labels.
 
 ## Create an automation key
 
