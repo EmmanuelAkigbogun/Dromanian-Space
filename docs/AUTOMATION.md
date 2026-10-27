@@ -96,6 +96,12 @@ return [{ json: { body, headers: { 'content-type': 'application/json', 'x-droman
 
 Then send it with an HTTP Request node, using the raw `body` exactly as signed.
 
+The importable workflow at
+`deploy/n8n/workflows/darkspace-signed-agent-run.json` keeps key material in runtime environment
+variables, signs the exact raw request body, and starts a small `hey` run against the Gemini agent.
+It is intentionally inactive after import; run it manually to test a credential or copy its signing
+nodes into an authenticated production workflow.
+
 ### Callbacks
 
 When a run finishes, the worker POSTs this to `callback_url`:

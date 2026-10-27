@@ -1,0 +1,62 @@
+{
+  "id": "7c6d5f10-0a8b-4ff9-a152-28350ef45483",
+  "name": "Darkspace - Signed Agent Run",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "f1cd083d-6bb3-4a04-96ab-c736f0585dbf",
+      "name": "Run manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst path = '/api/integrations/n8n/runs';\nconst payload = {\n  agent: 'gemini',\n  message: 'hey',\n  request_id: `n8n-smoke-${Date.now()}-${$execution.id}`,\n};\nconst rawBody = JSON.stringify(payload);\nconst timestamp = Math.floor(Date.now() / 1000).toString();\nconst material = `${timestamp}.POST.${path}.${rawBody}`;\nconst signature = 'v1=' + crypto.createHmac('sha256', $env.DROMANIAN_KEY_SECRET).update(material).digest('hex');\nreturn [{ json: {\n  url: `${$env.DROMANIAN_BASE_URL}${path}`,\n  rawBody,\n  timestamp,\n  signature,\n  keyId: $env.DROMANIAN_KEY_ID,\n} }];"
+      },
+      "id": "596dc6ab-cd9b-4515-86d4-b41743587f1f",
+      "name": "Sign Darkspace request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "content-type", "value": "application/json" },
+            { "name": "x-dromanian-key", "value": "={{ $json.keyId }}" },
+            { "name": "x-dromanian-timestamp", "value": "={{ $json.timestamp }}" },
+            { "name": "x-dromanian-signature", "value": "={{ $json.signature }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.rawBody }}",
+        "options": {}
+      },
+      "id": "b704d486-9ad5-4213-87e8-b800fd69b4ef",
+      "name": "Start Darkspace agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [760, 300]
+    }
+  ],
+  "connections": {
+    "Run manually": {
+      "main": [[{ "node": "Sign Darkspace request", "type": "main", "index": 0 }]]
+    },
+    "Sign Darkspace request": {
+      "main": [[{ "node": "Start Darkspace agent", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "pinData": {},
+  "tags": []
+}
