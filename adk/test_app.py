@@ -43,6 +43,15 @@ def test_gemini_model_candidates_use_approved_flash_fallbacks():
     assert app._model_candidates("claude-sonnet-5-5") == ["claude-sonnet-5-5"]
 
 
+def test_run_config_bounds_sdk_retries_and_request_time(monkeypatch):
+    monkeypatch.setenv("ADK_PROVIDER_REQUEST_TIMEOUT_MS", "45000")
+    run_config = app._run_config(7)
+    assert run_config.max_llm_calls == 7
+    assert run_config.http_options.timeout == 45000
+    assert run_config.http_options.retry_options.attempts == 2
+    assert run_config.http_options.retry_options.http_status_codes == [408, 429, 500, 502, 503, 504]
+
+
 def test_dynamic_adk_agent_preserves_tools_and_specialists():
     spec = {
         "read_file": {

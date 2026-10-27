@@ -262,6 +262,25 @@ def _model_candidates(requested: str) -> list[str]:
     return list(dict.fromkeys((requested, *RESILIENT_GEMINI_MODELS[1:])))
 
 
+def _run_config(max_calls: int) -> RunConfig:
+    timeout_ms = max(5_000, min(int(os.getenv("ADK_PROVIDER_REQUEST_TIMEOUT_MS", "45000")), 180_000))
+    return RunConfig(
+        streaming_mode=StreamingMode.SSE,
+        max_llm_calls=max_calls,
+        http_options=types.HttpOptions(
+            timeout=timeout_ms,
+            retry_options=types.HttpRetryOptions(
+                attempts=2,
+                initial_delay=1.0,
+                max_delay=4.0,
+                exp_base=2,
+                jitter=1,
+                http_status_codes=[408, 429, 500, 502, 503, 504],
+            ),
+        ),
+    )
+
+
 async def _run_adk_async(payload: dict[str, Any], send: Any) -> None:
     run_id = str(payload["run_id"])
     specs = {item["name"]: item for item in payload.get("tools", [])}
@@ -314,7 +333,7 @@ async def _run_adk_async(payload: dict[str, Any], send: Any) -> None:
             user_id=run_id,
             session_id=run_id,
             new_message=message,
-            run_config=RunConfig(streaming_mode=StreamingMode.SSE, max_llm_calls=max_calls),
+            run_config=_run_config(max_calls),
             abort_signal=abort_signal,
         )
         try:
