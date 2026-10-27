@@ -22,7 +22,7 @@ node --import tsx scripts/seed-preview.ts
 
 The email and password are saved in `.local/preview.json`. Re-running the seed creates additional fixtures; it does not replace an existing account. Do not run `database:local -- reset` to restart the preview: it deletes the local database. Use `stop` / `start` instead.
 
-The deployed roster uses a server-side Cerebras key and pins all five built-ins to `gpt-oss-120b` (see [AI providers](docs/AI_PROVIDERS.md)). A platform administrator can enter the key in the Agents settings UI, where it is encrypted on this server and never returned to the browser. `CEREBRAS_API_KEY` and the compatibility alias `CEREBRAS_DIGITALROMANIAN` are also accepted as server environment variables. Voyage embeddings are optional. Never place server keys in `VITE_` variables.
+The deployed roster uses a server-side Cerebras key and pins all six built-ins to `gpt-oss-120b` (see [AI providers](docs/AI_PROVIDERS.md)). A platform administrator can enter the key in the Agents settings UI, where it is encrypted on this server and never returned to the browser. `CEREBRAS_API_KEY` and the compatibility alias `CEREBRAS_DIGITALROMANIAN` are also accepted as server environment variables. Voyage embeddings are optional. Never place server keys in `VITE_` variables.
 
 The local stack supports database authorization, password login and filesystem storage. It does not emulate production SSE, email delivery, TURN or backup infrastructure.
 
