@@ -131,6 +131,8 @@ export default async function smoke(db, legacy) {
     'seo-specialist', 'social-calendar',
   ];
   check(JSON.stringify(handles) === JSON.stringify(expectedHandles), `roster: 20 GitHub-sourced Cerebras agents without the deleted coding agent (${handles.join(', ')})`);
+  const archivedHandleCollisions = await h.admin(`SELECT a.handle FROM workspace_agents a JOIN agent_templates t ON t.handle = a.handle AND NOT t.retired WHERE a.workspace_id = $1 AND a.is_builtin AND a.archived_at IS NOT NULL AND a.template_key IS DISTINCT FROM t.key`, [wsB]);
+  check(archivedHandleCollisions.length === 0, 'archived built-ins cannot reserve handles needed by the active roster');
   const [socialCalendar] = await h.admin(`SELECT v.instructions, v.tools, v.model FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1 AND a.handle = 'social-calendar'`, [wsB]);
   check(socialCalendar?.model === 'gpt-oss-120b' && socialCalendar.tools.includes('propose_document') && !socialCalendar.tools.includes('propose_channel_message'), 'social calendar creates reviewed plans without publishing access');
   const [coordinatorVersion] = await h.admin(`SELECT v.instructions FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1 AND a.handle = 'cerebras-team'`, [wsB]);
