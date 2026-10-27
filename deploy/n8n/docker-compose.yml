@@ -96,6 +96,12 @@ services:
       N8N_PERSONALIZATION_ENABLED: "false"
       # Code nodes may use crypto to sign requests to Dromanian Space.
       NODE_FUNCTION_ALLOW_BUILTIN: crypto
+      # The signing workflow reads these at runtime; they are secrets in
+      # Coolify and are never embedded in an exported workflow.
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      DROMANIAN_KEY_ID: ${DROMANIAN_KEY_ID:?DROMANIAN_KEY_ID}
+      DROMANIAN_KEY_SECRET: ${DROMANIAN_KEY_SECRET:?DROMANIAN_KEY_SECRET}
+      DROMANIAN_BASE_URL: ${DROMANIAN_BASE_URL:-https://darkspace.purplehive.pro}
       # Execution timeouts and log retention (14 days).
       EXECUTIONS_TIMEOUT: "300"
       EXECUTIONS_TIMEOUT_MAX: "3600"

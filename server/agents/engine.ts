@@ -124,7 +124,17 @@ export async function executeRun(
   const setStage = async (stage: string, label: string) => {
     const data = { stage, label };
     emit('stage', data);
-    await rpc('agent_add_event', { p_run_id: runId, p_type: 'stage', p_data: data });
+    // Stage checkpoints improve the UI, but telemetry must never prevent an
+    // otherwise valid run from reaching the model or its terminal state.
+    try {
+      await rpc('agent_add_event', { p_run_id: runId, p_type: 'stage', p_data: data });
+    } catch (err) {
+      log.warn('agent stage checkpoint failed', {
+        run_id: runId,
+        stage,
+        error: err instanceof Error ? err : String(err),
+      });
+    }
   };
   await setStage('loading_context', 'Loading the conversation');
 

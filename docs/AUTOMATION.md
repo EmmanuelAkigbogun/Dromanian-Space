@@ -47,7 +47,7 @@ Auth" or a variable used by a Code node), never in a workflow's plain text.
 
 ## API
 
-`POST https://space.digitalromanian.com/api/integrations/n8n/runs`
+`POST https://darkspace.purplehive.pro/api/integrations/n8n/runs`
 
 ```json
 { "agent": "vera", "message": "Summarize our three main competitors.", "request_id": "lead-2026-10-19-0042",
@@ -66,7 +66,7 @@ Responses:
 - `403`: key revoked, agent not allowed, or no access.
 - `429`: quota or concurrency limit. Retry later with the same `request_id`.
 
-`GET https://space.digitalromanian.com/api/integrations/n8n/runs?run_id=<id>` returns the status
+`GET https://darkspace.purplehive.pro/api/integrations/n8n/runs?run_id=<id>` returns the status
 and, once finished, the output, but only for runs started with the same key.
 
 ### Signing requests
