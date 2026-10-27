@@ -101,6 +101,16 @@
   border-left: 3px solid var(--color-primary);
 }
 
+@media (max-width: 639px) {
+  .viewport {
+    right: calc(var(--space-3) + var(--safe-area-inset-right));
+    bottom: calc(var(--space-3) + var(--safe-area-inset-bottom));
+    left: calc(var(--space-3) + var(--safe-area-inset-left));
+    width: auto;
+    max-width: none;
+  }
+}
+
 @keyframes slideInRight {
   from {
     transform: translateX(100%);

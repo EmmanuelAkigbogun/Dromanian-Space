@@ -4,6 +4,9 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { Avatar } from '@/components/ui/Avatar';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Spinner } from '@/components/ui/Spinner';
+import { Portal } from '@/lib/overlay/Portal';
+import { useFocusTrap } from '@/lib/overlay/useFocusTrap';
+import { useOverlayStack } from '@/lib/overlay/useOverlayStack';
 import { formatRelativeTime } from '@/utils';
 import type { TypedNotification, NotificationCategory } from '@/features/notifications/service';
 import styles from './NotificationCenter.module.css';
@@ -49,6 +52,8 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+  const containerRef = useFocusTrap(open);
+  const overlayId = useOverlayStack(open);
 
   useEffect(() => {
     if (open && closeButtonRef.current) {
@@ -106,7 +111,16 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
   if (!open) return null;
 
   return (
-    <div className={styles.overlay} role="dialog" aria-modal="true" aria-label="Notifications">
+    <Portal>
+    <div
+      ref={containerRef}
+      className={styles.overlay}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Notifications"
+      tabIndex={-1}
+      data-overlay-id={overlayId}
+    >
       <div className={styles.backdrop} onClick={onClose} aria-hidden="true" />
       <div className={styles.panel}>
         <div className={styles.panelHeader}>
@@ -227,5 +241,6 @@ export function NotificationCenter({ open, onClose }: NotificationCenterProps) {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

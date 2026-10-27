@@ -1,4 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Portal } from '@/lib/overlay/Portal';
+import { useFocusTrap } from '@/lib/overlay/useFocusTrap';
+import { useOverlayStack } from '@/lib/overlay/useOverlayStack';
 import styles from './ImageViewer.module.css';
 
 interface ImageViewerProps {
@@ -11,6 +14,8 @@ interface ImageViewerProps {
 export function ImageViewer({ src, alt, open, onClose }: ImageViewerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const containerRef = useFocusTrap(open);
+  useOverlayStack(open);
 
   useEffect(() => {
     if (!open) return;
@@ -21,10 +26,8 @@ export function ImageViewer({ src, alt, open, onClose }: ImageViewerProps) {
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', handleEscape);
-    document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = '';
     };
   }, [open, onClose]);
 
@@ -34,7 +37,8 @@ export function ImageViewer({ src, alt, open, onClose }: ImageViewerProps) {
   if (!open) return null;
 
   return (
-    <div className={styles.overlay} onClick={onClose} role="dialog" aria-label="Image preview">
+    <Portal>
+    <div ref={containerRef} className={styles.overlay} onClick={onClose} role="dialog" aria-modal="true" aria-label="Image preview" tabIndex={-1}>
       <div className={styles.content} onClick={(e) => e.stopPropagation()}>
         {isLoading && (
           <div className={styles.loading}>
@@ -62,5 +66,6 @@ export function ImageViewer({ src, alt, open, onClose }: ImageViewerProps) {
         </button>
       </div>
     </div>
+    </Portal>
   );
 }

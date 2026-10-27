@@ -307,19 +307,20 @@
 
 @media (max-width: 639px) {
   .overlay {
-    padding-top: 0;
-    padding: var(--space-2);
+    padding: 0;
   }
 
   .modal {
     max-width: 100%;
-    max-height: 100vh;
-    height: 100vh;
-    border-radius: var(--radius-lg);
+    max-height: 100dvh;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
   }
 
   .searchHeader {
-    padding: var(--space-3);
+    min-height: calc(var(--header-height-mobile) + var(--safe-area-inset-top));
+    padding: calc(var(--space-3) + var(--safe-area-inset-top)) calc(var(--space-3) + var(--safe-area-inset-right)) var(--space-3) calc(var(--space-3) + var(--safe-area-inset-left));
     gap: var(--space-2);
   }
 
@@ -339,6 +340,20 @@
 
   .keyboardHint {
     display: none;
+  }
+
+  .filterTabs {
+    overflow-x: auto;
+    padding-inline: calc(var(--space-3) + var(--safe-area-inset-left)) calc(var(--space-3) + var(--safe-area-inset-right));
+    scrollbar-width: none;
+  }
+
+  .filterTabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .resultsList {
+    padding-bottom: var(--safe-area-inset-bottom);
   }
 }
 

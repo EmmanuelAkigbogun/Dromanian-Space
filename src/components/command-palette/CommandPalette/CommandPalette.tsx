@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Portal } from '@/lib/overlay/Portal';
 import { useFocusTrap } from '@/lib/overlay/useFocusTrap';
+import { useOverlayStack } from '@/lib/overlay/useOverlayStack';
 import { useCommandPaletteContext } from '@/app/providers/CommandPaletteProvider';
 import { useSearch } from '@/hooks/useSearch';
 import { Avatar } from '@/components/ui/Avatar';
@@ -47,6 +48,7 @@ export function CommandPalette() {
   const { isOpen, close, commands } = useCommandPaletteContext();
   const navigate = useNavigate();
   const containerRef = useFocusTrap(isOpen);
+  const overlayId = useOverlayStack(isOpen);
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -249,6 +251,7 @@ export function CommandPalette() {
         aria-modal="true"
         aria-label="Command palette"
         tabIndex={-1}
+        data-overlay-id={overlayId}
       >
         <div className={styles.backdrop} onClick={close} aria-hidden="true" />
         <div className={styles.palette}>

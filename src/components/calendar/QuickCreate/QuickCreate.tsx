@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Anchor, CalendarDraft } from '../TimeGrid/TimeGrid';
 import { describeRange } from '../calendarUtils';
+import { Portal } from '@/lib/overlay/Portal';
 import styles from './QuickCreate.module.css';
 
 interface QuickCreateProps {
@@ -65,6 +66,7 @@ export function QuickCreate({ draft, anchor, onSave, onMoreOptions, onCancel }: 
   }
 
   return (
+    <Portal>
     <div
       ref={ref}
       className={styles.popover}
@@ -108,5 +110,6 @@ export function QuickCreate({ draft, anchor, onSave, onMoreOptions, onCancel }: 
         </button>
       </div>
     </div>
+    </Portal>
   );
 }

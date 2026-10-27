@@ -1,6 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { useIsSmallScreen } from '@/hooks/useBreakpoint';
+import { Portal } from '@/lib/overlay/Portal';
+import { useFocusTrap } from '@/lib/overlay/useFocusTrap';
+import { useOverlayStack } from '@/lib/overlay/useOverlayStack';
 import styles from './RightPanel.module.css';
 
 interface RightPanelProps {
@@ -12,7 +15,8 @@ interface RightPanelProps {
 
 export function RightPanel({ title, children, onClose, open = true }: RightPanelProps) {
   const isSmallScreen = useIsSmallScreen();
-  const panelRef = useRef<HTMLDivElement>(null);
+  const panelRef = useFocusTrap(isSmallScreen && open);
+  useOverlayStack(isSmallScreen && open);
 
   useEffect(() => {
     if (!isSmallScreen || !open) return;
@@ -27,24 +31,9 @@ export function RightPanel({ title, children, onClose, open = true }: RightPanel
     return () => document.removeEventListener('keydown', handleEscape);
   }, [isSmallScreen, open, onClose]);
 
-  useEffect(() => {
-    if (!isSmallScreen) return;
-
-    if (open) {
-      document.body.style.overflow = 'hidden';
-      panelRef.current?.focus();
-    } else {
-      document.body.style.overflow = '';
-    }
-
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isSmallScreen, open]);
-
   if (isSmallScreen) {
     return (
-      <>
+      <Portal>
         <div
           className={`${styles.rightPanelOverlay} ${open ? styles.rightPanelOverlayOpen : ''}`}
           onClick={onClose}
@@ -54,7 +43,9 @@ export function RightPanel({ title, children, onClose, open = true }: RightPanel
           ref={panelRef}
           className={`${styles.rightPanel} ${open ? styles.rightPanelOpen : ''}`}
           role="dialog"
-          aria-modal="true"
+          aria-modal={open ? true : undefined}
+          aria-hidden={!open}
+          inert={!open}
           aria-label={title || 'Side panel'}
           tabIndex={-1}
         >
@@ -77,7 +68,7 @@ export function RightPanel({ title, children, onClose, open = true }: RightPanel
           )}
           <div className={styles.rightPanelContent}>{children}</div>
         </div>
-      </>
+      </Portal>
     );
   }
 

@@ -4,6 +4,9 @@ import { useSearch, type SearchFilter, type SearchResultItem } from '@/hooks/use
 import { useCommandPaletteContext } from '@/app/providers/CommandPaletteProvider';
 import { Avatar } from '@/components/ui/Avatar';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { Portal } from '@/lib/overlay/Portal';
+import { useFocusTrap } from '@/lib/overlay/useFocusTrap';
+import { useOverlayStack } from '@/lib/overlay/useOverlayStack';
 import { formatRelativeTime } from '@/utils';
 import styles from './SearchModal.module.css';
 
@@ -35,6 +38,8 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const containerRef = useFocusTrap(open);
+  const overlayId = useOverlayStack(open);
 
   useEffect(() => {
     if (open && inputRef.current) {
@@ -106,7 +111,16 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
   const hasResults = results.length > 0;
 
   return (
-    <div className={styles.overlay} role="dialog" aria-modal="true" aria-label="Search">
+    <Portal>
+    <div
+      ref={containerRef}
+      className={styles.overlay}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Search"
+      tabIndex={-1}
+      data-overlay-id={overlayId}
+    >
       <div className={styles.backdrop} onClick={onClose} aria-hidden="true" />
       <div className={styles.modal}>
         <div className={styles.searchHeader}>
@@ -279,5 +293,6 @@ export function SearchModal({ open, onClose }: SearchModalProps) {
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

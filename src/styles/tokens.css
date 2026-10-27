@@ -170,9 +170,11 @@
   --z-base: 0;
   --z-dropdown: 1000;
   --z-sticky: 1100;
+  --z-mobile-surface: 1200;
   --z-modal: 1300;
   --z-popover: 1400;
   --z-tooltip: 1500;
+  --z-toast: 1600;
 }
 
 /* Dark Theme */

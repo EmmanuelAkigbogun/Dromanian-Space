@@ -1,8 +1,11 @@
-import { memo, useMemo } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { useProfiles } from '@/hooks/useProfiles';
 import { useAuth } from '@/hooks/useAuth';
 import { getDisplayName } from '@/lib/message/formatting';
 import type { ReactionGroup } from '@/lib/message/reaction';
+import { Portal } from '@/lib/overlay/Portal';
+import { useFocusTrap } from '@/lib/overlay/useFocusTrap';
+import { useOverlayStack } from '@/lib/overlay/useOverlayStack';
 import styles from './ReactionDialog.module.css';
 
 interface ReactionDialogProps {
@@ -19,11 +22,22 @@ export const ReactionDialog = memo(function ReactionDialog({
   const { userId } = useAuth();
   const group = useMemo(() => groups.find((g) => g.emoji === emoji), [groups, emoji]);
   const { profiles } = useProfiles(group?.userIds ?? []);
+  const containerRef = useFocusTrap(Boolean(group));
+  useOverlayStack(Boolean(group));
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
 
   if (!group) return null;
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
+    <Portal>
+    <div ref={containerRef} className={styles.overlay} onClick={onClose} role="dialog" aria-modal="true" aria-label="Reactions" tabIndex={-1}>
       <div className={styles.popup} onClick={(e) => e.stopPropagation()}>
         <div className={styles.emojiHeader}>
           <span className={styles.emoji}>{group.emoji}</span>
@@ -44,5 +58,6 @@ export const ReactionDialog = memo(function ReactionDialog({
         </div>
       </div>
     </div>
+    </Portal>
   );
 });

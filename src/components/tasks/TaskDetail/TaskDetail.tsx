@@ -9,6 +9,9 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Avatar } from '@/components/ui/Avatar';
 import { Switch } from '@/components/ui/Switch';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog/ConfirmDialog';
+import { Portal } from '@/lib/overlay/Portal';
+import { useFocusTrap } from '@/lib/overlay/useFocusTrap';
+import { useOverlayStack } from '@/lib/overlay/useOverlayStack';
 import { TaskComments } from '@/components/tasks/TaskComments';
 import { TaskActivity } from '@/components/tasks/TaskActivity';
 import type { Task, TaskStatus, TaskPriority } from '@/types/task';
@@ -69,12 +72,23 @@ export function TaskDetail({
   const [newLabelColor, setNewLabelColor] = useState('#6366f1');
   const [members, setMembers] = useState<Profile[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const descInputRef = useRef<HTMLTextAreaElement>(null);
   const dueDateInputRef = useRef<HTMLInputElement>(null);
   const startDateInputRef = useRef<HTMLInputElement>(null);
   const localUpdateRef = useRef(false);
   const notifyCustomStatusChangeRef = useRef<(taskId: string, statusId: string) => Promise<void>>(async () => undefined);
+  const containerRef = useFocusTrap(true);
+  const overlayId = useOverlayStack(true);
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !showDeleteConfirm) onClose();
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [onClose, showDeleteConfirm]);
 
   useEffect(() => {
     if (localUpdateRef.current) {
@@ -268,8 +282,6 @@ export function TaskDetail({
     },
     [currentTask.id, unassignUser, loadAssignees],
   );
-
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const handleDelete = useCallback(async () => {
     await onDelete(currentTask.id);
@@ -542,8 +554,17 @@ export function TaskDetail({
   }, [statusColumns, currentTask.id, persistStatusOrder, onCustomStatusesChange]);
 
   return (
-    <div className={styles.overlay}>
-      <div className={styles.backdrop} onClick={onClose} />
+    <Portal>
+    <div
+      ref={containerRef}
+      className={styles.overlay}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Task details"
+      tabIndex={-1}
+      data-overlay-id={overlayId}
+    >
+      <div className={styles.backdrop} onClick={onClose} aria-hidden="true" />
       <div className={styles.panel}>
         <div className={styles.panelHeader}>
           <div className={styles.headerLeft}>
@@ -1124,5 +1145,6 @@ export function TaskDetail({
         onClose={() => setShowDeleteConfirm(false)}
       />
     </div>
+    </Portal>
   );
 }

@@ -1,4 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { Portal } from '@/lib/overlay/Portal';
+import { useFocusTrap } from '@/lib/overlay/useFocusTrap';
+import { useOverlayStack } from '@/lib/overlay/useOverlayStack';
 import styles from './MediaViewer.module.css';
 
 interface MediaViewerItem {
@@ -32,6 +35,8 @@ export function MediaViewer({ src, alt, type, open, openUrl, onClose, items, cur
   const menuRef = useRef<HTMLDivElement>(null);
   const infoRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useFocusTrap(Boolean(open));
+  useOverlayStack(Boolean(open));
 
   const currentItem = items && currentIndex !== undefined ? items[currentIndex] : null;
   const displaySrc = currentItem?.src ?? src;
@@ -60,10 +65,8 @@ export function MediaViewer({ src, alt, type, open, openUrl, onClose, items, cur
       }
     };
     document.addEventListener('keydown', handleKeyDown);
-    document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = '';
     };
   }, [open, onClose]);
 
@@ -149,7 +152,8 @@ export function MediaViewer({ src, alt, type, open, openUrl, onClose, items, cur
   if (!open) return null;
 
   return (
-    <div className={styles.overlay} onClick={onClose} role="dialog" aria-label="Media preview">
+    <Portal>
+    <div ref={containerRef} className={styles.overlay} onClick={onClose} role="dialog" aria-modal="true" aria-label="Media preview" tabIndex={-1}>
       <div className={styles.content} onClick={(e) => e.stopPropagation()}>
         {hasError || !displaySrc ? (
           <div className={styles.error}>
@@ -311,5 +315,6 @@ export function MediaViewer({ src, alt, type, open, openUrl, onClose, items, cur
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

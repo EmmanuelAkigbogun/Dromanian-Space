@@ -2,7 +2,7 @@
   position: fixed;
   inset: 0;
   background-color: var(--color-overlay);
-  z-index: var(--z-modal);
+  z-index: var(--z-mobile-surface);
   opacity: 0;
   visibility: hidden;
   transition: opacity var(--transition-normal), visibility var(--transition-normal);
@@ -21,7 +21,7 @@
   width: var(--sidebar-width-mobile);
   max-width: 85vw;
   background-color: var(--color-surface);
-  z-index: calc(var(--z-modal) + 1);
+  z-index: calc(var(--z-mobile-surface) + 1);
   transform: translateX(-100%);
   transition: transform var(--transition-normal);
   display: flex;

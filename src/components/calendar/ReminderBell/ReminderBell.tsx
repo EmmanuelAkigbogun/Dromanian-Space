@@ -3,6 +3,9 @@ import { Badge } from '@/components/ui/Badge/Badge';
 import { ScrollArea } from '@/components/ui/ScrollArea/ScrollArea';
 import { formatRelativeTime } from '@/utils';
 import type { CalendarReminder } from '@/types';
+import { Portal } from '@/lib/overlay/Portal';
+import { useFocusTrap } from '@/lib/overlay/useFocusTrap';
+import { useOverlayStack } from '@/lib/overlay/useOverlayStack';
 import styles from './ReminderBell.module.css';
 
 interface ReminderBellProps {
@@ -15,6 +18,8 @@ interface ReminderBellProps {
 export function ReminderBell({ reminders, onDismiss, onSnooze, onComplete }: ReminderBellProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [snoozeMenuFor, setSnoozeMenuFor] = useState<string | null>(null);
+  const containerRef = useFocusTrap(isOpen);
+  const overlayId = useOverlayStack(isOpen);
 
   const now = new Date();
   const pendingReminders = reminders.filter(
@@ -58,9 +63,18 @@ export function ReminderBell({ reminders, onDismiss, onSnooze, onComplete }: Rem
       </div>
 
       {isOpen && (
-        <div className={styles.overlay}>
+        <Portal>
+        <div
+          ref={containerRef}
+          className={styles.overlay}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Reminders"
+          tabIndex={-1}
+          data-overlay-id={overlayId}
+        >
           <div className={styles.backdrop} onClick={close} aria-hidden="true" />
-          <div className={styles.panel} role="dialog" aria-modal="true" aria-label="Reminders">
+          <div className={styles.panel}>
             <div className={styles.panelHeader}>
               <span className={styles.panelTitle}>Reminders</span>
               <div className={styles.panelHeaderRight}>
@@ -162,6 +176,7 @@ export function ReminderBell({ reminders, onDismiss, onSnooze, onComplete }: Rem
             </ScrollArea>
           </div>
         </div>
+        </Portal>
       )}
     </>
   );

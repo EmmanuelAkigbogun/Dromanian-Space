@@ -1,45 +1,44 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 
 let overlayCount = 0;
+let activeScrollLocks = 0;
+let lockedScrollY = 0;
+let previousBodyStyles: Pick<CSSStyleDeclaration, 'overflow' | 'position' | 'top' | 'width'> | null = null;
 
 export function useOverlayStack(isActive: boolean) {
-  const idRef = useRef<number>(++overlayCount);
-
-  const handleKeyDown = useCallback((event: KeyboardEvent) => {
-    if (event.key === 'Escape') {
-      const customEvent = new CustomEvent('overlay:escape', {
-        bubbles: true,
-        detail: { id: idRef.current },
-      });
-      document.dispatchEvent(customEvent);
-    }
-  }, []);
+  const idRef = useRef<number>(0);
+  if (idRef.current === 0) idRef.current = ++overlayCount;
 
   useEffect(() => {
     if (!isActive) return;
 
-    // Add body scroll lock
-    const scrollY = window.scrollY;
-    document.body.style.overflow = 'hidden';
-    document.body.style.position = 'fixed';
-    document.body.style.top = '-' + scrollY + 'px';
-    document.body.style.width = '100%';
-
-    // Add escape listener
-    document.addEventListener('keydown', handleKeyDown);
+    if (activeScrollLocks === 0) {
+      lockedScrollY = window.scrollY;
+      previousBodyStyles = {
+        overflow: document.body.style.overflow,
+        position: document.body.style.position,
+        top: document.body.style.top,
+        width: document.body.style.width,
+      };
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${lockedScrollY}px`;
+      document.body.style.width = '100%';
+    }
+    activeScrollLocks += 1;
 
     return () => {
-      // Remove scroll lock
-      document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.top = '';
-      document.body.style.width = '';
-      window.scrollTo(0, scrollY);
+      activeScrollLocks = Math.max(0, activeScrollLocks - 1);
+      if (activeScrollLocks !== 0 || !previousBodyStyles) return;
 
-      // Remove escape listener
-      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousBodyStyles.overflow;
+      document.body.style.position = previousBodyStyles.position;
+      document.body.style.top = previousBodyStyles.top;
+      document.body.style.width = previousBodyStyles.width;
+      previousBodyStyles = null;
+      window.scrollTo(0, lockedScrollY);
     };
-  }, [isActive, handleKeyDown]);
+  }, [isActive]);
 
   return idRef.current;
 }

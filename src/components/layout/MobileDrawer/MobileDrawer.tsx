@@ -7,6 +7,9 @@ import { DmSidebar } from '@/components/dm/DmSidebar';
 import { UserMenu } from '@/components/layout/UserMenu';
 import { useLayout } from '@/app/providers/LayoutProvider';
 import { useSwipeGesture } from '@/hooks/useTouch';
+import { Portal } from '@/lib/overlay/Portal';
+import { useFocusTrap } from '@/lib/overlay/useFocusTrap';
+import { useOverlayStack } from '@/lib/overlay/useOverlayStack';
 import styles from './MobileDrawer.module.css';
 
 interface MobileDrawerProps {
@@ -17,7 +20,8 @@ interface MobileDrawerProps {
 export function MobileDrawer({ primaryNavigation, secondaryNavigation }: MobileDrawerProps) {
   const { isMobileOpen, closeMobileSidebar } = useLayout();
   const location = useLocation();
-  const drawerRef = useRef<HTMLDivElement>(null);
+  const drawerRef = useFocusTrap(isMobileOpen);
+  useOverlayStack(isMobileOpen);
   const lastPathRef = useRef(location.pathname + location.search);
 
   // Close the drawer whenever navigation changes the route while it is open
@@ -28,19 +32,6 @@ export function MobileDrawer({ primaryNavigation, secondaryNavigation }: MobileD
     }
     lastPathRef.current = key;
   }, [location.pathname, location.search, isMobileOpen, closeMobileSidebar]);
-
-  useEffect(() => {
-    if (isMobileOpen) {
-      document.body.style.overflow = 'hidden';
-      drawerRef.current?.focus();
-    } else {
-      document.body.style.overflow = '';
-    }
-
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isMobileOpen]);
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
@@ -60,7 +51,7 @@ export function MobileDrawer({ primaryNavigation, secondaryNavigation }: MobileD
   });
 
   return (
-    <>
+    <Portal>
       <div
         className={`${styles.overlay} ${isMobileOpen ? styles.overlayOpen : ''}`}
         onClick={closeMobileSidebar}
@@ -70,7 +61,9 @@ export function MobileDrawer({ primaryNavigation, secondaryNavigation }: MobileD
         ref={drawerRef}
         className={`${styles.drawer} ${isMobileOpen ? styles.drawerOpen : ''}`}
         role="dialog"
-        aria-modal="true"
+        aria-modal={isMobileOpen ? true : undefined}
+        aria-hidden={!isMobileOpen}
+        inert={!isMobileOpen}
         aria-label="Navigation menu"
         tabIndex={-1}
       >
@@ -104,6 +97,6 @@ export function MobileDrawer({ primaryNavigation, secondaryNavigation }: MobileD
           </div>
         </div>
       </div>
-    </>
+    </Portal>
   );
 }

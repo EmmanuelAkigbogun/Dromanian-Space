@@ -67,6 +67,26 @@
   animation: scaleIn var(--transition-normal) ease;
 }
 
+@media (max-width: 639px) {
+  .overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .panel {
+    width: 100vw;
+    max-height: min(75dvh, 640px);
+    border-width: 1px 0 0;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    padding-bottom: var(--safe-area-inset-bottom);
+    animation-name: slideInBottom;
+  }
+
+  .panelHeader {
+    padding-inline: calc(var(--space-4) + var(--safe-area-inset-left)) calc(var(--space-4) + var(--safe-area-inset-right));
+  }
+}
+
 .panelHeader {
   display: flex;
   align-items: center;
@@ -251,4 +271,9 @@
     opacity: 1;
     transform: scale(1);
   }
+}
+
+@keyframes slideInBottom {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
 }

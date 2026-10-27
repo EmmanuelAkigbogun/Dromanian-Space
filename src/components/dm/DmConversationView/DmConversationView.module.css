@@ -262,7 +262,7 @@
   right: var(--right-panel-width);
   bottom: 0;
   width: clamp(280px, 30vw, 380px);
-  z-index: calc(var(--z-modal) - 2);
+  z-index: var(--z-mobile-surface);
   background-color: var(--color-surface);
   box-shadow: -4px 0 12px rgba(0, 0, 0, 0.15);
   animation: dmPinnedPanelIn 0.18s ease-out;
@@ -531,7 +531,7 @@
     bottom: 0;
     width: 100%;
     max-width: 380px;
-    z-index: calc(var(--z-modal) - 2);
+    z-index: var(--z-mobile-surface);
     background-color: var(--color-surface);
     box-shadow: -4px 0 12px rgba(0, 0, 0, 0.15);
     animation: dmPinnedPanelIn 0.18s ease-out;
