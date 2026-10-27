@@ -5,7 +5,7 @@ once. Each agent version stores a model id, and the provider follows from it (`c
 Anthropic; `gpt-…`, `o…` and `chatgpt-…` are OpenAI). So specialists in one Team Chat run can use
 different providers. Model ids beginning with `gemini-` use Google Gemini; `gpt-oss-120b` and `cerebras/...` use Cerebras. No GPU and no local model server are needed.
 
-The current production roster is Cerebras-first: the five built-in agents use `gpt-oss-120b`. Older built-ins are retired from the active roster while their conversations and runs remain readable.
+The current production roster is Cerebras-first: all 20 built-in agents use `gpt-oss-120b`. Older built-ins are retired from the active roster while their conversations and runs remain readable.
 
 ## Server configuration (api and worker)
 

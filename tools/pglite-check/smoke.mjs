@@ -122,7 +122,17 @@ export default async function smoke(db, legacy) {
 
   // Roster
   const handles = (await h.admin(`SELECT handle FROM workspace_agents WHERE workspace_id = $1 AND is_builtin AND archived_at IS NULL ORDER BY handle`, [wsB])).map((r) => r.handle);
-  check(JSON.stringify(handles) === JSON.stringify(['cerebras-analyst', 'cerebras-research', 'cerebras-team', 'cerebras-writer', 'drive-agent', 'scout']), `roster: six Cerebras agents without the deleted coding agent (${handles.join(', ')})`);
+  const expectedHandles = [
+    'cerebras-analyst', 'cerebras-research', 'cerebras-team', 'cerebras-writer',
+    'commerce-analyst', 'competitor-intelligence', 'creative-director',
+    'customer-success', 'customer-support', 'drive-agent', 'email-marketing',
+    'executive-assistant', 'finance-analyst', 'marketing-strategist',
+    'project-manager', 'recruiting-assistant', 'sales-development', 'scout',
+    'seo-specialist', 'social-calendar',
+  ];
+  check(JSON.stringify(handles) === JSON.stringify(expectedHandles), `roster: 20 GitHub-sourced Cerebras agents without the deleted coding agent (${handles.join(', ')})`);
+  const [socialCalendar] = await h.admin(`SELECT v.instructions, v.tools, v.model FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1 AND a.handle = 'social-calendar'`, [wsB]);
+  check(socialCalendar?.model === 'gpt-oss-120b' && socialCalendar.tools.includes('propose_document') && !socialCalendar.tools.includes('propose_channel_message'), 'social calendar creates reviewed plans without publishing access');
   const [coordinatorVersion] = await h.admin(`SELECT v.instructions FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1 AND a.handle = 'cerebras-team'`, [wsB]);
   check(!coordinatorVersion.instructions.includes('no more than four focused tasks'), 'coordinator no longer carries the deleted coding roster instructions');
 
