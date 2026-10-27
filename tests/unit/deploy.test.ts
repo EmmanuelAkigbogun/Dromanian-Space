@@ -43,7 +43,7 @@ describe('standalone compose safety', () => {
     expect(dockerfile).toContain('ghcr.io/astral-sh/uv:0.13.5');
     expect(dockerfile).toContain('uv sync --locked');
     expect(project).toContain('google-adk==2.13.0');
-    expect(project).toContain('litellm==1.106.4');
+    expect(project).toContain('litellm[mcp]==1.106.4');
     expect(compose).toContain('AI_DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-cerebras}');
     expect(compose).toContain('CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}');
     expect(read('adk/uv.lock')).toContain('name = "google-adk"');

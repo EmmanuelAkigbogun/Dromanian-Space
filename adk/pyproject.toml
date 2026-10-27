@@ -6,7 +6,7 @@ requires-python = ">=3.11,<3.14"
 dependencies = [
   "cryptography==46.0.5",
   "google-adk==2.13.0",
-  "litellm==1.106.4",
+  "litellm[mcp]==1.106.4",
 ]
 
 [dependency-groups]
