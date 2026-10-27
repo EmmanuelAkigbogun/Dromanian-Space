@@ -55,11 +55,13 @@ afterAll(() => pool.end());
 describe('team chat', () => {
   let parent: { run_id: string; conversation_id: string };
   let configuredSpecialists: string[] = [];
+  let configuredTools: string[] = [];
 
   beforeAll(async () => {
     const agentRunner: AgentRunner = {
       async run(input, callbacks) {
         configuredSpecialists = input.specialists.map((specialist) => specialist.name);
+        configuredTools = input.agent.tools;
         callbacks.onTeam?.('Tally', 'working');
         const source = await callbacks.callTool({ id: 'read-tally', name: 'read_file', input: { item_id: doc } });
         expect(source.content).toContain('EUR 180 per night');
@@ -78,8 +80,10 @@ describe('team chat', () => {
     expect(outcome.status).toBe('completed');
   });
 
-  it('gives Agno the workspace specialists and keeps tool access under the requester', async () => {
-    expect(configuredSpecialists).toEqual(expect.arrayContaining(['Tally', 'Inka']));
+  it('gives one Agno lead the team toolset and keeps access under the requester', async () => {
+    expect(configuredSpecialists).toEqual([]);
+    expect(configuredTools).toContain('read_file');
+    expect(configuredTools).not.toContain('delegate_to_specialists');
     const tasks = await q<{ status: string }>(user, 'SELECT status FROM agent_team_tasks WHERE parent_run_id = $1', [parent.run_id]);
     expect(tasks).toEqual([]);
     const children = await q<{ status: string; requested_by: string }>(user, 'SELECT status, requested_by FROM agent_runs WHERE parent_run_id = $1', [parent.run_id]);

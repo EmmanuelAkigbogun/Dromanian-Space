@@ -283,6 +283,7 @@ export async function executeRun(
     contextLines.push(
       'Specialists you can delegate to (handle — name: what they do):',
       ...specialists.map((a) => `- ${a.handle} — ${a.name}: ${a.description}`),
+      'You are answering as the whole team. Use the combined authorized capabilities directly and only use the tools needed for this request; do not try to contact every specialist.',
     );
     if (specialists.length) {
       const { data: versions, error: versionsError } = await db
@@ -418,6 +419,11 @@ export async function executeRun(
   try {
     const warnings: Array<{ code: string; message: string }> = [];
     const maxSeconds = Math.max(60, Math.floor(budgetMs / 1000) - 30);
+    const coordinatorToolNames = [...requestedTools].filter((name) =>
+      allowed(name)
+      && name !== 'delegate_to_specialists'
+      && (Boolean(TOOL_REGISTRY[name]) || nativeToolAllowed(name)),
+    );
     const agentConfig: AgentRuntimeConfig = {
       name: agent.name,
       role: agent.kind === 'coordinator' ? `${agent.name} — team coordinator` : agent.name,
@@ -427,16 +433,15 @@ export async function executeRun(
       kind: agent.kind,
       model: run.model,
       effort: run.effort,
-      tools: version.tools.filter((name) => allowed(name) && (Boolean(TOOL_REGISTRY[name]) || nativeToolAllowed(name)) && name !== 'delegate_to_specialists'),
+      // Whole-team requests use one Agno lead with the union of every
+      // specialist's authorized tools. A native Team caused a provider turn
+      // per selected member, making even simple requests take minutes.
+      tools: isCoordinator
+        ? coordinatorToolNames
+        : version.tools.filter((name) => allowed(name) && (Boolean(TOOL_REGISTRY[name]) || nativeToolAllowed(name)) && name !== 'delegate_to_specialists'),
       max_iter: version.max_tool_steps,
       max_execution_time: maxSeconds,
     };
-    specialistConfigs = specialistConfigs.map((specialist) => ({
-      ...specialist,
-      instructions: systemPrompt(specialist.name, specialist.instructions),
-      tools: specialist.tools.filter((name) => allowed(name) && (Boolean(TOOL_REGISTRY[name]) || nativeToolAllowed(name)) && name !== 'delegate_to_specialists'),
-      max_execution_time: maxSeconds,
-    }));
     const historyText = history.length
       ? `<conversation_history>\n${history.map((item) => `${item.role}: ${item.content}`).join('\n\n')}\n</conversation_history>\n\n`
       : '';
@@ -447,7 +452,9 @@ export async function executeRun(
       {
         run_id: runId,
         agent: agentConfig,
-        specialists: specialistConfigs,
+        // Keep the roster in the prompt, but avoid a 19-member provider fan-out.
+        // Individual specialist chats remain unchanged.
+        specialists: [],
         prompt: `${historyText}${userMessage}`,
         tools: toolSpecs(tools),
         files: Array.isArray(inputMsg.data.scope?.attachments)
