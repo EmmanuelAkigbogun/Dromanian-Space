@@ -81,7 +81,7 @@ concurrency limit apply to every provider.
 
 ## How each provider is called
 
-Cerebras runs through the isolated Google ADK service using the pinned LiteLLM adapter and the model id `cerebras/gpt-oss-120b`. The key remains server-only, tools return through the authenticated worker bridge, and persistent state continues to live in this deployment's database.
+Cerebras runs through the isolated Agno service using Agno's native Cerebras adapter and the model id `gpt-oss-120b`. The key remains server-only, tools return through the authenticated worker bridge, and persistent state continues to live in this deployment's database.
 
 Gemini uses the streaming Interactions API from `@google/genai`, sends the stateless transcript on every turn, exposes workspace actions as function tools, and uses Google's search tool when web research is enabled. Agent effort maps to Gemini's thinking level.
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { providerAgentRunner, type AgentRunInput } from '../../server/agents/adk.js';
+import { providerAgentRunner, type AgentRunInput } from '../../server/agents/agno.js';
 import { emptyUsage, type ModelProvider, type TurnResult } from '../../server/ai/provider.js';
 
 const input: AgentRunInput = {
@@ -23,8 +23,8 @@ function result(overrides: Partial<TurnResult>): TurnResult {
   };
 }
 
-describe('Google ADK runner contract', () => {
-  it('bridges ADK tool requests through the workspace tool callback', async () => {
+describe('Agno runner contract', () => {
+  it('bridges Agno tool requests through the workspace tool callback', async () => {
     let step = 0;
     const toolResults: string[] = [];
     const provider: ModelProvider = {

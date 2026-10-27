@@ -47,9 +47,9 @@ x-server-env: &server-env
   EMBEDDING_MODEL: ${EMBEDDING_MODEL:-voyage-3.5}
   CRON_SECRET: ${CRON_SECRET:-}
   AGENT_RUN_BUDGET_MS: ${AGENT_RUN_BUDGET_MS:-600000}
-  ADK_URL: http://adk:8000
-  ADK_TOOL_CALLBACK_URL: http://worker:3001/tool
-  ADK_TOOL_PORT: "3001"
+  AGNO_URL: http://agno:8000
+  AGNO_TOOL_CALLBACK_URL: http://worker:3001/tool
+  AGNO_TOOL_PORT: "3001"
   N8N_BASE_URL: ${N8N_BASE_URL:-}
   TURN_HOST: ${TURN_HOST:-turn.purplehive.pro}
   TURN_SHARED_SECRET: ${TURN_SHARED_SECRET:-}
@@ -197,16 +197,16 @@ services:
       retries: 3
       start_period: 20s
 
-  adk:
+  agno:
     <<: *app-hardening
     build:
       context: .
-      target: adk
+      target: agno
     environment:
       PORT: "8000"
       HOME: /tmp
-      OTEL_SDK_DISABLED: "true"
-      ADK_INTERNAL_TOKEN: ${APP_JWT_SECRET:?APP_JWT_SECRET}
+      AGNO_TELEMETRY: "false"
+      AGNO_INTERNAL_TOKEN: ${APP_JWT_SECRET:?APP_JWT_SECRET}
       APP_JWT_SECRET: ${APP_JWT_SECRET:?APP_JWT_SECRET}
       STORAGE_ROOT: /data/storage
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -255,7 +255,7 @@ services:
     depends_on:
       rest:
         condition: service_healthy
-      adk:
+      agno:
         condition: service_healthy
     expose:
       - "3001"

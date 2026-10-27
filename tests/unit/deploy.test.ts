@@ -34,19 +34,21 @@ describe('standalone compose safety', () => {
     expect(dockerfile).toMatch(/apt-get install[^\n]*chromium/);
   });
 
-  it('runs the agent orchestrator as an isolated, pinned Google ADK service', () => {
+  it('runs the agent orchestrator as an isolated, pinned Agno service', () => {
     const dockerfile = read('Dockerfile');
-    const project = read('adk/pyproject.toml');
-    expect(compose).toMatch(/adk:\s*[\s\S]*?target: adk/);
-    expect(compose).toContain('ADK_URL: http://adk:8000');
-    expect(compose).toContain('ADK_TOOL_CALLBACK_URL: http://worker:3001/tool');
+    const project = read('agno/pyproject.toml');
+    expect(compose).toMatch(/agno:\s*[\s\S]*?target: agno/);
+    expect(compose).toContain('AGNO_URL: http://agno:8000');
+    expect(compose).toContain('AGNO_TOOL_CALLBACK_URL: http://worker:3001/tool');
     expect(dockerfile).toContain('ghcr.io/astral-sh/uv:0.13.5');
     expect(dockerfile).toContain('uv sync --locked');
-    expect(project).toContain('google-adk==2.13.0');
-    expect(project).toContain('litellm[mcp]==1.106.4');
+    expect(project).toContain('agno[anthropic,cerebras,google,openai]==3.1.10');
+    expect(project).not.toContain('google-adk');
     expect(compose).toContain('AI_DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-cerebras}');
     expect(compose).toContain('CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}');
-    expect(read('adk/uv.lock')).toContain('name = "google-adk"');
+    const lock = read('agno/uv.lock');
+    expect(lock).toContain('name = "agno"');
+    expect(lock).not.toContain('name = "google-adk"');
   });
 
   it('contains no external auth or managed backend service', () => {

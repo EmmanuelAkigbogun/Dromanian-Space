@@ -20,14 +20,15 @@ from typing import Any
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from google.adk.agents import Agent
-from google.adk.agents.run_config import RunConfig, StreamingMode
-from google.adk.models.google_llm import Gemini
-from google.adk.models.lite_llm import LiteLlm
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
-from google.adk.tools import BaseTool
-from google.genai import types
+from agno.agent import Agent
+from agno.media import Image
+from agno.models.anthropic import Claude
+from agno.models.cerebras import Cerebras
+from agno.models.google import Gemini
+from agno.models.openai import OpenAIChat
+from agno.team import Team
+from agno.team.mode import TeamMode
+from agno.tools.function import Function
 
 
 APP_NAME = "darkspace"
@@ -65,24 +66,36 @@ def _provider_key(provider: str) -> str | None:
     )
 
 
-def _model(model: str) -> Gemini | LiteLlm:
+def _model(model: str) -> Gemini | Claude | Cerebras | OpenAIChat:
     lower = model.lower()
+    timeout = max(5.0, min(float(os.getenv("AGNO_PROVIDER_REQUEST_TIMEOUT_SECONDS", "45")), 180.0))
     if lower.startswith("gemini"):
         if key := _provider_key("gemini"):
-            # Google ADK follows the official google-genai environment name.
             os.environ["GOOGLE_API_KEY"] = key
-        return Gemini(model=model)
+        return Gemini(id=model, api_key=key, timeout=timeout, retries=1)
     if lower.startswith("claude"):
         if key := _provider_key("anthropic"):
             os.environ["ANTHROPIC_API_KEY"] = key
-        return LiteLlm(model=model if "/" in model else f"anthropic/{model}")
+        return Claude(id=model.removeprefix("anthropic/"), api_key=key, timeout=timeout, retries=1)
     if lower == "gpt-oss-120b" or lower.startswith("cerebras/"):
         if key := _provider_key("cerebras"):
             os.environ["CEREBRAS_API_KEY"] = key
-        return LiteLlm(model=model if lower.startswith("cerebras/") else f"cerebras/{model}")
+        return Cerebras(
+            id=model.removeprefix("cerebras/"),
+            api_key=key,
+            timeout=timeout,
+            retries=1,
+            default_headers={"X-Cerebras-3rd-Party-Integration": "agno"},
+        )
     if key := _provider_key("openai"):
         os.environ["OPENAI_API_KEY"] = key
-    return LiteLlm(model=model if "/" in model else f"openai/{model}")
+    return OpenAIChat(
+        id=model.removeprefix("openai/"),
+        api_key=key,
+        base_url=os.getenv("OPENAI_BASE_URL") or None,
+        timeout=timeout,
+        retries=1,
+    )
 
 
 def _agent_name(name: str, index: int) -> str:
@@ -93,22 +106,24 @@ def _agent_name(name: str, index: int) -> str:
     return f"{slug[:48]}_{digest}"
 
 
-class CallbackTool(BaseTool):
+class CallbackTool:
     def __init__(self, spec: dict[str, Any], callback_url: str, callback_token: str, run_id: str):
-        super().__init__(name=spec["name"], description=spec.get("description", spec["name"]))
+        self.name = spec["name"]
+        self.description = spec.get("description", spec["name"])
         self._schema = spec.get("inputSchema") or {"type": "object", "properties": {}}
         self._callback_url = callback_url
         self._callback_token = callback_token
         self._run_id = run_id
 
-    def _get_declaration(self) -> types.FunctionDeclaration:
-        return types.FunctionDeclaration(
+        self.function = Function(
             name=self.name,
             description=self.description,
-            parameters_json_schema=self._schema,
+            parameters=self._schema,
+            entrypoint=self._call,
+            skip_entrypoint_processing=True,
         )
 
-    def _call(self, args: dict[str, Any]) -> dict[str, Any]:
+    def _call(self, **args: Any) -> dict[str, Any]:
         body = json.dumps(
             {
                 "run_id": self._run_id,
@@ -134,19 +149,15 @@ class CallbackTool(BaseTool):
         except Exception as error:
             return {"content": f"The tool failed: {error}", "isError": True}
 
-    async def run_async(self, *, args: dict[str, Any], tool_context: Any) -> dict[str, Any]:
-        return await asyncio.to_thread(self._call, args)
-
-
 def _tools(
     config: dict[str, Any],
     specs: dict[str, dict[str, Any]],
     callback_url: str,
     callback_token: str,
     run_id: str,
-) -> list[CallbackTool]:
+) -> list[Function]:
     return [
-        CallbackTool(specs[name], callback_url, callback_token, run_id)
+        CallbackTool(specs[name], callback_url, callback_token, run_id).function
         for name in config.get("tools", [])
         if name in specs
     ]
@@ -175,7 +186,7 @@ def _instruction(config: dict[str, Any], *, manager: bool, specialists: list[dic
     )
 
 
-def _build_agent(
+def _build_runtime(
     config: dict[str, Any],
     specs: dict[str, dict[str, Any]],
     callback_url: str,
@@ -184,7 +195,7 @@ def _build_agent(
     *,
     index: int,
     specialists: list[dict[str, Any]] | None = None,
-) -> tuple[Agent, dict[str, str]]:
+) -> tuple[Agent | Team, dict[str, str]]:
     specialist_configs = specialists or []
     sub_agents: list[Agent] = []
     display_names: dict[str, str] = {}
@@ -193,30 +204,53 @@ def _build_agent(
         display_names[child_name] = str(child.get("name", child_name))
         sub_agents.append(
             Agent(
-                name=child_name,
+                id=child_name,
+                name=str(child.get("name", child_name)),
+                role=str(child.get("role") or child.get("goal") or "Workspace specialist"),
                 description=str(child.get("description") or child.get("role") or child.get("goal") or "Workspace specialist"),
                 model=_model(str(child["model"])),
-                instruction=_instruction(child, manager=False, specialists=[]),
+                instructions=[_instruction(child, manager=False, specialists=[])],
                 tools=_tools(child, specs, callback_url, callback_token, run_id),
-                timeout=float(max(30, min(int(child.get("max_execution_time", 540)), 900))),
+                tool_call_limit=max(1, min(int(child.get("max_iter", 12)), 30)),
+                markdown=True,
             )
         )
     name = _agent_name(str(config.get("name", "agent")), index)
     display_names[name] = str(config.get("name", name))
-    agent = Agent(
-        name=name,
-        description=str(config.get("description") or config.get("role") or config.get("goal") or "Workspace agent"),
-        model=_model(str(config["model"])),
-        instruction=_instruction(config, manager=bool(sub_agents), specialists=specialist_configs),
-        tools=_tools(config, specs, callback_url, callback_token, run_id),
-        sub_agents=sub_agents,
-        timeout=float(max(30, min(int(config.get("max_execution_time", 540)), 900))),
+    common = {
+        "id": name,
+        "name": str(config.get("name", name)),
+        "description": str(config.get("description") or config.get("role") or config.get("goal") or "Workspace agent"),
+        "model": _model(str(config["model"])),
+        "instructions": [_instruction(config, manager=bool(sub_agents), specialists=specialist_configs)],
+        "tools": _tools(config, specs, callback_url, callback_token, run_id),
+        "markdown": True,
+    }
+    if sub_agents:
+        return (
+            Team(
+                **common,
+                members=sub_agents,
+                mode=TeamMode.coordinate,
+                tool_call_limit=max(1, min(int(config.get("max_iter", 12)), 30)),
+                stream_member_events=True,
+                show_members_responses=False,
+                telemetry=False,
+            ),
+            display_names,
+        )
+    return (
+        Agent(
+            **common,
+            role=str(config.get("role") or config.get("goal") or "Workspace agent"),
+            tool_call_limit=max(1, min(int(config.get("max_iter", 12)), 30)),
+        ),
+        display_names,
     )
-    return agent, display_names
 
 
-def _message(payload: dict[str, Any]) -> types.Content:
-    parts: list[types.Part] = [types.Part(text=str(payload["prompt"]))]
+def _images(payload: dict[str, Any]) -> list[Image]:
+    images: list[Image] = []
     storage = Path(os.getenv("STORAGE_ROOT", "/data/storage")).resolve()
     base = (storage / "message-attachments" / "agent-images").resolve()
     for item in payload.get("files", []):
@@ -231,21 +265,23 @@ def _message(payload: dict[str, Any]) -> types.Content:
         actual_size = source.stat().st_size
         if actual_size <= 0 or actual_size > 10 * 1024 * 1024 or actual_size != claimed_size:
             raise ValueError("image attachment has an invalid size")
-        parts.append(types.Part.from_bytes(data=source.read_bytes(), mime_type=mime_type))
-    return types.Content(role="user", parts=parts)
+        images.append(
+            Image(
+                content=source.read_bytes(),
+                format={"image/jpeg": "jpeg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"}[mime_type],
+                mime_type=mime_type,
+            )
+        )
+    return images
 
 
-def _event_text(event: Any) -> str:
-    content = getattr(event, "content", None)
-    return "".join(str(part.text) for part in (getattr(content, "parts", None) or []) if getattr(part, "text", None))
-
-
-def _add_usage(total: dict[str, int], metadata: Any) -> None:
-    if not metadata:
+def _add_usage(total: dict[str, int], event: Any) -> None:
+    if not str(getattr(event, "event", "")).endswith("ModelRequestCompleted"):
         return
-    total["input_tokens"] += int(getattr(metadata, "prompt_token_count", 0) or 0)
-    total["output_tokens"] += int(getattr(metadata, "candidates_token_count", 0) or 0)
-    total["cache_read_tokens"] += int(getattr(metadata, "cached_content_token_count", 0) or 0)
+    total["input_tokens"] += int(getattr(event, "input_tokens", 0) or 0)
+    total["output_tokens"] += int(getattr(event, "output_tokens", 0) or 0)
+    total["cache_read_tokens"] += int(getattr(event, "cache_read_tokens", 0) or 0)
+    total["cache_write_tokens"] += int(getattr(event, "cache_write_tokens", 0) or 0)
 
 
 def _is_retryable_provider_error(error: Exception) -> bool:
@@ -275,26 +311,7 @@ def _model_candidates(requested: str) -> list[str]:
     return list(dict.fromkeys((requested, *RESILIENT_GEMINI_MODELS[1:])))
 
 
-def _run_config(max_calls: int) -> RunConfig:
-    timeout_ms = max(5_000, min(int(os.getenv("ADK_PROVIDER_REQUEST_TIMEOUT_MS", "45000")), 180_000))
-    return RunConfig(
-        streaming_mode=StreamingMode.SSE,
-        max_llm_calls=max_calls,
-        http_options=types.HttpOptions(
-            timeout=timeout_ms,
-            retry_options=types.HttpRetryOptions(
-                attempts=2,
-                initial_delay=1.0,
-                max_delay=4.0,
-                exp_base=2,
-                jitter=1,
-                http_status_codes=[408, 429, 500, 502, 503, 504],
-            ),
-        ),
-    )
-
-
-async def _run_adk_async(payload: dict[str, Any], send: Any) -> None:
+async def _run_agno_async(payload: dict[str, Any], send: Any) -> None:
     run_id = str(payload["run_id"])
     specs = {item["name"]: item for item in payload.get("tools", [])}
     manager_config = payload["agent"]
@@ -302,23 +319,20 @@ async def _run_adk_async(payload: dict[str, Any], send: Any) -> None:
     specialist_configs = payload.get("specialists", [])[:20] if is_team else []
 
     send({"type": "stage", "stage": "preparing", "label": "Preparing the agent"})
-    abort_signal = asyncio.Event()
     usage = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
     streamed_text = ""
     final_text = ""
     generating = False
     active_team: set[str] = set()
-    max_calls = max(1, min(int(manager_config.get("max_iter", 12)), 30))
-
-    message = _message(payload)
+    images = _images(payload)
     manager_candidates = _model_candidates(str(manager_config["model"]))
-    configured_attempts = max(1, min(int(os.getenv("ADK_PROVIDER_MAX_ATTEMPTS", "3")), 5))
+    configured_attempts = max(1, min(int(os.getenv("AGNO_PROVIDER_MAX_ATTEMPTS", "3")), 5))
     if str(manager_config["model"]).lower().startswith("gemini"):
         max_attempts = min(configured_attempts, len(manager_candidates))
     else:
         max_attempts = configured_attempts
         manager_candidates = [manager_candidates[0]] * max_attempts
-    retry_base_seconds = max(0.0, min(float(os.getenv("ADK_PROVIDER_RETRY_BASE_SECONDS", "1")), 10.0))
+    retry_base_seconds = max(0.0, min(float(os.getenv("AGNO_PROVIDER_RETRY_BASE_SECONDS", "1")), 10.0))
     resolved_model = manager_candidates[0]
     for attempt in range(1, max_attempts + 1):
         resolved_model = manager_candidates[attempt - 1]
@@ -329,7 +343,7 @@ async def _run_adk_async(payload: dict[str, Any], send: Any) -> None:
             attempt_specialists.append(
                 {**specialist, "model": specialist_candidates[min(attempt - 1, len(specialist_candidates) - 1)]}
             )
-        agent, display_names = _build_agent(
+        runtime, display_names = _build_runtime(
             attempt_manager,
             specs,
             str(payload["callback_url"]),
@@ -338,66 +352,58 @@ async def _run_adk_async(payload: dict[str, Any], send: Any) -> None:
             index=0,
             specialists=attempt_specialists,
         )
-        session_service = InMemorySessionService()
-        await session_service.create_session(app_name=APP_NAME, user_id=run_id, session_id=run_id)
-        runner = Runner(app_name=APP_NAME, agent=agent, session_service=session_service)
         send({"type": "stage", "stage": "contacting_provider", "label": "Waiting for the AI provider"})
-        events = runner.run_async(
-            user_id=run_id,
+        events = runtime.arun(
+            input=str(payload["prompt"]),
+            images=images or None,
             session_id=run_id,
-            new_message=message,
-            run_config=_run_config(max_calls),
-            abort_signal=abort_signal,
+            user_id=run_id,
+            run_id=run_id,
+            stream=True,
+            stream_events=True,
         )
         try:
             async for event in events:
-                _add_usage(usage, getattr(event, "usage_metadata", None))
-                author = str(getattr(event, "author", "") or "")
-                if author and author != agent.name and author in display_names and author not in active_team:
-                    active_team.add(author)
-                    send({"type": "team", "agent": display_names[author], "status": "working"})
-                text = _event_text(event)
-                partial = bool(getattr(event, "partial", False))
-                if text and partial and (not is_team or author == agent.name):
+                _add_usage(usage, event)
+                member_id = str(getattr(event, "agent_id", "") or "")
+                if is_team and member_id in display_names and member_id not in active_team:
+                    active_team.add(member_id)
+                    send({"type": "team", "agent": display_names[member_id], "status": "working"})
+                event_type = str(getattr(event, "event", ""))
+                content = getattr(event, "content", None)
+                text = content if isinstance(content, str) else ""
+                leader_content = not is_team or not member_id
+                if text and event_type in {"RunContent", "TeamRunContent"} and leader_content:
                     if not generating:
                         send({"type": "stage", "stage": "generating", "label": "Writing the answer"})
                         generating = True
                     streamed_text += text
                     send({"type": "delta", "text": text})
-                if text and event.is_final_response():
+                if text and event_type in {"RunCompleted", "TeamRunCompleted"} and leader_content:
                     final_text = text
             break
         except Exception as error:
             can_retry = attempt < max_attempts and not streamed_text and _is_retryable_provider_error(error)
             if not can_retry:
-                abort_signal.set()
                 raise
             send(
                 {
                     "type": "stage",
                     "stage": "retrying_provider",
-                    "label": f"The AI provider is busy; trying another Gemini model ({attempt + 1}/{max_attempts})",
+                    "label": f"The AI provider is busy; retrying ({attempt + 1}/{max_attempts})",
                 }
             )
             await asyncio.sleep(retry_base_seconds * (2 ** (attempt - 1)))
-        finally:
-            await runner.close()
 
-    abort_signal.set()
-
-    result_text = streamed_text
-    if final_text and final_text not in streamed_text:
-        result_text += final_text
+    result_text = streamed_text or final_text
     if not result_text:
-        result_text = final_text
-    if not result_text:
-        raise RuntimeError("Google ADK ended without a final response.")
+        raise RuntimeError("Agno ended without a final response.")
     send({"type": "stage", "stage": "finalizing", "label": "Finishing the answer"})
     send({"type": "result", "text": result_text, "usage": usage, "model": resolved_model})
 
 
-def run_adk(payload: dict[str, Any], send: Any) -> None:
-    asyncio.run(_run_adk_async(payload, send))
+def run_agno(payload: dict[str, Any], send: Any) -> None:
+    asyncio.run(_run_agno_async(payload, send))
 
 
 _active_processes: dict[str, subprocess.Popen[bytes]] = {}
@@ -427,10 +433,10 @@ def _child_main() -> None:
         protocol.flush()
 
     try:
-        run_adk(payload, send)
+        run_agno(payload, send)
     except Exception as error:
         print(traceback.format_exc(), file=sys.stderr, flush=True)
-        send({"type": "error", "code": "adk_error", "message": str(error)[:1000]})
+        send({"type": "error", "code": "agno_error", "message": str(error)[:1000]})
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -449,7 +455,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/health":
             self.send_error(404)
             return
-        body = b'{"ok":true,"runtime":"google-adk"}'
+        body = b'{"ok":true,"runtime":"agno"}'
         self.send_response(200)
         self.send_header("content-type", "application/json")
         self.send_header("content-length", str(len(body)))
@@ -460,7 +466,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/run" and not self.path.startswith("/cancel/"):
             self.send_error(404)
             return
-        expected = os.getenv("ADK_INTERNAL_TOKEN", "")
+        expected = os.getenv("AGNO_INTERNAL_TOKEN", "")
         supplied = self.headers.get("authorization", "").removeprefix("Bearer ")
         if not expected or not hmac.compare_digest(supplied, expected):
             self.send_error(401)
@@ -514,7 +520,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as error:
             print(traceback.format_exc(), file=sys.stderr, flush=True)
             try:
-                self.wfile.write(_json_line({"type": "error", "code": "adk_error", "message": str(error)[:1000]}))
+                self.wfile.write(_json_line({"type": "error", "code": "agno_error", "message": str(error)[:1000]}))
                 self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
                 pass
@@ -528,10 +534,10 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    os.environ.setdefault("OTEL_SDK_DISABLED", "true")
+    os.environ.setdefault("AGNO_TELEMETRY", "false")
     port = int(os.getenv("PORT", "8000"))
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
-    print(json.dumps({"level": "info", "message": "Google ADK runtime listening", "port": port}), flush=True)
+    print(json.dumps({"level": "info", "message": "Agno runtime listening", "port": port}), flush=True)
     server.serve_forever()
 
 

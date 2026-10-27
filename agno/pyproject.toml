@@ -1,12 +1,11 @@
 [project]
-name = "darkspace-adk-runtime"
+name = "darkspace-agno-runtime"
 version = "1.0.0"
-description = "Internal Google ADK runtime for Darkspace"
+description = "Internal Agno runtime for Darkspace"
 requires-python = ">=3.11,<3.14"
 dependencies = [
   "cryptography==46.0.5",
-  "google-adk==2.13.0",
-  "litellm[mcp]==1.106.4",
+  "agno[anthropic,cerebras,google,openai]==3.1.10",
 ]
 
 [dependency-groups]

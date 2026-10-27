@@ -10,7 +10,7 @@ import { rpc, serviceClient } from '../database.js';
 import { PROVIDER_KEYS, PROVIDER_LABELS, providerFor, providerNameFor } from '../ai/registry.js';
 import type { Effort, ModelProvider, TurnUsage } from '../ai/provider.js';
 import { CitationRegistry, resolveCitations, sourcesFooter } from './citations.js';
-import { providerAgentRunner, remoteAgentRunner, type AgentRuntimeConfig, type AgentRunner } from './adk.js';
+import { providerAgentRunner, remoteAgentRunner, type AgentRuntimeConfig, type AgentRunner } from './agno.js';
 import { PROVIDER_TOOLS, TOOL_REGISTRY, toolSpecs } from './tools/index.js';
 import { readConversation, memberChannels } from './tools/read.js';
 import { quoteData, type AgentTool, type RunContext, type RunScope, type SourceKind, type ToolOutput } from './tools/types.js';
@@ -94,8 +94,8 @@ function errorMessage(err: unknown): { code: string; message: string } {
   if (err instanceof Error && /auth|api key|unauthor/i.test(err.message)) return { code: 'auth', message: 'The configured AI provider rejected its credentials.' };
   if (err instanceof Error && /rate limit|resource.?exhausted|quota|\b429\b/i.test(err.message)) return { code: 'rate_limited', message: 'The AI provider is rate limited. Try again shortly.' };
   if (err instanceof Error && /timed? ?out|timeout/i.test(err.message)) return { code: 'provider_timeout', message: 'The AI provider took too long to respond. Try again shortly.' };
-  if (err instanceof Error && /Google ADK runtime returned HTTP|fetch failed|ECONNREFUSED/i.test(err.message)) {
-    return { code: 'adk_unavailable', message: 'The Google ADK runtime is temporarily unavailable. Try again.' };
+  if (err instanceof Error && /Agno runtime returned HTTP|fetch failed|ECONNREFUSED/i.test(err.message)) {
+    return { code: 'agno_unavailable', message: 'The Agno runtime is temporarily unavailable. Try again.' };
   }
   return { code: 'internal', message: 'The run failed because of a server error. Try again.' };
 }
@@ -407,7 +407,7 @@ export async function executeRun(
     return { id: call.id, content: out.content, isError: out.isError };
   };
 
-  // ---- Google ADK execution -------------------------------------------------
+  // ---- Agno execution -------------------------------------------------------
   try {
     const warnings: Array<{ code: string; message: string }> = [];
     const maxSeconds = Math.max(60, Math.floor(budgetMs / 1000) - 30);
@@ -464,7 +464,7 @@ export async function executeRun(
         },
         onTeam(teamAgent, status) {
           const existing = liveTeam.get(teamAgent);
-          liveTeam.set(teamAgent, existing ? { ...existing, status } : { task_id: `adk:${teamAgent}`, agent: teamAgent, status });
+          liveTeam.set(teamAgent, existing ? { ...existing, status } : { task_id: `agno:${teamAgent}`, agent: teamAgent, status });
           const data = { tasks: [...liveTeam.values()] };
           emit('team', data);
           void rpc('agent_add_event', { p_run_id: runId, p_type: 'team', p_data: data }).catch(() => undefined);

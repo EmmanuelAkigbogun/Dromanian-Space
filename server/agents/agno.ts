@@ -122,7 +122,7 @@ async function body(request: import('node:http').IncomingMessage): Promise<Recor
 
 function ensureBridge(): Promise<void> {
   if (bridgeReady) return bridgeReady;
-  const port = Number(process.env.ADK_TOOL_PORT ?? 3001);
+  const port = Number(process.env.AGNO_TOOL_PORT ?? 3001);
   bridge = createServer(async (request, response) => {
     if (request.method === 'GET' && request.url === '/health') return json(response, 200, { ok: true });
     if (request.method !== 'POST' || request.url !== '/tool') return json(response, 404, { error: 'not_found' });
@@ -160,7 +160,7 @@ function parseLine(line: string): Record<string, unknown> | null {
   try {
     return JSON.parse(line) as Record<string, unknown>;
   } catch {
-    throw new Error('Google ADK returned malformed streaming data.');
+    throw new Error('Agno returned malformed streaming data.');
   }
 }
 
@@ -169,9 +169,10 @@ export const remoteAgentRunner: AgentRunner = {
     await ensureBridge();
     const token = randomBytes(32);
     active.set(input.run_id, { token, callTool: callbacks.callTool });
-    const base = (process.env.ADK_URL ?? 'http://adk:8000').replace(/\/$/, '');
-    const callbackHost = process.env.ADK_TOOL_CALLBACK_URL ?? `http://worker:${process.env.ADK_TOOL_PORT ?? 3001}/tool`;
-    const authorization = `Bearer ${process.env.ADK_INTERNAL_TOKEN ?? process.env.APP_JWT_SECRET ?? ''}`;
+    const base = (process.env.AGNO_URL ?? 'http://agno:8000').replace(/\/$/, '');
+    const callbackHost = process.env.AGNO_TOOL_CALLBACK_URL
+      ?? `http://worker:${process.env.AGNO_TOOL_PORT ?? 3001}/tool`;
+    const authorization = `Bearer ${process.env.AGNO_INTERNAL_TOKEN ?? process.env.APP_JWT_SECRET ?? ''}`;
     const cancel = () => {
       void fetch(`${base}/cancel/${encodeURIComponent(input.run_id)}`, {
         method: 'POST',
@@ -191,7 +192,7 @@ export const remoteAgentRunner: AgentRunner = {
         signal: callbacks.signal,
       });
       if (!response.ok || !response.body) {
-        throw new Error(`Google ADK runtime returned HTTP ${response.status}.`);
+        throw new Error(`Agno runtime returned HTTP ${response.status}.`);
       }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -203,7 +204,7 @@ export const remoteAgentRunner: AgentRunner = {
           callbacks.onStage?.(event.stage, String(event.label ?? event.stage));
         }
         if (event.type === 'team' && typeof event.agent === 'string') callbacks.onTeam?.(event.agent, String(event.status ?? 'working'));
-        if (event.type === 'error') throw new Error(String(event.message ?? 'Google ADK execution failed.'));
+        if (event.type === 'error') throw new Error(String(event.message ?? 'Agno execution failed.'));
         if (event.type === 'result') {
           const u = (event.usage ?? {}) as Partial<TurnUsage>;
           result = {
@@ -233,7 +234,7 @@ export const remoteAgentRunner: AgentRunner = {
         const event = parseLine(pending);
         if (event) receive(event);
       }
-      if (!result) throw new Error('Google ADK ended without a result.');
+      if (!result) throw new Error('Agno ended without a result.');
       return result;
     } finally {
       callbacks.signal.removeEventListener('abort', cancel);

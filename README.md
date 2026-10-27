@@ -1,6 +1,6 @@
 # Dromanian Space
 
-A React/TypeScript workspace with messaging, tasks, projects, Drive documents and files, CRM, and a permission-aware five-agent Google ADK team on Cerebras `gpt-oss-120b`: Team Coordinator, Research Specialist, Data Analyst, Content & Notes Specialist, and Software Engineer. See [implementation status](docs/IMPLEMENTATION_STATUS.md) for completed work and remaining scope.
+A React/TypeScript workspace with messaging, tasks, projects, Drive documents and files, CRM, and a permission-aware five-agent Agno team on Cerebras `gpt-oss-120b`: Team Coordinator, Research Specialist, Data Analyst, Content & Notes Specialist, and Software Engineer. See [implementation status](docs/IMPLEMENTATION_STATUS.md) for completed work and remaining scope.
 
 ## Local preview
 

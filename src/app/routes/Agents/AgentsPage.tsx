@@ -103,7 +103,7 @@ const TOOL_LABELS: Record<string, string> = {
   read_brand_kit: 'Read the brand kit',
   read_personal_notes: 'Read your private notes',
   save_personal_note: 'Save a private note',
-  delegate_to_specialists: 'Coordinate specialists with Google ADK',
+  delegate_to_specialists: 'Coordinate specialists with Agno',
   propose_task: 'Create tasks',
   propose_document: 'Save documents to Drive',
   propose_channel_message: 'Post messages',
@@ -335,9 +335,9 @@ function Directory(props: {
     <>
       <header className={s.header}>
         <div>
-          <div className={s.eyebrow}>Your Google ADK team</div>
+          <div className={s.eyebrow}>Your Agno team</div>
           <h1>A coordinated team of workspace specialists.</h1>
-          <p className={s.muted}>Google ADK coordinates the team using Gemini by default while preserving each agent's configured model. Agents only see what you can access, and anything that changes data waits for your review.</p>
+          <p className={s.muted}>Agno coordinates the team using Cerebras by default while preserving each agent's configured model. Agents only see what you can access, and anything that changes data waits for your review.</p>
         </div>
         {props.admin && (
           <div className={s.actions}>

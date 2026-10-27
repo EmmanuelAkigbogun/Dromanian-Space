@@ -1,4 +1,3 @@
-import asyncio
 import json
 import os
 import tempfile
@@ -43,23 +42,15 @@ def test_gemini_model_candidates_use_approved_flash_fallbacks():
     assert app._model_candidates("claude-sonnet-5-5") == ["claude-sonnet-5-5"]
 
 
-def test_cerebras_model_uses_litellm_provider_prefix(monkeypatch):
+def test_cerebras_model_uses_native_agno_provider(monkeypatch):
     monkeypatch.setenv("CEREBRAS_DIGITALROMANIAN", "csk-test-key")
     model = app._model("gpt-oss-120b")
-    assert model.model == "cerebras/gpt-oss-120b"
+    assert model.id == "gpt-oss-120b"
+    assert model.provider == "Cerebras"
     assert os.environ["CEREBRAS_API_KEY"] == "csk-test-key"
 
 
-def test_run_config_bounds_sdk_retries_and_request_time(monkeypatch):
-    monkeypatch.setenv("ADK_PROVIDER_REQUEST_TIMEOUT_MS", "45000")
-    run_config = app._run_config(7)
-    assert run_config.max_llm_calls == 7
-    assert run_config.http_options.timeout == 45000
-    assert run_config.http_options.retry_options.attempts == 2
-    assert run_config.http_options.retry_options.http_status_codes == [408, 429, 500, 502, 503, 504]
-
-
-def test_dynamic_adk_agent_preserves_tools_and_specialists():
+def test_dynamic_agno_team_preserves_tools_and_specialists():
     spec = {
         "read_file": {
             "name": "read_file",
@@ -71,7 +62,7 @@ def test_dynamic_adk_agent_preserves_tools_and_specialists():
             },
         }
     }
-    root, names = app._build_agent(
+    root, names = app._build_runtime(
         config("Team Lead", "coordinator", ["read_file"]),
         spec,
         "http://worker:3001/tool",
@@ -80,11 +71,10 @@ def test_dynamic_adk_agent_preserves_tools_and_specialists():
         index=0,
         specialists=[config("Haven")],
     )
-    assert len(root.sub_agents) == 1
-    assert names[root.sub_agents[0].name] == "Haven"
+    assert len(root.members) == 1
+    assert names[root.members[0].id] == "Haven"
     assert [tool.name for tool in root.tools] == ["read_file"]
-    declaration = root.tools[0]._get_declaration()
-    assert declaration.parameters_json_schema["required"] == ["item_id"]
+    assert root.tools[0].parameters["required"] == ["item_id"]
 
 
 def test_callback_tool_uses_authenticated_workspace_bridge():
@@ -106,7 +96,7 @@ def test_callback_tool_uses_authenticated_workspace_bridge():
             return b'{"content":"Policy: approved."}'
 
     with patch("urllib.request.urlopen", return_value=Response()) as opened:
-        result = asyncio.run(tool.run_async(args={"item_id": "doc-1"}, tool_context=None))
+        result = tool._call(item_id="doc-1")
     request = opened.call_args.args[0]
     body = json.loads(request.data)
     assert request.headers["Authorization"] == "Bearer secret-token"
@@ -127,7 +117,7 @@ def test_image_attachments_stay_inside_private_storage():
         previous = os.environ.get("STORAGE_ROOT")
         os.environ["STORAGE_ROOT"] = root
         try:
-            message = app._message(
+            images = app._images(
                 {
                     "prompt": "Describe this.",
                     "files": [
@@ -145,13 +135,14 @@ def test_image_attachments_stay_inside_private_storage():
                 os.environ.pop("STORAGE_ROOT", None)
             else:
                 os.environ["STORAGE_ROOT"] = previous
-        assert message.parts[0].text == "Describe this."
-        assert message.parts[1].inline_data.mime_type == "image/png"
+        assert len(images) == 1
+        assert images[0].mime_type == "image/png"
+        assert images[0].content == b"image-data"
 
 
 def test_image_attachments_cannot_escape_storage():
     with pytest.raises(ValueError, match="outside storage or missing"):
-        app._message(
+        app._images(
             {
                 "prompt": "Describe this.",
                 "files": [
@@ -167,35 +158,14 @@ def test_image_attachments_cannot_escape_storage():
 
 
 @pytest.mark.asyncio
-async def test_adk_runner_streams_existing_ndjson_contract(monkeypatch):
-    class Sessions:
-        async def create_session(self, **_kwargs):
-            return None
+async def test_agno_runner_streams_existing_ndjson_contract(monkeypatch):
+    class FakeRuntime:
+        async def arun(self, **_kwargs):
+            yield SimpleNamespace(event="ModelRequestCompleted", input_tokens=3, output_tokens=1)
+            yield SimpleNamespace(event="RunContent", content="Hello!", agent_id="haven")
+            yield SimpleNamespace(event="RunCompleted", content="Hello!", agent_id="haven")
 
-    class Event:
-        def __init__(self, author, text, partial, final=False):
-            self.author = author
-            self.content = SimpleNamespace(parts=[SimpleNamespace(text=text)])
-            self.partial = partial
-            self.usage_metadata = None
-            self._final = final
-
-        def is_final_response(self):
-            return self._final
-
-    class FakeRunner:
-        def __init__(self, *, agent, **_kwargs):
-            self.agent = agent
-
-        async def run_async(self, **_kwargs):
-            yield Event(self.agent.name, "Hello", True)
-            yield Event(self.agent.name, "!", False, True)
-
-        async def close(self):
-            return None
-
-    monkeypatch.setattr(app, "InMemorySessionService", Sessions)
-    monkeypatch.setattr(app, "Runner", FakeRunner)
+    monkeypatch.setattr(app, "_build_runtime", lambda *_args, **_kwargs: (FakeRuntime(), {"haven": "Haven"}))
     events = []
     payload = {
         "run_id": "00000000-0000-4000-8000-000000000001",
@@ -206,52 +176,69 @@ async def test_adk_runner_streams_existing_ndjson_contract(monkeypatch):
         "callback_url": "http://worker:3001/tool",
         "callback_token": "token",
     }
-    await app._run_adk_async(payload, events.append)
+    await app._run_agno_async(payload, events.append)
     assert {event["stage"] for event in events if event["type"] == "stage"} >= {
         "preparing",
         "contacting_provider",
         "generating",
         "finalizing",
     }
-    assert [event["text"] for event in events if event["type"] == "delta"] == ["Hello"]
+    assert [event["text"] for event in events if event["type"] == "delta"] == ["Hello!"]
     assert next(event for event in events if event["type"] == "result")["text"] == "Hello!"
+    assert next(event for event in events if event["type"] == "result")["usage"] == {
+        "input_tokens": 3,
+        "output_tokens": 1,
+        "cache_read_tokens": 0,
+        "cache_write_tokens": 0,
+    }
 
 
 @pytest.mark.asyncio
-async def test_adk_runner_retries_transient_provider_failure(monkeypatch):
-    class Sessions:
-        async def create_session(self, **_kwargs):
-            return None
+async def test_agno_team_reports_members_but_only_streams_leader_answer(monkeypatch):
+    class FakeTeam:
+        async def arun(self, **_kwargs):
+            yield SimpleNamespace(event="RunContent", content="member draft", agent_id="research")
+            yield SimpleNamespace(event="TeamRunContent", content="Team answer", agent_id=None)
+            yield SimpleNamespace(event="TeamRunCompleted", content="Team answer", agent_id=None)
 
-    class Event:
-        author = "haven_00000000"
-        content = SimpleNamespace(parts=[SimpleNamespace(text="Hey!")])
-        partial = False
-        usage_metadata = None
+    monkeypatch.setattr(
+        app,
+        "_build_runtime",
+        lambda *_args, **_kwargs: (FakeTeam(), {"research": "Research Specialist"}),
+    )
+    events = []
+    await app._run_agno_async(
+        {
+            "run_id": "00000000-0000-4000-8000-000000000003",
+            "prompt": "research this",
+            "agent": config("Team Lead", "coordinator"),
+            "specialists": [config("Research Specialist")],
+            "tools": [],
+            "callback_url": "http://worker:3001/tool",
+            "callback_token": "token",
+        },
+        events.append,
+    )
+    assert [event["agent"] for event in events if event["type"] == "team"] == ["Research Specialist"]
+    assert [event["text"] for event in events if event["type"] == "delta"] == ["Team answer"]
 
-        def is_final_response(self):
-            return True
 
-    class RetryRunner:
+@pytest.mark.asyncio
+async def test_agno_runner_retries_transient_provider_failure(monkeypatch):
+    class RetryRuntime:
         attempts = 0
 
-        def __init__(self, **_kwargs):
-            pass
-
-        async def run_async(self, **_kwargs):
-            RetryRunner.attempts += 1
-            if RetryRunner.attempts == 1:
+        async def arun(self, **_kwargs):
+            RetryRuntime.attempts += 1
+            if RetryRuntime.attempts == 1:
                 raise RuntimeError("503 Service Unavailable: high demand")
-            yield Event()
+            yield SimpleNamespace(event="RunContent", content="Hey!", agent_id="haven")
+            yield SimpleNamespace(event="RunCompleted", content="Hey!", agent_id="haven")
 
-        async def close(self):
-            return None
-
-    monkeypatch.setattr(app, "InMemorySessionService", Sessions)
-    monkeypatch.setattr(app, "Runner", RetryRunner)
-    monkeypatch.setenv("ADK_PROVIDER_RETRY_BASE_SECONDS", "0")
+    monkeypatch.setattr(app, "_build_runtime", lambda *_args, **_kwargs: (RetryRuntime(), {"haven": "Haven"}))
+    monkeypatch.setenv("AGNO_PROVIDER_RETRY_BASE_SECONDS", "0")
     events = []
-    await app._run_adk_async(
+    await app._run_agno_async(
         {
             "run_id": "00000000-0000-4000-8000-000000000002",
             "prompt": "hey",
@@ -263,7 +250,7 @@ async def test_adk_runner_retries_transient_provider_failure(monkeypatch):
         },
         events.append,
     )
-    assert RetryRunner.attempts == 2
+    assert RetryRuntime.attempts == 2
     assert any(event.get("stage") == "retrying_provider" for event in events)
     result = next(event for event in events if event["type"] == "result")
     assert result["text"] == "Hey!"
