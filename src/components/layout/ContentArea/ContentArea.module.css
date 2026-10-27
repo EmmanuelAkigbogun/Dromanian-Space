@@ -17,6 +17,13 @@
   width: 100%;
 }
 
+.contentInner:has(> [data-content-layout='full-bleed']) {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 /* Wide screens: more padding */
 @media (min-width: 1440px) {
   .contentInner {

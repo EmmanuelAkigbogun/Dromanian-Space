@@ -52,7 +52,7 @@ function DriveBrowser({ workspaceId: ws, userId, itemId, folderId }: {workspaceI
         // A blank Office file, opened straight in the editor.
         const created = await (await api('drive/new-office',{workspace_id:ws,parent_id:folderId ?? null,kind:create,name})).json() as {item_id:string};
         await refresh();setCreate(null);setName('');
-        navigate(`/drive/item/${created.item_id}?edit=1`);
+        navigate(`/drive/item/${created.item_id}${office.data?.enabled ? '?edit=1' : ''}`);
         return;
       }
       const item = create === 'folder' ? await result(platform.rpc('drive_create_folder',{p_workspace_id:ws,p_parent_id:folderId ?? null,p_name:name})) : await result(platform.rpc('drive_create_document',{p_workspace_id:ws,p_parent_id:folderId ?? null,p_title:name,p_body:''}));
@@ -100,7 +100,7 @@ function DriveBrowser({ workspaceId: ws, userId, itemId, folderId }: {workspaceI
   const itemLink=(i:Item)=>`/drive/${i.kind==='folder'?'folder':'item'}/${i.id}`;
   return <div className={s.page} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(!busy)void uploadFiles([...e.dataTransfer.files]);}}>
     <header className={s.header}><div><div className={s.eyebrow}>Shared knowledge · Drive</div><h1>{folderId ? crumbs.data?.at(-1)?.name ?? 'Folder' : driveViews.find(v=>v[0]===view)?.[1] ?? 'Drive'}</h1><p className={s.muted}>Files are stored on this server. Your files stay private to you until you share them with a person, channel, project, or the workspace.</p></div><div className={s.actions}>
-      <div className={d.newMenu}><button className={s.button} aria-haspopup="menu" aria-expanded={newMenu} onClick={()=>setNewMenu(v=>!v)}>+ New</button>{newMenu&&<div className={d.menu} role="menu" onMouseLeave={()=>setNewMenu(false)}>{(['folder','document',...(office.data?.enabled?['docx','xlsx','pptx'] as const:[])] as CreateKind[]).map(k=><button key={k} role="menuitem" className={d.menuItem} onClick={()=>{setNewMenu(false);setName('');setCreate(k);}}><span className={d.menuIcon} data-kind={k}>{k==='folder'?'▱':k==='document'?'≡':k==='docx'?'W':k==='xlsx'?'X':'P'}</span>{k==='document'?'Document (Markdown)':CREATE_LABELS[k][0].toUpperCase()+CREATE_LABELS[k].slice(1)}</button>)}</div>}</div>
+      <div className={d.newMenu}><button className={s.button} aria-haspopup="menu" aria-expanded={newMenu} onClick={()=>setNewMenu(v=>!v)}>+ New</button>{newMenu&&<div className={d.menu} role="menu" onMouseLeave={()=>setNewMenu(false)}>{(['folder','document','docx','xlsx','pptx'] as CreateKind[]).map(k=><button key={k} role="menuitem" className={d.menuItem} onClick={()=>{setNewMenu(false);setName('');setCreate(k);}}><span className={d.menuIcon} data-kind={k}>{k==='folder'?'▱':k==='document'?'≡':k==='docx'?'W':k==='xlsx'?'X':'P'}</span>{k==='document'?'Document (Markdown)':CREATE_LABELS[k][0].toUpperCase()+CREATE_LABELS[k].slice(1)}</button>)}</div>}</div>
       <button className={s.primary} type="button" disabled={busy} onClick={()=>uploadInput.current?.click()}>
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 20h14"/></svg>
         {busy?'Uploading…':'Upload from computer'}

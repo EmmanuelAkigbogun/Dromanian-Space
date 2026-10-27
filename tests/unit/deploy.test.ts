@@ -49,6 +49,14 @@ describe('standalone compose safety', () => {
   it('contains no external auth or managed backend service', () => {
     expect(compose).not.toMatch(/gotrue|studio|realtime|storage-api|supabase\//i);
   });
+
+  it('allows configured web fonts and only the exact ONLYOFFICE compatibility handler', () => {
+    const headers = read('deploy/nginx/security-headers.conf');
+    expect(headers).toContain("style-src 'self' 'unsafe-inline' https://fonts.googleapis.com");
+    expect(headers).toContain("font-src 'self' data: https://fonts.gstatic.com");
+    expect(headers).toContain("script-src 'self' 'unsafe-hashes' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='");
+    expect(headers).not.toContain("script-src 'self' 'unsafe-inline'");
+  });
 });
 
 describe('migrations', () => {

@@ -45,7 +45,7 @@ function loadEditorScript(src: string): Promise<void> {
  * ONLYOFFICE editor for a Drive file. Saves go back to Drive as new versions
  * (automatically while editing, and when everyone closes the document).
  */
-export function OfficeEditor({ itemId, onClose }: { itemId: string; onClose: () => void }) {
+export function OfficeEditor({ itemId, title, onClose }: { itemId: string; title: string; onClose: () => void }) {
   const containerId = `office-${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
   const [error, setError] = useState('');
   const [canEdit, setCanEdit] = useState<boolean | null>(null);
@@ -74,11 +74,14 @@ export function OfficeEditor({ itemId, onClose }: { itemId: string; onClose: () 
   return (
     <section className={styles.editor}>
       <div className={styles.bar}>
-        <span className={styles.status}>
-          {error ? 'Editor unavailable' : canEdit === null ? 'Opening…' : canEdit ? 'Editing · changes save to Drive as new versions' : 'View only'}
-        </span>
+        <div className={styles.fileInfo}>
+          <strong className={styles.title} title={title}>{title}</strong>
+          <span className={styles.status}>
+            {error ? 'Editor unavailable' : canEdit === null ? 'Opening…' : canEdit ? 'Editing · changes save to Drive as new versions' : 'View only'}
+          </span>
+        </div>
         <button type="button" className={styles.close} onClick={onClose}>
-          Close editor
+          Back to details
         </button>
       </div>
       {error ? <p role="alert" className={styles.error}>{error}</p> : <div className={styles.frame}><div id={containerId} /></div>}
