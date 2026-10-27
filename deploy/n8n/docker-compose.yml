@@ -75,6 +75,10 @@ services:
         condition: service_healthy
     expose:
       - "5678"
+    # The production host terminates public traffic through Cloudflare Tunnel.
+    # Keep the origin loopback-only so it cannot bypass that edge.
+    ports:
+      - "${N8N_BIND_ADDRESS:-127.0.0.1}:${N8N_HOST_PORT:-3010}:5678"
     environment:
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: n8n-db

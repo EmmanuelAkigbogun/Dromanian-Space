@@ -25,9 +25,11 @@ app's jobs. Every request carries a `request_id`, and the app starts at most one
    `/deploy/n8n`.
 3. Add the variables from `deploy/n8n/.env.example`, generating each secret with `openssl rand -hex 24`.
    **Back up `N8N_ENCRYPTION_KEY`**: without it, n8n's saved credentials cannot be decrypted.
-4. Set the domain `https://n8n.digitalromanian.com:5678` on the `n8n` service, then deploy.
+4. Set the domain `https://n8n.purplehive.pro:5678` on the `n8n` service, then deploy. On the
+   production Cloudflare Tunnel host, route that hostname to the loopback-only origin
+   `http://127.0.0.1:3010`; never expose port 3010 on a public interface.
 5. Create the n8n owner account immediately; the first visitor can claim it.
-6. On the Dromanian Space application resource, set `N8N_BASE_URL=https://n8n.digitalromanian.com`
+6. On the Dromanian Space application resource, set `N8N_BASE_URL=https://n8n.purplehive.pro`
    and redeploy. Callbacks are only ever sent to this host.
 
 n8n has its own PostgreSQL (never the application database), keeps 14 days of execution data, and has
