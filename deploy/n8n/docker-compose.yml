@@ -38,7 +38,7 @@ services:
           create_host_path: false
 
   n8n-db:
-    image: postgres:16.15-alpine
+    image: postgres:17.8-alpine
     restart: unless-stopped
     logging: *logging
     stop_grace_period: 1m
