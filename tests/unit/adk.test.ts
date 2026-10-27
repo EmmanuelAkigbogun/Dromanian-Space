@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { providerCrewRunner, type CrewRunInput } from '../../server/agents/crew.js';
+import { providerAgentRunner, type AgentRunInput } from '../../server/agents/adk.js';
 import { emptyUsage, type ModelProvider, type TurnResult } from '../../server/ai/provider.js';
 
-const input: CrewRunInput = {
+const input: AgentRunInput = {
   run_id: '00000000-0000-4000-8000-000000000001',
   prompt: 'Read the policy.',
   agent: {
@@ -23,8 +23,8 @@ function result(overrides: Partial<TurnResult>): TurnResult {
   };
 }
 
-describe('CrewAI runner contract', () => {
-  it('bridges CrewAI tool requests through the workspace tool callback', async () => {
+describe('Google ADK runner contract', () => {
+  it('bridges ADK tool requests through the workspace tool callback', async () => {
     let step = 0;
     const toolResults: string[] = [];
     const provider: ModelProvider = {
@@ -41,7 +41,7 @@ describe('CrewAI runner contract', () => {
     };
     const calls: string[] = [];
     const stages: string[] = [];
-    const output = await providerCrewRunner(provider).run(input, {
+    const output = await providerAgentRunner(provider).run(input, {
       signal: new AbortController().signal,
       onDelta: () => undefined,
       onStage(stage) { stages.push(stage); },

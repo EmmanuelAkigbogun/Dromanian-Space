@@ -29,20 +29,19 @@ USER node
 EXPOSE 3000 3001
 CMD ["node", "--enable-source-maps", "dist-server/main.mjs"]
 
-FROM python:3.13.17-slim-bookworm AS crew
+FROM python:3.13.17-slim-bookworm AS adk
 COPY --from=ghcr.io/astral-sh/uv:0.13.5 /uv /uvx /bin/
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=0 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    CREWAI_TELEMETRY_OPT_OUT=true \
     OTEL_SDK_DISABLED=true \
     HOME=/tmp
 WORKDIR /app
-COPY crew/pyproject.toml crew/uv.lock ./
+COPY adk/pyproject.toml adk/uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-dev --no-install-project
-COPY crew/app.py ./app.py
+COPY adk/app.py ./app.py
 USER nobody
 EXPOSE 8000
 CMD ["/app/.venv/bin/python", "app.py"]

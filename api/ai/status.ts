@@ -124,7 +124,7 @@ export async function GET(request: Request): Promise<Response> {
       // Where data goes when agents work, stated plainly for workspace settings.
       data_flow: {
         generation: usedProviders.length
-          ? `CrewAI coordinates the agents. Text generation uses ${usedProviders.map((p) => PROVIDER_LABELS[p]).join(' and ')}, depending on each agent's model (${settings.default_model} by default). Text from the sources an agent reads, and your messages to it, are sent to that provider to produce answers.`
+          ? `Google ADK coordinates the agents. Text generation uses ${usedProviders.map((p) => PROVIDER_LABELS[p]).join(' and ')}, depending on each agent's model (${settings.default_model} by default). Text from the sources an agent reads, and your messages to it, are sent to that provider to produce answers.`
           : "No provider is configured for this workspace's models; nothing is sent to a model provider.",
         embeddings: embeddingsConfigured()
           ? `Semantic search uses Voyage AI (${env().embeddingModel}); indexed document text is sent to Voyage to create embeddings.`
@@ -135,7 +135,7 @@ export async function GET(request: Request): Promise<Response> {
       web_research: {
         enabled_by_admin: settings.web_research_enabled,
         available: false,
-        reason: settings.web_research_enabled ? 'A CrewAI web-search tool is not connected.' : 'Disabled by the workspace administrator.',
+        reason: settings.web_research_enabled ? 'A Google ADK web-search tool is not connected.' : 'Disabled by the workspace administrator.',
       },
       crm: { installed: crm },
       site: { url: settings.site_url },

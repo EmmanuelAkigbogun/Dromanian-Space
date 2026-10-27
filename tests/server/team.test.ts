@@ -10,7 +10,7 @@ import { executeRun } from '../../server/agents/engine.js';
 import { startRun } from '../../server/agents/start.js';
 import { enqueueRun, tailRun } from '../../server/agents/tail.js';
 import { drainQueue } from '../../server/jobs/runner.js';
-import type { CrewRunner } from '../../server/agents/crew.js';
+import type { AgentRunner } from '../../server/agents/adk.js';
 import type { SseChannel } from '../../server/http.js';
 import { GET as statusEndpoint } from '../../api/ai/status.js';
 import { POST as mentionEndpoint } from '../../api/agents/mention.js';
@@ -57,7 +57,7 @@ describe('team chat', () => {
   let configuredSpecialists: string[] = [];
 
   beforeAll(async () => {
-    const crew: CrewRunner = {
+    const agentRunner: AgentRunner = {
       async run(input, callbacks) {
         configuredSpecialists = input.specialists.map((specialist) => specialist.name);
         callbacks.onTeam?.('Tally', 'working');
@@ -74,11 +74,11 @@ describe('team chat', () => {
     parent = await startRun(user.id, {
       workspace_id: ws, agent_id: agents.team_coordinator, message: 'What is our hotel budget? Draft a summary.', idempotency_key: randomUUID(),
     });
-    const outcome = await executeRun(parent.run_id, { crew, provider: { name: 'test-double', configured: () => true, startSession: () => { throw new Error('unused'); } } });
+    const outcome = await executeRun(parent.run_id, { agentRunner, provider: { name: 'test-double', configured: () => true, startSession: () => { throw new Error('unused'); } } });
     expect(outcome.status).toBe('completed');
   });
 
-  it('gives CrewAI the workspace specialists and keeps tool access under the requester', async () => {
+  it('gives Google ADK the workspace specialists and keeps tool access under the requester', async () => {
     expect(configuredSpecialists).toEqual(expect.arrayContaining(['Tally', 'Inka']));
     const tasks = await q<{ status: string }>(user, 'SELECT status FROM agent_team_tasks WHERE parent_run_id = $1', [parent.run_id]);
     expect(tasks).toEqual([]);
@@ -93,7 +93,7 @@ describe('team chat', () => {
     expect(notes).toHaveLength(0);
   });
 
-  it('stores the CrewAI manager answer in the conversation timeline', async () => {
+  it('stores the ADK coordinator answer in the conversation timeline', async () => {
     const timeline = await q<{ kind: string; role: string; agent_name: string; content: string }>(
       user, 'SELECT kind, role, agent_name, content FROM agent_conversation_timeline($1)', [parent.conversation_id]);
     expect(timeline.filter((m) => m.kind === 'delegation')).toEqual([]);

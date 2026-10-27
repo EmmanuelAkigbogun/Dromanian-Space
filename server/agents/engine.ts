@@ -10,7 +10,7 @@ import { rpc, serviceClient } from '../database.js';
 import { PROVIDER_KEYS, PROVIDER_LABELS, providerFor, providerNameFor } from '../ai/registry.js';
 import type { Effort, ModelProvider, TurnUsage } from '../ai/provider.js';
 import { CitationRegistry, resolveCitations, sourcesFooter } from './citations.js';
-import { providerCrewRunner, remoteCrewRunner, type CrewAgentConfig, type CrewRunner } from './crew.js';
+import { providerAgentRunner, remoteAgentRunner, type AgentRuntimeConfig, type AgentRunner } from './adk.js';
 import { PROVIDER_TOOLS, TOOL_REGISTRY, toolSpecs } from './tools/index.js';
 import { readConversation, memberChannels } from './tools/read.js';
 import { quoteData, type AgentTool, type RunContext, type RunScope, type SourceKind, type ToolOutput } from './tools/types.js';
@@ -94,15 +94,15 @@ function errorMessage(err: unknown): { code: string; message: string } {
   if (err instanceof Error && /auth|api key|unauthor/i.test(err.message)) return { code: 'auth', message: 'The configured AI provider rejected its credentials.' };
   if (err instanceof Error && /rate limit|resource.?exhausted|quota|\b429\b/i.test(err.message)) return { code: 'rate_limited', message: 'The AI provider is rate limited. Try again shortly.' };
   if (err instanceof Error && /timed? ?out|timeout/i.test(err.message)) return { code: 'provider_timeout', message: 'The AI provider took too long to respond. Try again shortly.' };
-  if (err instanceof Error && /CrewAI runtime returned HTTP|fetch failed|ECONNREFUSED/i.test(err.message)) {
-    return { code: 'crew_unavailable', message: 'The CrewAI runtime is temporarily unavailable. Try again.' };
+  if (err instanceof Error && /Google ADK runtime returned HTTP|fetch failed|ECONNREFUSED/i.test(err.message)) {
+    return { code: 'adk_unavailable', message: 'The Google ADK runtime is temporarily unavailable. Try again.' };
   }
   return { code: 'internal', message: 'The run failed because of a server error. Try again.' };
 }
 
 export async function executeRun(
   runId: string,
-  opts: { worker?: string; events?: RunEvents; provider?: ModelProvider; crew?: CrewRunner; budgetMs?: number } = {},
+  opts: { worker?: string; events?: RunEvents; provider?: ModelProvider; agentRunner?: AgentRunner; budgetMs?: number } = {},
 ): Promise<RunOutcome> {
   const worker = opts.worker ?? env().workerId;
   const emit = (event: string, data: unknown) => {
@@ -262,7 +262,7 @@ export async function executeRun(
   const canFetchSite = version.tools.includes('fetch_site_page') && Boolean(ctx.settings.siteUrl);
   if (canFetchSite) contextLines.push(`The workspace site is ${ctx.settings.siteUrl} — you may fetch pages on that site only.`);
   const isCoordinator = agent.kind === 'coordinator' && run.depth === 0;
-  let specialistConfigs: CrewAgentConfig[] = [];
+  let specialistConfigs: AgentRuntimeConfig[] = [];
   if (isCoordinator) {
     const { data: team } = await db
       .from('workspace_agents')
@@ -407,13 +407,13 @@ export async function executeRun(
     return { id: call.id, content: out.content, isError: out.isError };
   };
 
-  // ---- CrewAI execution -----------------------------------------------------
+  // ---- Google ADK execution -------------------------------------------------
   try {
     const warnings: Array<{ code: string; message: string }> = [];
     const maxSeconds = Math.max(60, Math.floor(budgetMs / 1000) - 30);
-    const agentConfig: CrewAgentConfig = {
+    const agentConfig: AgentRuntimeConfig = {
       name: agent.name,
-      role: agent.kind === 'coordinator' ? `${agent.name} — Crew manager` : agent.name,
+      role: agent.kind === 'coordinator' ? `${agent.name} — team coordinator` : agent.name,
       goal: agent.kind === 'coordinator' ? 'Coordinate the available specialists and deliver one useful answer.' : 'Answer the requester accurately using only authorized workspace tools.',
       description: agent.handle,
       instructions: systemPrompt(agent.name, version.instructions),
@@ -433,10 +433,10 @@ export async function executeRun(
     const historyText = history.length
       ? `<conversation_history>\n${history.map((item) => `${item.role}: ${item.content}`).join('\n\n')}\n</conversation_history>\n\n`
       : '';
-    const crew = opts.crew ?? (opts.provider ? providerCrewRunner(opts.provider) : remoteCrewRunner);
+    const agentRunner = opts.agentRunner ?? (opts.provider ? providerAgentRunner(opts.provider) : remoteAgentRunner);
     const liveTeam = new Map<string, { task_id: string; agent: string; status: string }>();
-    await setStage('starting_crew', isCoordinator ? 'Starting the crew' : `Starting ${agent.name}`);
-    const result = await crew.run(
+    await setStage('starting_team', isCoordinator ? 'Starting the team' : `Starting ${agent.name}`);
+    const result = await agentRunner.run(
       {
         run_id: runId,
         agent: agentConfig,
@@ -464,7 +464,7 @@ export async function executeRun(
         },
         onTeam(teamAgent, status) {
           const existing = liveTeam.get(teamAgent);
-          liveTeam.set(teamAgent, existing ? { ...existing, status } : { task_id: `crew:${teamAgent}`, agent: teamAgent, status });
+          liveTeam.set(teamAgent, existing ? { ...existing, status } : { task_id: `adk:${teamAgent}`, agent: teamAgent, status });
           const data = { tasks: [...liveTeam.values()] };
           emit('team', data);
           void rpc('agent_add_event', { p_run_id: runId, p_type: 'team', p_data: data }).catch(() => undefined);

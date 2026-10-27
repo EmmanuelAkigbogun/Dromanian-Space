@@ -34,16 +34,16 @@ describe('standalone compose safety', () => {
     expect(dockerfile).toMatch(/apt-get install[^\n]*chromium/);
   });
 
-  it('runs the agent orchestrator as an isolated, pinned CrewAI service', () => {
+  it('runs the agent orchestrator as an isolated, pinned Google ADK service', () => {
     const dockerfile = read('Dockerfile');
-    const project = read('crew/pyproject.toml');
-    expect(compose).toMatch(/crew:\s*[\s\S]*?target: crew/);
-    expect(compose).toContain('CREWAI_URL: http://crew:8000');
-    expect(compose).toContain('CREW_TOOL_CALLBACK_URL: http://worker:3001/tool');
+    const project = read('adk/pyproject.toml');
+    expect(compose).toMatch(/adk:\s*[\s\S]*?target: adk/);
+    expect(compose).toContain('ADK_URL: http://adk:8000');
+    expect(compose).toContain('ADK_TOOL_CALLBACK_URL: http://worker:3001/tool');
     expect(dockerfile).toContain('ghcr.io/astral-sh/uv:0.13.5');
     expect(dockerfile).toContain('uv sync --locked');
-    expect(project).toContain('crewai[anthropic,google-genai]==1.15.28');
-    expect(read('crew/uv.lock')).toContain('name = "crewai"');
+    expect(project).toContain('google-adk==2.13.0');
+    expect(read('adk/uv.lock')).toContain('name = "google-adk"');
   });
 
   it('contains no external auth or managed backend service', () => {

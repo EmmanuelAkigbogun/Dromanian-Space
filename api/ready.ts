@@ -24,21 +24,21 @@ export async function GET(): Promise<Response> {
   } catch {
     return json({ ready: false, checks: { database: 'unreachable' } }, 503);
   }
-  const crewUrl = process.env.CREWAI_URL?.replace(/\/$/, '');
-  let crew = 'ok';
-  if (crewUrl) {
+  const adkUrl = process.env.ADK_URL?.replace(/\/$/, '');
+  let adk = 'ok';
+  if (adkUrl) {
     try {
-      const response = await fetch(`${crewUrl}/health`, { signal: AbortSignal.timeout(3000) });
-      if (!response.ok) crew = `HTTP ${response.status}`;
+      const response = await fetch(`${adkUrl}/health`, { signal: AbortSignal.timeout(3000) });
+      if (!response.ok) adk = `HTTP ${response.status}`;
     } catch {
-      crew = 'unreachable';
+      adk = 'unreachable';
     }
   }
   const checks = {
     database: 'ok',
     worker: state.fresh_workers > 0 ? 'ok' : 'no recent heartbeat',
     queue: (state.oldest_due_job_seconds ?? 0) <= MAX_QUEUE_LAG_SECONDS ? 'ok' : `oldest due job waiting ${state.oldest_due_job_seconds}s`,
-    ...(crewUrl ? { crew } : {}),
+    ...(adkUrl ? { adk } : {}),
   };
   const ready = Object.values(checks).every((c) => c === 'ok');
   // Informational: a missing AI key is a setup state, not an outage.

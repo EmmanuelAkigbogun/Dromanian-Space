@@ -57,7 +57,7 @@ export function toolAvailability(names: string[], opts: AvailabilityInputs): Too
         available: false,
         approval,
         reason: opts.webResearchEnabled
-          ? 'Connect a CrewAI web-search tool before agents can research the public web.'
+          ? 'Connect a Google ADK web-search tool before agents can research the public web.'
           : 'Web research is turned off in this workspace’s AI settings.',
       };
     }
@@ -67,7 +67,7 @@ export function toolAvailability(names: string[], opts: AvailabilityInputs): Too
         available: false,
         approval,
         reason: opts.siteUrl
-          ? 'Connect a CrewAI site-reading tool before agents can fetch live pages.'
+          ? 'Connect a Google ADK site-reading tool before agents can fetch live pages.'
           : 'No site address is set in this workspace’s AI settings.',
       };
     }
