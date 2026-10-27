@@ -13,7 +13,7 @@ interface ProposalResult {
 export async function proposeAction(
   ctx: RunContext,
   toolUseId: string,
-  actionType: 'create_task' | 'save_document' | 'post_message' | 'create_event',
+  actionType: 'create_task' | 'save_document' | 'post_message' | 'create_event' | 'create_drive_folder' | 'rename_drive_item' | 'move_drive_item',
   args: Record<string, unknown>,
   summary: string,
 ): Promise<ToolOutput> {

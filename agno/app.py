@@ -34,6 +34,7 @@ from agno.tools.function import Function
 APP_NAME = "darkspace"
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
 RESILIENT_GEMINI_MODELS = ("gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite")
+NATIVE_WEB_TOOL_NAMES = {"web_search", "fetch_site_page"}
 
 
 def _json_line(value: dict[str, Any]) -> bytes:
@@ -155,12 +156,16 @@ def _tools(
     callback_url: str,
     callback_token: str,
     run_id: str,
-) -> list[Function]:
-    return [
+    native_tools: list[Any] | None = None,
+) -> list[Any]:
+    tools: list[Any] = [
         CallbackTool(specs[name], callback_url, callback_token, run_id).function
         for name in config.get("tools", [])
         if name in specs
     ]
+    if NATIVE_WEB_TOOL_NAMES.intersection(config.get("tools", [])):
+        tools.extend(native_tools or [])
+    return tools
 
 
 def _instruction(config: dict[str, Any], *, manager: bool, specialists: list[dict[str, Any]]) -> str:
@@ -195,6 +200,7 @@ def _build_runtime(
     *,
     index: int,
     specialists: list[dict[str, Any]] | None = None,
+    native_tools: list[Any] | None = None,
 ) -> tuple[Agent | Team, dict[str, str]]:
     specialist_configs = specialists or []
     sub_agents: list[Agent] = []
@@ -210,7 +216,7 @@ def _build_runtime(
                 description=str(child.get("description") or child.get("role") or child.get("goal") or "Workspace specialist"),
                 model=_model(str(child["model"])),
                 instructions=[_instruction(child, manager=False, specialists=[])],
-                tools=_tools(child, specs, callback_url, callback_token, run_id),
+                tools=_tools(child, specs, callback_url, callback_token, run_id, native_tools),
                 tool_call_limit=max(1, min(int(child.get("max_iter", 12)), 30)),
                 markdown=True,
             )
@@ -223,7 +229,7 @@ def _build_runtime(
         "description": str(config.get("description") or config.get("role") or config.get("goal") or "Workspace agent"),
         "model": _model(str(config["model"])),
         "instructions": [_instruction(config, manager=bool(sub_agents), specialists=specialist_configs)],
-        "tools": _tools(config, specs, callback_url, callback_token, run_id),
+        "tools": _tools(config, specs, callback_url, callback_token, run_id, native_tools),
         "markdown": True,
     }
     if sub_agents:
@@ -311,7 +317,7 @@ def _model_candidates(requested: str) -> list[str]:
     return list(dict.fromkeys((requested, *RESILIENT_GEMINI_MODELS[1:])))
 
 
-async def _run_agno_async(payload: dict[str, Any], send: Any) -> None:
+async def _run_agno_with_tools(payload: dict[str, Any], send: Any, native_tools: list[Any] | None = None) -> None:
     run_id = str(payload["run_id"])
     specs = {item["name"]: item for item in payload.get("tools", [])}
     manager_config = payload["agent"]
@@ -351,6 +357,7 @@ async def _run_agno_async(payload: dict[str, Any], send: Any) -> None:
             run_id,
             index=0,
             specialists=attempt_specialists,
+            native_tools=native_tools,
         )
         send({"type": "stage", "stage": "contacting_provider", "label": "Waiting for the AI provider"})
         events = runtime.arun(
@@ -400,6 +407,34 @@ async def _run_agno_async(payload: dict[str, Any], send: Any) -> None:
         raise RuntimeError("Agno ended without a final response.")
     send({"type": "stage", "stage": "finalizing", "label": "Finishing the answer"})
     send({"type": "result", "text": result_text, "usage": usage, "model": resolved_model})
+
+
+async def _run_agno_async(payload: dict[str, Any], send: Any) -> None:
+    configs = [payload.get("agent", {}), *payload.get("specialists", [])]
+    needs_web = any(NATIVE_WEB_TOOL_NAMES.intersection(config.get("tools", [])) for config in configs)
+    if not needs_web:
+        await _run_agno_with_tools(payload, send)
+        return
+
+    # Scout's upstream default is Parallel's public MCP endpoint. It works
+    # keyless with a rate limit; PARALLEL_API_KEY raises that limit when set.
+    from agno.tools.mcp import MCPTools
+
+    parallel_key = os.getenv("PARALLEL_API_KEY", "").strip()
+    headers = {"authorization": f"Bearer {parallel_key}"} if parallel_key else None
+    web = MCPTools(
+        url="https://search.parallel.ai/mcp",
+        transport="streamable-http",
+        include_tools=["web_search", "web_fetch"],
+        headers=headers,
+        timeout_seconds=30,
+        name="scout_web",
+    )
+    await web.__aenter__()
+    try:
+        await _run_agno_with_tools(payload, send, [web])
+    finally:
+        await web.__aexit__(None, None, None)
 
 
 def run_agno(payload: dict[str, Any], send: Any) -> None:

@@ -77,6 +77,32 @@ def test_dynamic_agno_team_preserves_tools_and_specialists():
     assert root.tools[0].parameters["required"] == ["item_id"]
 
 
+def test_native_web_tool_is_only_attached_to_agents_that_request_it():
+    native = SimpleNamespace(name="scout_web")
+    with_web = config("Scout", tools=["web_search"])
+    without_web = config("Drive Agent", tools=["read_file"])
+    root, _ = app._build_runtime(
+        with_web,
+        {},
+        "http://worker:3001/tool",
+        "token",
+        "run-id",
+        index=0,
+        native_tools=[native],
+    )
+    assert root.tools == [native]
+    root, _ = app._build_runtime(
+        without_web,
+        {},
+        "http://worker:3001/tool",
+        "token",
+        "run-id",
+        index=0,
+        native_tools=[native],
+    )
+    assert root.tools == []
+
+
 def test_callback_tool_uses_authenticated_workspace_bridge():
     tool = app.CallbackTool(
         {"name": "read_file", "description": "Read a file", "inputSchema": {"type": "object"}},

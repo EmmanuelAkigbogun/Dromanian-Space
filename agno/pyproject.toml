@@ -6,6 +6,8 @@ requires-python = ">=3.11,<3.14"
 dependencies = [
   "cryptography==46.0.5",
   "agno[anthropic,cerebras,google,openai]==3.1.10",
+  "fastmcp>=4.0.0,<5",
+  "mcp>=2.1.0,<3.0.0",
 ]
 
 [dependency-groups]

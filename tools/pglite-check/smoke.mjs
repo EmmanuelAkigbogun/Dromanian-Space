@@ -122,7 +122,7 @@ export default async function smoke(db, legacy) {
 
   // Roster
   const handles = (await h.admin(`SELECT handle FROM workspace_agents WHERE workspace_id = $1 AND is_builtin AND archived_at IS NULL ORDER BY handle`, [wsB])).map((r) => r.handle);
-  check(JSON.stringify(handles) === JSON.stringify(['cerebras-analyst', 'cerebras-engineer', 'cerebras-research', 'cerebras-team', 'cerebras-writer']), `roster: five Cerebras agents (${handles.join(', ')})`);
+  check(JSON.stringify(handles) === JSON.stringify(['cerebras-analyst', 'cerebras-research', 'cerebras-team', 'cerebras-writer', 'drive-agent', 'scout']), `roster: six Cerebras agents without the deleted coding agent (${handles.join(', ')})`);
 
   // Automation keys
   check(await h.denied(h.user(member, `SELECT automation_key_create($1, 'n8n')`, [wsA])), 'members cannot create automation keys');

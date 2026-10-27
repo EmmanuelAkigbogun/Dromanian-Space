@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import type { ToolSpec } from '../../ai/provider.js';
 import { submitTasksForApproval } from './approvals.js';
-import { readCrmRecord, proposeCrmUpdate } from './crm.js';
+import { readCrmRecord, proposeCrmUpdate, searchCrm } from './crm.js';
 import { computeCsvMetrics } from './csv-metrics.js';
+import { listDrive, proposeDriveAction } from './drive.js';
 import { proposeChannelMessage, proposeDocument, proposeTask } from './propose.js';
 import { listTasks, readConversationTool, readFile, searchKnowledge, searchWorkspace } from './read.js';
 import {
@@ -13,7 +14,7 @@ import type { AgentTool } from './types.js';
 /** Client tools the engine implements. web_search and fetch_site_page are provider (server) tools. */
 export const TOOL_REGISTRY: Record<string, AgentTool> = Object.fromEntries(
   [
-    readCrmRecord, proposeCrmUpdate, searchWorkspace, searchKnowledge, readFile, readConversationTool, listTasks, computeCsvMetrics,
+    searchCrm, readCrmRecord, proposeCrmUpdate, listDrive, proposeDriveAction, searchWorkspace, searchKnowledge, readFile, readConversationTool, listTasks, computeCsvMetrics,
     proposeTask, proposeDocument, proposeChannelMessage, readCalendar, proposeCalendarEvent, workspaceMetrics, readBrandKit,
     readPersonalNotes, savePersonalNote, delegateToSpecialists, submitTasksForApproval,
   ].map((t) => [t.name, t as unknown as AgentTool]),
@@ -38,6 +39,7 @@ const APPROVAL: Record<string, ToolAvailability['approval']> = {
   propose_channel_message: 'review_card',
   propose_crm_update: 'review_card',
   propose_calendar_event: 'review_card',
+  propose_drive_action: 'review_card',
   submit_tasks_for_approval: 'project_manager',
 };
 
@@ -54,10 +56,10 @@ export function toolAvailability(names: string[], opts: AvailabilityInputs): Too
     if (name === 'web_search') {
       return {
         name,
-        available: false,
+        available: opts.webResearchEnabled,
         approval,
         reason: opts.webResearchEnabled
-          ? 'Connect an Agno web-search tool before agents can research the public web.'
+          ? undefined
           : 'Web research is turned off in this workspace’s AI settings.',
       };
     }

@@ -261,6 +261,13 @@ export async function executeRun(
   }
   const canFetchSite = version.tools.includes('fetch_site_page') && Boolean(ctx.settings.siteUrl);
   if (canFetchSite) contextLines.push(`The workspace site is ${ctx.settings.siteUrl} — you may fetch pages on that site only.`);
+  const webResearchEnabled = claim.settings.web_research_enabled;
+  const nativeToolAllowed = (name: string) =>
+    name === 'web_search' ? webResearchEnabled :
+      name === 'fetch_site_page' ? canFetchSite : false;
+  if (version.tools.includes('web_search') && !webResearchEnabled) {
+    contextLines.push('Public web research is disabled in this workspace. Do not claim to have searched the web.');
+  }
   const isCoordinator = agent.kind === 'coordinator' && run.depth === 0;
   let specialistConfigs: AgentRuntimeConfig[] = [];
   if (isCoordinator) {
@@ -420,14 +427,14 @@ export async function executeRun(
       kind: agent.kind,
       model: run.model,
       effort: run.effort,
-      tools: version.tools.filter((name) => allowed(name) && Boolean(TOOL_REGISTRY[name]) && name !== 'delegate_to_specialists'),
+      tools: version.tools.filter((name) => allowed(name) && (Boolean(TOOL_REGISTRY[name]) || nativeToolAllowed(name)) && name !== 'delegate_to_specialists'),
       max_iter: version.max_tool_steps,
       max_execution_time: maxSeconds,
     };
     specialistConfigs = specialistConfigs.map((specialist) => ({
       ...specialist,
       instructions: systemPrompt(specialist.name, specialist.instructions),
-      tools: specialist.tools.filter((name) => allowed(name) && Boolean(TOOL_REGISTRY[name]) && name !== 'delegate_to_specialists'),
+      tools: specialist.tools.filter((name) => allowed(name) && (Boolean(TOOL_REGISTRY[name]) || nativeToolAllowed(name)) && name !== 'delegate_to_specialists'),
       max_execution_time: maxSeconds,
     }));
     const historyText = history.length
