@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { ToolSpec } from '../../ai/provider.js';
 import { submitTasksForApproval } from './approvals.js';
-import { readCrmRecord, proposeCrmUpdate, searchCrm } from './crm.js';
+import { readCrmRecord, proposeCrmUpdate, searchCrm, searchCrmNotes } from './crm.js';
 import { computeCsvMetrics } from './csv-metrics.js';
 import { listDrive, proposeDriveAction } from './drive.js';
 import { proposeChannelMessage, proposeDocument, proposeTask } from './propose.js';
@@ -14,7 +14,7 @@ import type { AgentTool } from './types.js';
 /** Client tools the engine implements. web_search and fetch_site_page are provider (server) tools. */
 export const TOOL_REGISTRY: Record<string, AgentTool> = Object.fromEntries(
   [
-    searchCrm, readCrmRecord, proposeCrmUpdate, listDrive, proposeDriveAction, searchWorkspace, searchKnowledge, readFile, readConversationTool, listTasks, computeCsvMetrics,
+    searchCrm, searchCrmNotes, readCrmRecord, proposeCrmUpdate, listDrive, proposeDriveAction, searchWorkspace, searchKnowledge, readFile, readConversationTool, listTasks, computeCsvMetrics,
     proposeTask, proposeDocument, proposeChannelMessage, readCalendar, proposeCalendarEvent, workspaceMetrics, readBrandKit,
     readPersonalNotes, savePersonalNote, delegateToSpecialists, submitTasksForApproval,
   ].map((t) => [t.name, t as unknown as AgentTool]),
@@ -73,7 +73,7 @@ export function toolAvailability(names: string[], opts: AvailabilityInputs): Too
           : 'No site address is set in this workspace’s AI settings.',
       };
     }
-    if (name === 'read_crm_record' || name === 'propose_crm_update') {
+    if (name === 'search_crm' || name === 'search_crm_notes' || name === 'read_crm_record' || name === 'propose_crm_update') {
       return opts.crmInstalled
         ? { name, available: true, approval }
         : { name, available: false, approval, reason: 'The CRM module is not set up in this workspace yet.' };
