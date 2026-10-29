@@ -4,7 +4,7 @@ import { submitTasksForApproval } from './approvals.js';
 import { readCrmRecord, proposeCrmUpdate, searchCrm, searchCrmNotes } from './crm.js';
 import { computeCsvMetrics } from './csv-metrics.js';
 import { listDrive, proposeDriveAction } from './drive.js';
-import { proposeChannelMessage, proposeDocument, proposeTask } from './propose.js';
+import { proposeChannelMessage, proposeDocument, proposeSocialPosts, proposeTask } from './propose.js';
 import { listTasks, readConversationTool, readFile, searchKnowledge, searchWorkspace } from './read.js';
 import {
   delegateToSpecialists, proposeCalendarEvent, readBrandKit, readCalendar, readPersonalNotes, savePersonalNote, workspaceMetrics,
@@ -15,7 +15,7 @@ import type { AgentTool } from './types.js';
 export const TOOL_REGISTRY: Record<string, AgentTool> = Object.fromEntries(
   [
     searchCrm, searchCrmNotes, readCrmRecord, proposeCrmUpdate, listDrive, proposeDriveAction, searchWorkspace, searchKnowledge, readFile, readConversationTool, listTasks, computeCsvMetrics,
-    proposeTask, proposeDocument, proposeChannelMessage, readCalendar, proposeCalendarEvent, workspaceMetrics, readBrandKit,
+    proposeTask, proposeDocument, proposeChannelMessage, proposeSocialPosts, readCalendar, proposeCalendarEvent, workspaceMetrics, readBrandKit,
     readPersonalNotes, savePersonalNote, delegateToSpecialists, submitTasksForApproval,
   ].map((t) => [t.name, t as unknown as AgentTool]),
 );
@@ -40,11 +40,13 @@ const APPROVAL: Record<string, ToolAvailability['approval']> = {
   propose_crm_update: 'review_card',
   propose_calendar_event: 'review_card',
   propose_drive_action: 'review_card',
+  propose_social_posts: 'review_card',
   submit_tasks_for_approval: 'project_manager',
 };
 
 export interface AvailabilityInputs {
   webResearchEnabled: boolean;
+  webResearchAvailable: boolean;
   crmInstalled: boolean;
   siteUrl: string | null;
   brandKitFolderId: string | null;
@@ -56,21 +58,23 @@ export function toolAvailability(names: string[], opts: AvailabilityInputs): Too
     if (name === 'web_search') {
       return {
         name,
-        available: opts.webResearchEnabled,
+        available: opts.webResearchEnabled && opts.webResearchAvailable,
         approval,
-        reason: opts.webResearchEnabled
-          ? undefined
-          : 'Web research is turned off in this workspace’s AI settings.',
+        reason: !opts.webResearchEnabled
+          ? 'Web research is turned off in this workspace’s AI settings.'
+          : opts.webResearchAvailable ? undefined : 'Parallel MCP is not reachable from the Agno runtime.',
       };
     }
     if (name === 'fetch_site_page') {
       return {
         name,
-        available: false,
+        available: Boolean(opts.siteUrl) && opts.webResearchEnabled && opts.webResearchAvailable,
         approval,
-        reason: opts.siteUrl
-          ? 'Connect an Agno site-reading tool before agents can fetch live pages.'
-          : 'No site address is set in this workspace’s AI settings.',
+        reason: !opts.siteUrl
+          ? 'No site address is set in this workspace’s AI settings.'
+          : !opts.webResearchEnabled
+            ? 'Web research is turned off in this workspace’s AI settings.'
+            : opts.webResearchAvailable ? undefined : 'Parallel MCP site fetch is not reachable from the Agno runtime.',
       };
     }
     if (name === 'search_crm' || name === 'search_crm_notes' || name === 'read_crm_record' || name === 'propose_crm_update') {

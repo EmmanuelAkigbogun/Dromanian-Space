@@ -34,11 +34,11 @@ interface Status {
   costs?: { month_usd: number; unpriced_rows: number; by_model: Array<{ provider: string; model: string; runs: number; cost_usd: number | null }> } | null;
   data_flow: { generation: string; embeddings: string; storage: string };
   embeddings: { configured: boolean };
-  web_research: { enabled_by_admin: boolean; available: boolean };
+  web_research: { enabled_by_admin: boolean; available: boolean; status?: string; checked_at?: number | null; reason?: string | null };
   crm: { installed: boolean };
   site: { url: string | null };
   brand_kit: { folder_id: string | null };
-  connectors: Array<{ kind: string; label: string; status: string }>;
+  connectors: Array<{ kind: string; label: string; status: string; detail?: string }>;
   settings: {
     enabled: boolean;
     default_model: string;
@@ -94,8 +94,11 @@ const TOOL_LABELS: Record<string, string> = {
   read_file: 'Read a file you can open',
   read_conversation: 'Read conversations you belong to',
   list_tasks: 'List tasks you can see',
+  search_crm: 'Search CRM companies and contacts',
+  search_crm_notes: 'Search CRM notes and comments',
   read_crm_record: 'Read CRM records',
-  compute_csv_metrics: 'Calculate metrics from a CSV file',
+  list_drive: 'Find files and folders in Drive',
+  compute_csv_metrics: 'Calculate metrics from CSV or Excel files',
   workspace_metrics: 'Calculate workspace metrics',
   web_search: 'Search the web',
   fetch_site_page: 'Read pages of your site',
@@ -109,6 +112,8 @@ const TOOL_LABELS: Record<string, string> = {
   propose_channel_message: 'Post messages',
   propose_crm_update: 'Update CRM records',
   propose_calendar_event: 'Add calendar events',
+  propose_drive_action: 'Create, rename or move Drive items',
+  propose_social_posts: 'Create reviewed Social drafts',
   submit_tasks_for_approval: 'Send tasks to project managers',
 };
 
@@ -127,6 +132,10 @@ const CONNECTED_ACTIONS: Record<string, string> = {
   search_analytics: 'using search analytics',
   social_accounts: 'publishing or scheduling posts',
   email_inbox: 'summarizing your inbox',
+  accounting: 'reading accounting or banking data',
+  product_analytics: 'reading product usage data',
+  billing: 'reading billing and renewal data',
+  design_platform: 'creating or reviewing design assets',
 };
 
 
@@ -165,7 +174,23 @@ function readiness(agent: Agent, status: Status | undefined) {
     if (c?.status !== 'connected') notes.push(`${c?.label ?? kind} not connected — ${CONNECTED_ACTIONS[kind] ?? 'connected actions'} unavailable.`);
   }
   if (agent.tools.includes('read_brand_kit') && !status.brand_kit.folder_id) notes.push('No brand kit folder chosen; drafts follow general guidance.');
-  if (agent.tools.includes('web_search') && !status.web_research.enabled_by_admin) notes.push('Web research is off; it works from workspace sources.');
+  if (agent.tools.includes('web_search')) {
+    if (!status.web_research.enabled_by_admin) notes.push('Web research is turned off in AI settings; only workspace sources are available.');
+    else if (!status.web_research.available) notes.push(status.web_research.reason ?? 'Web research is enabled but its runtime is unavailable.');
+  }
+  if (agent.tools.includes('fetch_site_page') && status.site.url && !status.web_research.available) {
+    notes.push(status.web_research.reason ?? 'The configured site cannot be fetched because web research is unavailable.');
+  }
+  if (agent.kind === 'coordinator') {
+    for (const connector of status.connectors.filter((item) => item.status !== 'connected')) {
+      notes.push(`${connector.label} not connected — ${connector.detail ?? 'specialist actions that need it are unavailable.'}`);
+    }
+    if (!status.brand_kit.folder_id) notes.push('No brand kit folder is configured for brand-dependent specialists.');
+    if (!status.site.url) notes.push('No site address is configured for the SEO specialist.');
+    if (!status.web_research.available && !notes.some((note) => note === status.web_research.reason)) {
+      notes.push(status.web_research.reason ?? 'Public-web specialists cannot reach the web research runtime.');
+    }
+  }
   return { blocking, notes };
 }
 
@@ -182,7 +207,7 @@ function ReadinessLine({ agent, status }: { agent: Agent; status: Status | undef
   const tone = blocking.length ? a.blocked : notes.length ? a.limited : a.ready;
   // Workspace-wide blockers are explained in the banner; cards stay short.
   const short = !status?.provider.configured ? 'Waiting for AI provider setup' : !status.settings.enabled ? 'AI is off in this workspace' : blocking[0];
-  const text = blocking.length ? short : notes.length ? `Ready · ${notes.length} connected action${notes.length === 1 ? '' : 's'} unavailable` : 'Ready';
+  const text = blocking.length ? short : notes.length ? `Partially ready · ${notes.length} limitation${notes.length === 1 ? '' : 's'}` : 'Ready';
   return (
     <p className={a.state}>
       <span className={`${a.dot} ${tone}`} />
@@ -1290,6 +1315,11 @@ function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Stat
           <input type="checkbox" checked={form.web_research_enabled} onChange={(e) => setForm({ ...form, web_research_enabled: e.target.checked })} />
           Allow web research (results are attributed and treated as untrusted)
         </label>
+        {form.web_research_enabled && (
+          <p className={s.muted} role="status">
+            Web runtime: {status.web_research.available ? 'available' : `unavailable — ${status.web_research.reason ?? 'health check failed'}`}
+          </p>
+        )}
         <label>
           Replies when someone mentions an agent in a conversation
           <select className={s.input} value={form.mention_reply_policy} onChange={(e) => setForm({ ...form, mention_reply_policy: e.target.value })}>
@@ -1329,7 +1359,7 @@ function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Stat
             {status.connectors.map((c) => (
               <li key={c.kind} className={a.state}>
                 <span className={`${a.dot} ${c.status === 'connected' ? a.ready : a.limited}`} />
-                {c.label} · {c.status === 'connected' ? 'connected' : 'not connected'}
+                <span>{c.label} · {c.status === 'connected' ? 'connected' : 'not connected'}{c.detail ? ` — ${c.detail}` : ''}</span>
               </li>
             ))}
           </ul>

@@ -11,7 +11,7 @@ import styles from './SocialPage.module.css';
 
 type Network = 'x' | 'linkedin' | 'facebook' | 'pinterest' | 'tiktok';
 type AccountStatus = 'needs_login' | 'connected' | 'error';
-type PostStatus = 'scheduled' | 'publishing' | 'published' | 'partial' | 'failed' | 'cancelled';
+type PostStatus = 'draft' | 'scheduled' | 'publishing' | 'published' | 'partial' | 'failed' | 'cancelled';
 
 interface Company { id: string; name: string }
 interface Account {
@@ -73,9 +73,10 @@ export default function SocialPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [scheduled, setScheduled] = useState(localDateTime(new Date(Date.now() + 60 * 60_000)));
   const [publishNow, setPublishNow] = useState(false);
+  const [draftId, setDraftId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [filter, setFilter] = useState<'all' | 'scheduled' | 'published' | 'failed'>('all');
+  const [filter, setFilter] = useState<'all' | 'draft' | 'scheduled' | 'published' | 'failed'>('all');
 
   const companies = useQuery({
     queryKey: [...base, 'companies'],
@@ -120,9 +121,11 @@ export default function SocialPage() {
         p_link: link.trim() || null,
         p_account_ids: [...selected],
         p_scheduled_at: publishNow ? null : new Date(scheduled).toISOString(),
+        p_post_id: draftId,
       }));
       setBody('');
       setLink('');
+      setDraftId(null);
       await refresh();
       toast({ variant: 'success', description: publishNow ? 'Post queued for publishing.' : 'Post scheduled.' });
       document.querySelector('#posts')?.scrollIntoView({ behavior: 'smooth' });
@@ -199,7 +202,7 @@ export default function SocialPage() {
         <div className={styles.sectionHeading}>
           <div><p className={styles.eyebrow}>{brandName}</p><h2>Publishing history</h2></div>
           <div className={styles.filters}>
-            {(['all', 'scheduled', 'published', 'failed'] as const).map((value) => <button key={value} className={filter === value ? styles.filterActive : styles.filter} onClick={() => setFilter(value)}>{value[0].toUpperCase() + value.slice(1)}</button>)}
+            {(['all', 'draft', 'scheduled', 'published', 'failed'] as const).map((value) => <button key={value} className={filter === value ? styles.filterActive : styles.filter} onClick={() => setFilter(value)}>{value[0].toUpperCase() + value.slice(1)}</button>)}
           </div>
         </div>
         <div className={styles.posts}>
@@ -216,6 +219,14 @@ export default function SocialPage() {
                 </div>
               </div>
               <div className={styles.postActions}>
+                {post.status === 'draft' && <button className={styles.button} onClick={() => {
+                  setBody(post.body);
+                  setLink(post.link ?? '');
+                  setDraftId(post.id);
+                  setPublishNow(false);
+                  if (post.scheduled_at && new Date(post.scheduled_at).getTime() > Date.now()) setScheduled(localDateTime(new Date(post.scheduled_at)));
+                  document.querySelector('#compose')?.scrollIntoView({ behavior: 'smooth' });
+                }}>Review and schedule</button>}
                 {post.status === 'scheduled' && <button className={styles.button} onClick={() => void act(() => result(platform.rpc('social_cancel_post', { p_post_id: post.id })), 'Post cancelled.')}>Cancel</button>}
                 {(post.status === 'failed' || post.status === 'partial') && <button className={styles.button} onClick={() => void act(() => result(platform.rpc('social_schedule_post', {
                   p_workspace_id: ws,

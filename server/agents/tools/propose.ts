@@ -13,7 +13,7 @@ interface ProposalResult {
 export async function proposeAction(
   ctx: RunContext,
   toolUseId: string,
-  actionType: 'create_task' | 'save_document' | 'post_message' | 'create_event' | 'create_drive_folder' | 'rename_drive_item' | 'move_drive_item',
+  actionType: 'create_task' | 'save_document' | 'post_message' | 'create_event' | 'create_drive_folder' | 'rename_drive_item' | 'move_drive_item' | 'create_social_drafts',
   args: Record<string, unknown>,
   summary: string,
 ): Promise<ToolOutput> {
@@ -176,6 +176,31 @@ export const proposeChannelMessage = defineTool({
       'post_message',
       { channel_id: channel.id, parent_id: input.thread_root_id ?? null, content: input.content },
       summary,
+    );
+  },
+});
+
+export const proposeSocialPosts = defineTool({
+  name: 'propose_social_posts',
+  description:
+    'Propose creating dated draft posts in the Social area. The drafts are created only after the requester approves the review card; this never publishes them or connects accounts.',
+  schema: z.object({
+    posts: z.array(z.object({
+      body: z.string().min(1).max(10_000),
+      scheduled_at: z.iso.datetime({ offset: true }).optional().describe('Suggested publication time with UTC offset'),
+      link: z.url().max(2_000).optional(),
+      company_id: z.string().uuid().optional().describe('CRM company id; omit for the workspace brand'),
+    })).min(1).max(31),
+  }),
+  label: (input) => `Preparing ${input.posts.length} Social draft${input.posts.length === 1 ? '' : 's'}`,
+  async run(ctx, input, call) {
+    const count = input.posts.length;
+    return proposeAction(
+      ctx,
+      call.toolUseId,
+      'create_social_drafts',
+      { posts: input.posts.map((post) => ({ ...post, company_id: post.company_id ?? null, scheduled_at: post.scheduled_at ?? null, link: post.link ?? null })) },
+      `Create ${count} reviewed Social draft${count === 1 ? '' : 's'}`,
     );
   },
 });

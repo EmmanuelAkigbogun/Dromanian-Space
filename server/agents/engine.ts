@@ -281,9 +281,9 @@ export async function executeRun(
       a.handle !== agent.handle && a.current_version_id && (a.visibility === 'workspace' || a.created_by === run.requested_by),
     );
     contextLines.push(
-      'Specialists you can delegate to (handle — name: what they do):',
+      'Available specialist domains (handle — name: what they do):',
       ...specialists.map((a) => `- ${a.handle} — ${a.name}: ${a.description}`),
-      'You are answering as the whole team. Use the combined authorized capabilities directly and only use the tools needed for this request; do not try to contact every specialist.',
+      'You are answering as the whole team with one coordinator and the specialists’ combined authorized tools. The names above are expertise domains, not separate completed runs. Use only the tools needed for this request and never say a specialist searched, read, or completed work unless the corresponding tool result proves it.',
     );
     if (specialists.length) {
       const { data: versions, error: versionsError } = await db
@@ -310,6 +310,16 @@ export async function executeRun(
           max_execution_time: Math.max(60, Math.floor((opts.budgetMs ?? RUN_BUDGET_MS) / 1000) - 30),
         }];
       });
+    }
+    const teamTools = new Set(specialistConfigs.flatMap((specialist) => specialist.tools));
+    if (teamTools.has('read_brand_kit') && !claim.settings.brand_kit_folder_id) {
+      contextLines.push('Readiness limitation: no brand kit folder is configured; identify this when brand-specific output is requested.');
+    }
+    if (teamTools.has('fetch_site_page') && !claim.settings.site_url) {
+      contextLines.push('Readiness limitation: no site address is configured; do not claim an SEO site audit was performed.');
+    }
+    if (teamTools.has('web_search') && !webResearchEnabled) {
+      contextLines.push('Readiness limitation: public web research is disabled; do not infer that research specialists searched the public web.');
     }
   }
   if (run.depth > 0) contextLines.push('You are working on a task assigned by the team coordinator; answer the task directly.');

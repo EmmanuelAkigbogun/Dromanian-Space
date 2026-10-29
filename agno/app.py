@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 import traceback
 import urllib.error
 import urllib.request
@@ -35,6 +36,14 @@ APP_NAME = "darkspace"
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
 RESILIENT_GEMINI_MODELS = ("gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite")
 NATIVE_WEB_TOOL_NAMES = {"web_search", "fetch_site_page"}
+
+_web_health_lock = threading.Lock()
+_web_health: dict[str, Any] = {
+    "available": False,
+    "status": "checking",
+    "reason": "The first Parallel MCP connectivity check has not finished.",
+    "checked_at": None,
+}
 
 
 def _json_line(value: dict[str, Any]) -> bytes:
@@ -437,6 +446,43 @@ async def _run_agno_async(payload: dict[str, Any], send: Any) -> None:
         await web.__aexit__(None, None, None)
 
 
+async def _check_web_mcp() -> None:
+    """Open and close the real MCP session; successful entry includes tool discovery."""
+    from agno.tools.mcp import MCPTools
+
+    parallel_key = os.getenv("PARALLEL_API_KEY", "").strip()
+    headers = {"authorization": f"Bearer {parallel_key}"} if parallel_key else None
+    web = MCPTools(
+        url="https://search.parallel.ai/mcp",
+        transport="streamable-http",
+        include_tools=["web_search", "web_fetch"],
+        headers=headers,
+        timeout_seconds=15,
+        name="scout_web_health",
+    )
+    await web.__aenter__()
+    await web.__aexit__(None, None, None)
+
+
+def _web_health_loop() -> None:
+    while True:
+        checked_at = int(time.time())
+        try:
+            asyncio.run(_check_web_mcp())
+            state = {"available": True, "status": "connected", "reason": None, "checked_at": checked_at}
+        except Exception as error:
+            state = {
+                "available": False,
+                "status": "unavailable",
+                "reason": f"Parallel MCP check failed: {type(error).__name__}",
+                "checked_at": checked_at,
+            }
+        with _web_health_lock:
+            _web_health.clear()
+            _web_health.update(state)
+        time.sleep(60)
+
+
 def run_agno(payload: dict[str, Any], send: Any) -> None:
     asyncio.run(_run_agno_async(payload, send))
 
@@ -490,7 +536,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/health":
             self.send_error(404)
             return
-        body = b'{"ok":true,"runtime":"agno"}'
+        with _web_health_lock:
+            web_health = dict(_web_health)
+        body = json.dumps({"ok": True, "runtime": "agno", "web_research": web_health}).encode()
         self.send_response(200)
         self.send_header("content-type", "application/json")
         self.send_header("content-length", str(len(body)))
@@ -571,6 +619,7 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     os.environ.setdefault("AGNO_TELEMETRY", "false")
     port = int(os.getenv("PORT", "8000"))
+    threading.Thread(target=_web_health_loop, name="web-mcp-health", daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     print(json.dumps({"level": "info", "message": "Agno runtime listening", "port": port}), flush=True)
     server.serve_forever()

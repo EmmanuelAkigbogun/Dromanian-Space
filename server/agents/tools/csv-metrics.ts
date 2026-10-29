@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { rpc, serviceClient } from '../../database.js';
 import { parseCsv } from '../../knowledge/csv.js';
+import { parseXlsx } from '@/app/routes/CRM/spreadsheet.js';
 import { defineTool } from './types.js';
 
-const MAX_CSV_BYTES = 20 * 1024 * 1024;
+const MAX_SPREADSHEET_BYTES = 20 * 1024 * 1024;
 const MAX_GROUPS = 50;
 
 const Operation = z.object({
@@ -174,15 +175,16 @@ interface FileRow {
 export const computeCsvMetrics = defineTool({
   name: 'compute_csv_metrics',
   description:
-    'Compute counts, sums, averages, minimums, maximums and distinct counts over a CSV file the requester can open, with optional filters and one group-by column. Set describe=true first to see the columns and a few sample rows. Report only numbers this tool returns.',
+    'Compute counts, sums, averages, minimums, maximums and distinct counts over a CSV or Excel (.xlsx) file the requester can open, with optional filters and one group-by column. Set describe=true first to see sheets, columns and sample rows. Grouped results are chart-ready. Report only numbers this tool returns.',
   schema: z.object({
-    item_id: z.string().uuid().describe('Drive item id of the CSV file'),
+    item_id: z.string().uuid().describe('Drive item id of the CSV or .xlsx file'),
+    sheet: z.string().max(200).optional().describe('Excel worksheet name; omit to use the first worksheet'),
     describe: z.boolean().optional().describe('Return columns, row count and sample rows instead of metrics'),
     operations: z.array(Operation).max(10).optional(),
     filters: z.array(Filter).max(10).optional(),
     group_by: z.string().max(200).optional(),
   }),
-  label: (i) => (i.describe ? 'Inspecting a CSV file' : 'Calculating metrics'),
+  label: (i) => (i.describe ? 'Inspecting a spreadsheet' : 'Calculating spreadsheet metrics'),
   async run(ctx, input) {
     if (ctx.allowedItemIds && !ctx.allowedItemIds.includes(input.item_id)) {
       return { content: 'This file is not among the sources this agent may use.', summary: { error: 'out_of_scope' }, isError: true };
@@ -190,16 +192,51 @@ export const computeCsvMetrics = defineTool({
     const [file] = await rpc<FileRow[]>('agent_file_for', { p_actor: ctx.actorId, p_item_id: input.item_id });
     if (!file) return { content: 'File not found, or the requester cannot open it.', summary: { error: 'not_found' }, isError: true };
     const isCsv = /csv/i.test(file.mime_type) || /\.csv$/i.test(file.name);
-    if (!isCsv) return { content: `"${file.name}" is not a CSV file.`, summary: { error: 'not_csv' }, isError: true };
-    if (file.size_bytes > MAX_CSV_BYTES) {
+    const isXlsx = /spreadsheetml/i.test(file.mime_type) || /\.xlsx$/i.test(file.name);
+    if (!isCsv && !isXlsx) return { content: `"${file.name}" is not a CSV or Excel (.xlsx) file.`, summary: { error: 'not_spreadsheet' }, isError: true };
+    if (file.size_bytes > MAX_SPREADSHEET_BYTES) {
       return { content: `"${file.name}" is larger than 20 MB, which this tool does not process.`, summary: { error: 'too_large' }, isError: true };
     }
     const { data, error } = await serviceClient().storage.from(file.bucket).download(file.path);
     if (error || !data) return { content: 'The stored file could not be read.', summary: { error: 'download_failed' }, isError: true };
-    const parsed = parseCsv(await data.text(), 500_000);
+    let parsed: { header: string[]; rows: string[][]; truncated?: boolean };
+    let sheetNames: string[] | undefined;
+    let selectedSheet: string | undefined;
+    if (isXlsx) {
+      let sheets;
+      try {
+        sheets = parseXlsx(new Uint8Array(await data.arrayBuffer()));
+      } catch {
+        return { content: `"${file.name}" could not be parsed as an Excel workbook.`, summary: { error: 'invalid_xlsx' }, isError: true };
+      }
+      const availableSheets = sheets.map((sheet) => sheet.name);
+      sheetNames = availableSheets;
+      const requested = input.sheet?.trim().toLowerCase();
+      const sheet = requested ? sheets.find((candidate) => candidate.name.toLowerCase() === requested) : sheets[0];
+      if (!sheet) {
+        return {
+          content: input.sheet
+            ? `Worksheet "${input.sheet}" was not found. Available worksheets: ${availableSheets.join(', ') || 'none'}.`
+            : 'The workbook has no readable worksheets.',
+          summary: { error: 'unknown_sheet', sheets: availableSheets },
+          isError: true,
+        };
+      }
+      selectedSheet = sheet.name;
+      parsed = { header: sheet.header, rows: sheet.rows };
+    } else {
+      parsed = parseCsv(await data.text(), 500_000);
+    }
     await ctx.recordSource('drive_item', file.item_id, { itemId: file.item_id, label: file.name });
 
-    const provenance = { file: file.name, item_id: file.item_id, version_id: file.version_id, rows: parsed.rows.length };
+    const provenance = {
+      file: file.name,
+      item_id: file.item_id,
+      version_id: file.version_id,
+      sheet: selectedSheet,
+      sheets: sheetNames,
+      rows: parsed.rows.length,
+    };
     if (input.describe || !input.operations?.length) {
       return {
         content: JSON.stringify({

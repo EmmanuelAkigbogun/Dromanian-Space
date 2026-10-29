@@ -32,6 +32,10 @@ export const CONNECTORS: Record<string, string> = {
   search_analytics: 'Search analytics',
   social_accounts: 'Social media accounts',
   email_inbox: 'Email inbox',
+  accounting: 'Accounting or banking data',
+  product_analytics: 'Product usage analytics',
+  billing: 'Billing and renewal data',
+  design_platform: 'Design or image-generation platform',
 };
 
 interface CatalogRow {
@@ -71,6 +75,20 @@ interface CostRow {
   unpriced_rows: number;
 }
 
+interface AgnoHealth {
+  web_research?: { available?: boolean; status?: string; reason?: string | null; checked_at?: number | null };
+}
+
+async function agnoHealth(): Promise<AgnoHealth> {
+  const base = (process.env.AGNO_URL ?? 'http://agno:8000').replace(/\/$/, '');
+  try {
+    const response = await fetch(`${base}/health`, { signal: AbortSignal.timeout(5_000) });
+    return response.ok ? await response.json() as AgnoHealth : {};
+  } catch {
+    return {};
+  }
+}
+
 /** Estimated spend this month (admins only). */
 async function costSummary(workspaceId: string) {
   const rows = await rpc<CostRow[]>('ai_cost_summary', { p_workspace_id: workspaceId }).catch(() => null);
@@ -89,13 +107,15 @@ export async function GET(request: Request): Promise<Response> {
     if (!/^[0-9a-f-]{36}$/i.test(workspaceId)) throw new HttpError(400, 'invalid_request', 'workspace_id is required.');
     await requireMember(workspaceId, user.id);
     const db = serviceClient();
-    const [settings, totals, crm, connectorRows, catalog, membership] = await Promise.all([
+    const [settings, totals, crm, connectorRows, socialAccounts, catalog, membership, runtimeHealth] = await Promise.all([
       rpc<Settings>('ai_settings_for', { p_workspace_id: workspaceId }),
       rpc<Array<{ workspace_month: number; user_day: number }>>('ai_usage_totals', { p_workspace_id: workspaceId, p_user_id: user.id }),
       crmInstalled(),
       db.from('workspace_connectors').select('kind, status, display_name').eq('workspace_id', workspaceId),
+      db.from('social_accounts').select('id, status, label').eq('workspace_id', workspaceId),
       db.from('ai_models').select('id, provider, label, tier, input_per_mtok, output_per_mtok, active, sort_order').order('sort_order'),
       db.from('workspace_members').select('role').eq('workspace_id', workspaceId).eq('user_id', user.id).maybeSingle(),
+      agnoHealth(),
     ]);
     const isAdmin = ['owner', 'admin'].includes((membership.data?.role as string | undefined) ?? '');
     const canManageProviderKeys = user.appMetadata?.platform_admin === true;
@@ -107,6 +127,8 @@ export async function GET(request: Request): Promise<Response> {
     );
     const models = catalogModels(catalog.error ? null : (catalog.data as CatalogRow[] | null), settings.allowed_models, configured);
     const costs = isAdmin ? await costSummary(workspaceId) : null;
+    const webAvailable = runtimeHealth.web_research?.available === true;
+    const realSocial = (socialAccounts.data ?? []) as Array<{ id: string; status: string; label: string }>;
     const usedProviders = [...new Set(settings.allowed_models.map(providerNameFor))].filter(
       (p): p is 'anthropic' | 'openai' | 'gemini' | 'cerebras' => p !== null && configured.has(p),
     );
@@ -134,15 +156,36 @@ export async function GET(request: Request): Promise<Response> {
       embeddings: { configured: embeddingsConfigured(), model: embeddingsConfigured() ? env().embeddingModel : null },
       web_research: {
         enabled_by_admin: settings.web_research_enabled,
-        available: false,
-        reason: settings.web_research_enabled ? 'An Agno web-search tool is not connected.' : 'Disabled by the workspace administrator.',
+        available: settings.web_research_enabled && webAvailable,
+        status: runtimeHealth.web_research?.status ?? 'unavailable',
+        checked_at: runtimeHealth.web_research?.checked_at ?? null,
+        reason: !settings.web_research_enabled
+          ? 'Disabled by the workspace administrator.'
+          : webAvailable ? null : (runtimeHealth.web_research?.reason ?? 'The Agno runtime health check is unavailable.'),
       },
       crm: { installed: crm },
       site: { url: settings.site_url },
       brand_kit: { folder_id: settings.brand_kit_folder_id },
       connectors: Object.entries(CONNECTORS).map(([kind, label]) => {
+        if (kind === 'social_accounts') {
+          const connectedAccounts = realSocial.filter((account) => account.status === 'connected');
+          const needsAttention = realSocial.filter((account) => account.status !== 'connected');
+          return {
+            kind, label,
+            status: connectedAccounts.length > 0 ? 'connected' : 'not_connected',
+            detail: connectedAccounts.length > 0
+              ? `${connectedAccounts.length} connected account${connectedAccounts.length === 1 ? '' : 's'}${needsAttention.length ? `; ${needsAttention.length} need attention` : ''}`
+              : realSocial.length ? `${realSocial.length} account${realSocial.length === 1 ? '' : 's'} need login` : 'No Social accounts have been added.',
+          };
+        }
         const row = connected.get(kind);
-        return { kind, label, status: row?.status === 'connected' ? 'connected' : row ? (row.status as string) : 'not_connected' };
+        return {
+          kind, label,
+          status: row?.status === 'connected' ? 'connected' : row ? (row.status as string) : 'not_connected',
+          detail: row?.status === 'connected'
+            ? (row as { display_name?: string }).display_name ?? 'Connected'
+            : 'No provider authorization flow is configured.',
+        };
       }),
       settings: {
         enabled: settings.enabled,
@@ -157,6 +200,7 @@ export async function GET(request: Request): Promise<Response> {
       usage: { workspace_month_tokens: totals[0]?.workspace_month ?? 0, user_day_tokens: totals[0]?.user_day ?? 0 },
       tools: toolAvailability(KNOWN_TOOLS, {
         webResearchEnabled: settings.web_research_enabled,
+        webResearchAvailable: webAvailable,
         crmInstalled: crm,
         siteUrl: settings.site_url,
         brandKitFolderId: settings.brand_kit_folder_id,
