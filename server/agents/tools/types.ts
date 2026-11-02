@@ -3,6 +3,8 @@ import type { CitationRegistry } from '../citations.js';
 
 export interface RunScope {
   item_ids?: string[];
+  /** Managed client/company selected for this run. */
+  company_id?: string;
   channel_id?: string;
   thread_root_id?: string;
   /** A direct-message AI session: the run reads only that session's messages. */

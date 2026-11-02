@@ -56,6 +56,11 @@ interface LiveTask {
   status: string;
 }
 
+interface ManagedCompany {
+  id: string;
+  name: string;
+}
+
 interface AgentImageAttachment {
   path: string;
   name: string;
@@ -106,7 +111,7 @@ const TOOL_LABELS: Record<string, string> = {
   read_brand_kit: 'Read the brand kit',
   read_personal_notes: 'Read your private notes',
   save_personal_note: 'Save a private note',
-  delegate_to_specialists: 'Coordinate specialists with Agno',
+  delegate_to_specialists: 'Coordinate business specialists',
   propose_task: 'Create tasks',
   propose_document: 'Save documents to Drive',
   propose_channel_message: 'Post messages',
@@ -448,9 +453,9 @@ function Directory(props: {
     <>
       <header className={s.header}>
         <div>
-          <div className={s.eyebrow}>Your Agno team</div>
+          <div className={s.eyebrow}>Your OpenAI team</div>
           <h1>A coordinated team of workspace specialists.</h1>
-          <p className={s.muted}>Agno coordinates the team on the API chosen below. Agents only see what you can access, and anything that changes data waits for your review.</p>
+          <p className={s.muted}>OpenAI Responses coordinates company-aware specialists. Agents only see what you can access, and anything that changes data waits for your review.</p>
         </div>
         {props.admin && (
           <div className={s.actions}>
@@ -548,6 +553,7 @@ function AgentView(props: {
   const [liveTeam, setLiveTeam] = useState<LiveTask[]>([]);
   const [settings, setSettings] = useState(false);
   const [sources, setSources] = useState<string[]>(params.get('source') ? [params.get('source')!] : []);
+  const [companyId, setCompanyId] = useState(params.get('company') ?? params.get('client') ?? '');
   const [picker, setPicker] = useState(false);
   const [images, setImages] = useState<PendingAgentImage[]>([]);
   const [draggingImages, setDraggingImages] = useState(false);
@@ -593,6 +599,12 @@ function AgentView(props: {
     queryKey: ['platform', ws, userId, 'agent-source-options'],
     enabled: picker,
     queryFn: () => result(platform.rpc('drive_list', { p_workspace_id: ws, p_view: 'all', p_limit: 100 })),
+  });
+  const managedCompanies = useQuery({
+    queryKey: ['platform', ws, userId, 'agent-managed-companies'],
+    queryFn: (): Promise<ManagedCompany[]> => result(
+      platform.from('crm_companies').select('id,name').eq('workspace_id', ws).eq('is_client', true).is('client_id', null).order('name'),
+    ),
   });
   const notes = useQuery({
     queryKey: [...base, 'notes', agent?.id],
@@ -772,6 +784,7 @@ function AgentView(props: {
         message: message.trim() || 'Please analyze the attached image.',
         scope: {
           item_ids: sources,
+          ...(companyId ? { company_id: companyId } : {}),
           ...(attachments.length ? { attachments } : {}),
           ...(params.get('channel') ? { channel_id: params.get('channel') } : {}),
           ...(params.get('thread') ? { thread_root_id: params.get('thread') } : {}),
@@ -840,6 +853,12 @@ function AgentView(props: {
         <div className={s.conversation} style={{ margin: 0, maxWidth: 'none' }}>
           <div className={s.actions}>
             <span className={s.pill}>Private · only you</span>
+            <label>
+              <select aria-label="Managed company" className={s.input} value={companyId} onChange={(e) => { setCompanyId(e.target.value); requestKey.current = null; }}>
+                <option value="">Portfolio view</option>
+                {managedCompanies.data?.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+              </select>
+            </label>
             {params.get('channel') && <span className={s.pill}>{params.get('thread') ? 'About a thread' : 'About a channel'}</span>}
             {agent && (
               <button className={s.button} onClick={() => setPicker(true)}>

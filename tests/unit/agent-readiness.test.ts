@@ -13,7 +13,7 @@ describe('agent tool readiness', () => {
   it('requires both the workspace switch and a healthy web runtime', () => {
     expect(toolAvailability(['web_search'], { ...configured, webResearchAvailable: false })[0]).toMatchObject({
       available: false,
-      reason: expect.stringContaining('Parallel MCP'),
+      reason: expect.stringContaining('No web research runtime'),
     });
     expect(toolAvailability(['web_search'], { ...configured, webResearchEnabled: false })[0]).toMatchObject({
       available: false,

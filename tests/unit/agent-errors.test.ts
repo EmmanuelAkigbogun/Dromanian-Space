@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AgnoRunError } from '../../server/agents/agno.js';
+import { ProviderError } from '../../server/ai/provider.js';
 import { errorMessage, providerDetail } from '../../server/agents/engine.js';
 
 describe('agent run error messages', () => {
@@ -23,6 +24,15 @@ describe('agent run error messages', () => {
 
   it('keeps internal errors generic', () => {
     expect(errorMessage(new Error('relation "x" does not exist')).code).toBe('internal');
+  });
+
+  it('preserves actionable native OpenAI errors', () => {
+    expect(errorMessage(new ProviderError('auth', 'OpenAI rejected the server credentials.'))).toEqual({
+      code: 'auth', message: 'OpenAI rejected the configured credentials.',
+    });
+    expect(errorMessage(new ProviderError('unavailable', 'Could not reach OpenAI.'))).toEqual({
+      code: 'provider_error', message: 'Could not reach OpenAI.',
+    });
   });
 
   it('never shows key-like tokens', () => {

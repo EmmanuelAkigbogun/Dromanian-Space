@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { providerAgentRunner, type AgentRunInput } from '../../server/agents/agno.js';
-import { emptyUsage, type ModelProvider, type TurnResult } from '../../server/ai/provider.js';
+import { emptyUsage, type ModelProvider, type SessionInput, type TurnResult } from '../../server/ai/provider.js';
 
 const input: AgentRunInput = {
   run_id: '00000000-0000-4000-8000-000000000001',
@@ -54,5 +54,23 @@ describe('Agno runner contract', () => {
     expect(toolResults).toEqual(['Policy: approved.']);
     expect(stages).toEqual(['contacting_provider', 'generating']);
     expect(output).toMatchObject({ text: 'The policy is available.', model: 'test-model', usage: { output_tokens: 7 } });
+  });
+
+  it('passes provider-native web research into an OpenAI-style session', async () => {
+    let sessionInput: SessionInput | undefined;
+    const provider: ModelProvider = {
+      name: 'openai', configured: () => true,
+      startSession(value) {
+        sessionInput = value;
+        return { next: async () => result({ text: 'Done.' }), addToolResults: () => undefined };
+      },
+    };
+    await providerAgentRunner(provider).run({ ...input, web_search: true }, {
+      signal: new AbortController().signal,
+      onDelta: () => undefined,
+      callTool: async () => ({ content: '' }),
+    });
+    expect(sessionInput?.webSearch).toEqual({ maxUses: 8 });
+    expect(sessionInput?.webFetch).toBeNull();
   });
 });

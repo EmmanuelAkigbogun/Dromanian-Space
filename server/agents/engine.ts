@@ -8,7 +8,7 @@ import { env } from '../env.js';
 import { log } from '../log.js';
 import { rpc, serviceClient } from '../database.js';
 import { PROVIDER_KEYS, PROVIDER_LABELS, providerFor, providerNameFor } from '../ai/registry.js';
-import type { Effort, ModelProvider, TurnUsage } from '../ai/provider.js';
+import { ProviderError, type Effort, type ModelProvider, type TurnUsage } from '../ai/provider.js';
 import { CitationRegistry, resolveCitations, sourcesFooter } from './citations.js';
 import { AgnoRunError, providerAgentRunner, remoteAgentRunner, type AgentRuntimeConfig, type AgentRunner } from './agno.js';
 import { PROVIDER_TOOLS, TOOL_REGISTRY, toolSpecs } from './tools/index.js';
@@ -102,6 +102,20 @@ export function providerDetail(message: string): string {
 
 export function errorMessage(err: unknown): { code: string; message: string } {
   const text = err instanceof Error ? err.message : '';
+  if (err instanceof ProviderError) {
+    const messages: Record<string, string> = {
+      not_configured: 'OpenAI is not configured on the server.',
+      auth: 'OpenAI rejected the configured credentials.',
+      model_unavailable: 'The selected OpenAI model is not available to this API key. Choose another model in AI settings.',
+      rate_limited: err.message,
+      overloaded: err.message,
+      bad_request: err.message,
+      unavailable: err.message,
+      aborted: 'Stopped.',
+      invalid_tool_json: 'OpenAI returned an invalid tool request. Please try again.',
+    };
+    return { code: err.code === 'unavailable' || err.code === 'overloaded' ? 'provider_error' : err.code, message: providerDetail(messages[err.code] ?? err.message) };
+  }
   // Checked before the credential and rate-limit patterns: these messages can
   // mention "API key" or arrive as HTTP 429 but need a different fix.
   if (/does not exist or you do not have access|model_not_found/i.test(text)) {
@@ -243,6 +257,24 @@ export async function executeRun(
     `Workspace: ${workspace.data?.name ?? 'this workspace'}.`,
     `Requester: ${profile.data?.display_name ?? profile.data?.username ?? 'a member'}${profile.data?.username ? ` (@${profile.data.username})` : ''}.`,
   ];
+  let selectedCompany: { id: string; name: string; drive_folder_id: string | null } | null = null;
+  if (run.scope?.company_id) {
+    const company = await db.from('crm_companies')
+      .select('id, name, drive_folder_id')
+      .eq('id', run.scope.company_id)
+      .eq('workspace_id', run.workspace_id)
+      .eq('is_client', true)
+      .is('client_id', null)
+      .maybeSingle();
+    if (company.error || !company.data) {
+      return finish('failed', null, null, null, 'invalid_scope', 'The selected managed company is no longer available.');
+    }
+    selectedCompany = company.data as { id: string; name: string; drive_folder_id: string | null };
+    contextLines.push(`Managed company context: "${selectedCompany.name}" (company_id ${selectedCompany.id}). Keep CRM, Drive, brand, campaign and reporting work inside this company unless the requester explicitly asks for a portfolio comparison.`);
+    if (selectedCompany.drive_folder_id) contextLines.push(`Company Drive folder: item_id ${selectedCompany.drive_folder_id}. Prefer this folder and its contents for company-specific work.`);
+  } else {
+    contextLines.push('Managed company context: portfolio view. For company-specific CRM, Drive, campaign or content work, ask the requester to choose a managed company before proceeding. Cross-company comparison is allowed only when explicitly requested.');
+  }
   if (allowedItemIds) {
     const items = await rpc<Array<{ id: string; name: string; kind: string; index_status: string | null; index_message: string | null }>>(
       'agent_scope_items_for',
@@ -445,7 +477,7 @@ export async function executeRun(
     return { id: call.id, content: out.content, isError: out.isError };
   };
 
-  // ---- Agno execution -------------------------------------------------------
+  // ---- Model execution ------------------------------------------------------
   try {
     const warnings: Array<{ code: string; message: string }> = [];
     const maxSeconds = Math.max(60, Math.floor(budgetMs / 1000) - 30);
@@ -475,7 +507,13 @@ export async function executeRun(
     const historyText = history.length
       ? `<conversation_history>\n${history.map((item) => `${item.role}: ${item.content}`).join('\n\n')}\n</conversation_history>\n\n`
       : '';
-    const agentRunner = opts.agentRunner ?? (opts.provider ? providerAgentRunner(opts.provider) : remoteAgentRunner);
+    const hasImages = Array.isArray(inputMsg.data.scope?.attachments) && inputMsg.data.scope.attachments.length > 0;
+    // OpenAI text/tool runs use the native Responses API adapter. This keeps
+    // the manager, tool calls, retries and errors in one process and avoids an
+    // unnecessary Agno -> MCP -> provider connection chain. Agno remains the
+    // image-capable and non-OpenAI runtime.
+    const agentRunner = opts.agentRunner
+      ?? (provider.name === 'openai' && !hasImages ? providerAgentRunner(provider) : remoteAgentRunner);
     const liveTeam = new Map<string, { task_id: string; agent: string; status: string }>();
     await setStage('starting_team', isCoordinator ? 'Starting the team' : `Starting ${agent.name}`);
     const result = await agentRunner.run(
@@ -487,6 +525,10 @@ export async function executeRun(
         specialists: [],
         prompt: `${historyText}${userMessage}`,
         tools: toolSpecs(tools),
+        web_search: agentConfig.tools.includes('web_search') && webResearchEnabled,
+        web_fetch_domains: agentConfig.tools.includes('fetch_site_page') && canFetchSite && ctx.settings.siteUrl
+          ? [new URL(ctx.settings.siteUrl).hostname]
+          : [],
         files: Array.isArray(inputMsg.data.scope?.attachments)
           ? inputMsg.data.scope.attachments.map((item: any) => ({
               path: String(item.path ?? ''),

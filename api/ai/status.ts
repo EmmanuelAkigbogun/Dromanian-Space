@@ -127,7 +127,10 @@ export async function GET(request: Request): Promise<Response> {
     );
     const models = catalogModels(catalog.error ? null : (catalog.data as CatalogRow[] | null), settings.allowed_models, configured);
     const costs = isAdmin ? await costSummary(workspaceId) : null;
-    const webAvailable = runtimeHealth.web_research?.available === true;
+    // OpenAI's Responses API provides native web search. Parallel MCP remains
+    // the fallback for models that still run through Agno.
+    const nativeOpenAiWeb = configured.has('openai');
+    const webAvailable = nativeOpenAiWeb || runtimeHealth.web_research?.available === true;
     const realSocial = (socialAccounts.data ?? []) as Array<{ id: string; status: string; label: string }>;
     const usedProviders = [...new Set(settings.allowed_models.map(providerNameFor))].filter(
       (p): p is 'anthropic' | 'openai' | 'gemini' | 'cerebras' => p !== null && configured.has(p),
@@ -146,7 +149,7 @@ export async function GET(request: Request): Promise<Response> {
       // Where data goes when agents work, stated plainly for workspace settings.
       data_flow: {
         generation: usedProviders.length
-          ? `Agno coordinates the agents. Text generation uses ${usedProviders.map((p) => PROVIDER_LABELS[p]).join(' and ')}, depending on each agent's model (${settings.default_model} by default). Text from the sources an agent reads, and your messages to it, are sent to that provider to produce answers.`
+          ? `Darkspace coordinates the agents. Text generation uses ${usedProviders.map((p) => PROVIDER_LABELS[p]).join(' and ')}, depending on each agent's model (${settings.default_model} by default). Text from the sources an agent reads, and your messages to it, are sent to that provider to produce answers.`
           : "No provider is configured for this workspace's models; nothing is sent to a model provider.",
         embeddings: embeddingsConfigured()
           ? `Semantic search uses Voyage AI (${env().embeddingModel}); indexed document text is sent to Voyage to create embeddings.`
@@ -157,11 +160,11 @@ export async function GET(request: Request): Promise<Response> {
       web_research: {
         enabled_by_admin: settings.web_research_enabled,
         available: settings.web_research_enabled && webAvailable,
-        status: runtimeHealth.web_research?.status ?? 'unavailable',
+        status: nativeOpenAiWeb ? 'openai_native' : (runtimeHealth.web_research?.status ?? 'unavailable'),
         checked_at: runtimeHealth.web_research?.checked_at ?? null,
         reason: !settings.web_research_enabled
           ? 'Disabled by the workspace administrator.'
-          : webAvailable ? null : (runtimeHealth.web_research?.reason ?? 'The Agno runtime health check is unavailable.'),
+          : webAvailable ? null : (runtimeHealth.web_research?.reason ?? 'No provider-native or fallback web research runtime is available.'),
       },
       crm: { installed: crm },
       site: { url: settings.site_url },

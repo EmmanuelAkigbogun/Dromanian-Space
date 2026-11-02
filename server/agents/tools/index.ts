@@ -62,7 +62,7 @@ export function toolAvailability(names: string[], opts: AvailabilityInputs): Too
         approval,
         reason: !opts.webResearchEnabled
           ? 'Web research is turned off in this workspace’s AI settings.'
-          : opts.webResearchAvailable ? undefined : 'Parallel MCP is not reachable from the Agno runtime.',
+          : opts.webResearchAvailable ? undefined : 'No web research runtime is available.',
       };
     }
     if (name === 'fetch_site_page') {
@@ -74,7 +74,7 @@ export function toolAvailability(names: string[], opts: AvailabilityInputs): Too
           ? 'No site address is set in this workspace’s AI settings.'
           : !opts.webResearchEnabled
             ? 'Web research is turned off in this workspace’s AI settings.'
-            : opts.webResearchAvailable ? undefined : 'Parallel MCP site fetch is not reachable from the Agno runtime.',
+            : opts.webResearchAvailable ? undefined : 'No site research runtime is available.',
       };
     }
     if (name === 'search_crm' || name === 'search_crm_notes' || name === 'read_crm_record' || name === 'propose_crm_update') {

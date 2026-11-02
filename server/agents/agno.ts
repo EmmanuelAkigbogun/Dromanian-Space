@@ -22,6 +22,10 @@ export interface AgentRunInput {
   specialists: AgentRuntimeConfig[];
   prompt: string;
   tools: ToolSpec[];
+  /** Provider-native public web search, when the workspace administrator enabled it. */
+  web_search?: boolean;
+  /** Provider-native search restricted to the configured company site. */
+  web_fetch_domains?: string[];
   files?: Array<{ path: string; name: string; mime_type: string; size: number }>;
 }
 
@@ -59,8 +63,10 @@ export function providerAgentRunner(provider: ModelProvider): AgentRunner {
         history: [],
         userMessage: input.prompt,
         tools: input.tools,
-        webSearch: null,
-        webFetch: null,
+        webSearch: input.web_search ? { maxUses: 8 } : null,
+        webFetch: !input.web_search && input.web_fetch_domains?.length
+          ? { allowedDomains: input.web_fetch_domains, maxUses: 8 }
+          : null,
         maxTokens: 32_000,
       });
       let text = '';

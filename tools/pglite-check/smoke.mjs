@@ -306,6 +306,11 @@ export default async function smoke(db, legacy) {
   check(await h.denied(h.user(owner, `INSERT INTO crm_contacts (workspace_id, name, owner_id, created_by, client_id, company_id) VALUES ($1, 'Mixed', $2, $2, $3, $4)`, [wsA, owner.id, company.id, ourCo]), /different CRM/), 'records cannot link across CRMs');
   await h.user(owner, `INSERT INTO crm_contacts (workspace_id, name, owner_id, created_by, client_id, company_id) VALUES ($1, 'Jane at supplier', $2, $2, $3, $4)`, [wsA, owner.id, company.id, clientCo.id]);
   check((await h.user(member, 'SELECT id FROM crm_contacts WHERE client_id = $1', [company.id])).length === 1, 'a client CRM keeps its own contacts');
+  const portfolioAgentCrm = await h.svc('SELECT name FROM crm_search_for_context($1, $2, NULL, NULL, NULL, 50)', [owner.id, wsA]);
+  check(portfolioAgentCrm.some((r) => r.name === 'Globex') && !portfolioAgentCrm.some((r) => r.name === 'Jane at supplier'), 'portfolio agents do not mix in a client CRM');
+  const clientAgentCrm = await h.svc('SELECT name FROM crm_search_for_context($1, $2, $3, NULL, NULL, 50)', [owner.id, wsA, company.id]);
+  check(clientAgentCrm.some((r) => r.name === 'Jane at supplier') && clientAgentCrm.some((r) => r.name === 'Acme Corp') && !clientAgentCrm.some((r) => r.name === 'Globex'), 'agents search only the selected managed company');
+  check(await h.denied(h.svc("SELECT crm_read_for_context($1, $2, $3, 'companies', $4)", [owner.id, wsA, company.id, ourCo]), /outside the selected/), 'agents cannot read another company through a selected-company run');
   check(await h.denied(h.user(owner, `INSERT INTO crm_companies (workspace_id, name, owner_id, created_by, client_id) VALUES ($1, 'Nope', $2, $2, $3)`, [wsA, owner.id, ourCo]), /client CRM/), 'only companies marked as clients have a CRM');
   check(await h.denied(h.user(owner, 'UPDATE crm_companies SET is_client = false WHERE id = $1', [company.id]), /still has records/), 'a client CRM with records cannot be removed');
 
