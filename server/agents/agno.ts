@@ -39,6 +39,11 @@ export interface AgentRunCallbacks {
   callTool(call: { id: string; name: string; input: unknown }): Promise<{ content: string; isError?: boolean }>;
 }
 
+/** An error reported by the Agno runtime, usually the model provider's own message. */
+export class AgnoRunError extends Error {
+  override name = 'AgnoRunError';
+}
+
 export interface AgentRunner {
   run(input: AgentRunInput, callbacks: AgentRunCallbacks): Promise<AgentRunResult>;
 }
@@ -204,7 +209,7 @@ export const remoteAgentRunner: AgentRunner = {
           callbacks.onStage?.(event.stage, String(event.label ?? event.stage));
         }
         if (event.type === 'team' && typeof event.agent === 'string') callbacks.onTeam?.(event.agent, String(event.status ?? 'working'));
-        if (event.type === 'error') throw new Error(String(event.message ?? 'Agno execution failed.'));
+        if (event.type === 'error') throw new AgnoRunError(String(event.message ?? 'Agno execution failed.'));
         if (event.type === 'result') {
           const u = (event.usage ?? {}) as Partial<TurnUsage>;
           result = {

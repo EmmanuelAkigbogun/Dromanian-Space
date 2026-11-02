@@ -282,6 +282,64 @@ async def test_agno_team_reports_members_but_only_streams_leader_answer(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_agno_error_event_surfaces_the_provider_message(monkeypatch):
+    class FailingRuntime:
+        async def arun(self, **_kwargs):
+            yield SimpleNamespace(
+                event="RunError",
+                content="The model `gpt-6.1-sol` does not exist or you do not have access to it.",
+                agent_id="haven",
+            )
+
+    monkeypatch.setattr(app, "_build_runtime", lambda *_args, **_kwargs: (FailingRuntime(), {"haven": "Haven"}))
+    with pytest.raises(RuntimeError, match="does not exist or you do not have access"):
+        await app._run_agno_async(
+            {
+                "run_id": "00000000-0000-4000-8000-000000000005",
+                "prompt": "hello",
+                "agent": config(),
+                "specialists": [],
+                "tools": [],
+                "callback_url": "http://worker:3001/tool",
+                "callback_token": "token",
+            },
+            lambda _event: None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_agno_error_event_for_busy_provider_is_retried(monkeypatch):
+    class BusyRuntime:
+        attempts = 0
+
+        async def arun(self, **_kwargs):
+            BusyRuntime.attempts += 1
+            if BusyRuntime.attempts == 1:
+                yield SimpleNamespace(event="RunError", content="Rate limit reached for requests", agent_id="haven")
+                return
+            yield SimpleNamespace(event="RunContent", content="Done", agent_id="haven")
+            yield SimpleNamespace(event="RunCompleted", content="Done", agent_id="haven")
+
+    monkeypatch.setattr(app, "_build_runtime", lambda *_args, **_kwargs: (BusyRuntime(), {"haven": "Haven"}))
+    monkeypatch.setenv("AGNO_PROVIDER_RETRY_BASE_SECONDS", "0")
+    events = []
+    await app._run_agno_async(
+        {
+            "run_id": "00000000-0000-4000-8000-000000000006",
+            "prompt": "hello",
+            "agent": config(),
+            "specialists": [],
+            "tools": [],
+            "callback_url": "http://worker:3001/tool",
+            "callback_token": "token",
+        },
+        events.append,
+    )
+    assert BusyRuntime.attempts == 2
+    assert events[-1]["type"] == "result" and events[-1]["text"] == "Done"
+
+
+@pytest.mark.asyncio
 async def test_agno_runner_retries_transient_provider_failure(monkeypatch):
     class RetryRuntime:
         attempts = 0

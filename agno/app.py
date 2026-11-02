@@ -339,7 +339,10 @@ def _is_retryable_provider_error(error: Exception) -> bool:
             "504",
             "deadline exceeded",
             "high demand",
+            "overloaded",
+            "rate limit",
             "resource_exhausted",
+            "server had an error",
             "temporarily unavailable",
             "unavailable",
         )
@@ -425,6 +428,11 @@ async def _run_agno_with_tools(payload: dict[str, Any], send: Any, native_tools:
                     send({"type": "delta", "text": text})
                 if text and event_type in {"RunCompleted", "TeamRunCompleted"} and leader_content:
                     final_text = text
+                # Agno reports a failed model call as an event and ends the
+                # stream instead of raising; raise so the provider's message
+                # reaches the worker and busy providers are retried.
+                if event_type in {"RunError", "TeamRunError"} and leader_content:
+                    raise RuntimeError(text or "The AI provider returned an error without a message.")
             break
         except Exception as error:
             can_retry = attempt < max_attempts and not streamed_text and _is_retryable_provider_error(error)

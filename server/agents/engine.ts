@@ -10,7 +10,7 @@ import { rpc, serviceClient } from '../database.js';
 import { PROVIDER_KEYS, PROVIDER_LABELS, providerFor, providerNameFor } from '../ai/registry.js';
 import type { Effort, ModelProvider, TurnUsage } from '../ai/provider.js';
 import { CitationRegistry, resolveCitations, sourcesFooter } from './citations.js';
-import { providerAgentRunner, remoteAgentRunner, type AgentRuntimeConfig, type AgentRunner } from './agno.js';
+import { AgnoRunError, providerAgentRunner, remoteAgentRunner, type AgentRuntimeConfig, type AgentRunner } from './agno.js';
 import { PROVIDER_TOOLS, TOOL_REGISTRY, toolSpecs } from './tools/index.js';
 import { readConversation, memberChannels } from './tools/read.js';
 import { quoteData, type AgentTool, type RunContext, type RunScope, type SourceKind, type ToolOutput } from './tools/types.js';
@@ -90,13 +90,33 @@ async function sessionTranscript(ctx: RunContext, sessionId: string, channelId: 
     .join('\n');
 }
 
-function errorMessage(err: unknown): { code: string; message: string } {
+/** A provider's message, safe to show: no key-like tokens, one line, bounded. */
+export function providerDetail(message: string): string {
+  return message
+    .replace(/\b(?:sk|csk|AIza|gsk|xai)[-_A-Za-z0-9]{8,}/g, '[redacted]')
+    .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 300);
+}
+
+export function errorMessage(err: unknown): { code: string; message: string } {
+  const text = err instanceof Error ? err.message : '';
+  // Checked before the credential and rate-limit patterns: these messages can
+  // mention "API key" or arrive as HTTP 429 but need a different fix.
+  if (/does not exist or you do not have access|model_not_found/i.test(text)) {
+    return { code: 'model_unavailable', message: `The AI provider says this API key cannot use the selected model. Pick another model with the API selector on the Agents page. Provider message: ${providerDetail(text)}` };
+  }
+  if (/insufficient_quota|exceeded your current quota|billing|credit balance/i.test(text)) {
+    return { code: 'provider_billing', message: `The AI provider refused the request because of this API key's quota or billing. Check the plan and billing for the key. Provider message: ${providerDetail(text)}` };
+  }
   if (err instanceof Error && /auth|api key|unauthor/i.test(err.message)) return { code: 'auth', message: 'The configured AI provider rejected its credentials.' };
   if (err instanceof Error && /rate limit|resource.?exhausted|quota|\b429\b/i.test(err.message)) return { code: 'rate_limited', message: 'The AI provider is rate limited. Try again shortly.' };
   if (err instanceof Error && /timed? ?out|timeout/i.test(err.message)) return { code: 'provider_timeout', message: 'The AI provider took too long to respond. Try again shortly.' };
   if (err instanceof Error && /Agno runtime returned HTTP|fetch failed|ECONNREFUSED/i.test(err.message)) {
     return { code: 'agno_unavailable', message: 'The Agno runtime is temporarily unavailable. Try again.' };
   }
+  if (err instanceof AgnoRunError) return { code: 'provider_error', message: `The AI provider returned an error: ${providerDetail(text)}` };
   return { code: 'internal', message: 'The run failed because of a server error. Try again.' };
 }
 
@@ -547,7 +567,7 @@ export async function executeRun(
       return await finish('cancelled', partial, usage, servedModel, 'cancelled', 'Stopped.');
     }
     const { code, message } = errorMessage(err);
-    if (code === 'internal') log.error('agent run failed', { run_id: runId, error: err instanceof Error ? err : String(err) });
+    if (code === 'internal' || code === 'provider_error') log.error('agent run failed', { run_id: runId, code, error: err instanceof Error ? err : String(err) });
     return await finish('failed', partial, usage, servedModel, code, message).catch(() => ({ status: 'failed', error_code: code }));
   } finally {
     clearInterval(heartbeat);
