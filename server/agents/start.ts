@@ -19,6 +19,7 @@ export const RunRequest = z.object({
   scope: z
     .object({
       item_ids: z.array(uuid).max(20).optional(),
+      company_id: uuid.optional(),
       channel_id: uuid.optional(),
       thread_root_id: uuid.optional(),
       attachments: z.array(AgentImage).max(4).optional(),

@@ -140,6 +140,22 @@ describe('durable execution through the worker queue', () => {
 });
 
 describe('API with signed user tokens', () => {
+  it('keeps a selected managed company in the persisted run scope', async () => {
+    const company = (await q<{ id: string }>(user, `
+      INSERT INTO crm_companies (workspace_id, name, is_client, owner_id, created_by)
+      VALUES ($1, 'Agent client', true, $2, $2) RETURNING id
+    `, [ws, user.id]))[0].id;
+    const started = await startRun(user.id, {
+      workspace_id: ws,
+      agent_id: agents.team_coordinator,
+      message: 'Summarize this company.',
+      scope: { company_id: company },
+      idempotency_key: randomUUID(),
+    });
+    const [run] = await q<{ scope: { company_id?: string } }>(user, 'SELECT scope FROM agent_runs WHERE id = $1', [started.run_id]);
+    expect(run.scope.company_id).toBe(company);
+  });
+
   it('rejects forged agent image attachments before a run is persisted', async () => {
     await expect(startRun(user.id, {
       workspace_id: ws,
