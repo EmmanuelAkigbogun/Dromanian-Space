@@ -39,6 +39,11 @@
 @media (prefers-reduced-motion: reduce) { .runSpinner { animation: none; border-color: var(--color-primary); } }
 
 .picker { display: grid; gap: 8px; }
+.apiBar { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 12px; margin: 0 0 18px; font-size: 13px; }
+.apiBar label { display: grid; gap: 4px; }
+.apiBar select { width: auto; min-width: 190px; padding: 8px 10px; }
+.apiBar label > span, .apiBar > span:first-child { margin: 0; }
+.apiBar > span:not(:first-child) { align-self: center; }
 .picker label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .note { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
 .linkButton { background: none; border: 0; padding: 0; color: var(--color-text-secondary); cursor: pointer; font-size: 12px; text-decoration: underline; }

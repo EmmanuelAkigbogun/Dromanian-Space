@@ -25,7 +25,7 @@ interface ModelOption {
 
 interface Status {
   provider: { configured: boolean };
-  providers?: Array<{ name: string; label: string; configured: boolean }>;
+  providers?: Array<{ name: string; label: string; configured: boolean; default_model?: string }>;
   provider_key_management?: {
     allowed: boolean;
     providers: Array<{ name: string; source: 'saved' | 'environment' | 'none' }>;
@@ -324,6 +324,7 @@ function Agents({ ws, userId, admin }: { ws: string; userId: string; admin: bool
         )
       ) : (
         <Directory
+          ws={ws}
           agents={directory.data ?? []}
           loading={directory.isPending}
           error={directory.error}
@@ -339,7 +340,94 @@ function Agents({ ws, userId, admin }: { ws: string; userId: string; admin: bool
   );
 }
 
+/** Which API the shared team runs on. Admins move every shared agent to another API in one step. */
+function ApiSelector({ ws, status, agents, admin }: { ws: string; status: Status; agents: Agent[]; admin: boolean }) {
+  const qc = useQueryClient();
+  const [draft, setDraft] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
+  const catalog = status.models ?? [];
+  const providers = status.providers ?? [];
+  const find = (id: string) => catalog.find((m) => m.id === id);
+  // Only shared agents follow the switch; private agents belong to their creators.
+  const inUse = [...new Set(agents.filter((x) => x.is_builtin || x.visibility === 'workspace').map((x) => x.model))];
+  const current = inUse.length === 1 ? inUse[0] : status.settings.default_model;
+  const model = draft ?? current;
+  const provider = find(model)?.provider ?? null;
+  const providerName = provider ? PROVIDER_NAME[provider] ?? provider : 'Unknown API';
+  const changed = model !== current || inUse.length > 1;
+
+  function pickProvider(name: string) {
+    const models = catalog.filter((m) => m.provider === name);
+    const preferred = providers.find((p) => p.name === name)?.default_model;
+    setDraft(models.find((m) => m.id === preferred)?.id ?? models[0]?.id ?? null);
+    setMessage(null);
+  }
+  async function apply() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const switched = await result(platform.rpc('ai_use_model', { p_workspace_id: ws, p_model: model }));
+      await qc.invalidateQueries({ queryKey: ['platform', ws] });
+      setDraft(null);
+      setMessage({ error: false, text: `${switched} agent${switched === 1 ? '' : 's'} switched to ${find(model)?.label ?? model} on ${providerName}.` });
+    } catch (err) {
+      setMessage({ error: true, text: errorText(err) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!admin) {
+    return (
+      <p className={a.apiBar}>
+        <span className={s.eyebrow}>API</span>
+        {inUse.length > 1 ? 'Agents use more than one API' : `${providerName} · ${find(model)?.label ?? model}`}
+      </p>
+    );
+  }
+  return (
+    <div className={a.apiBar}>
+      <label>
+        <span className={s.eyebrow}>API</span>
+        <select className={s.input} value={provider ?? ''} disabled={busy} onChange={(e) => pickProvider(e.target.value)}>
+          {!provider && <option value="">Unknown API</option>}
+          {providers.map((p) => {
+            const usable = p.configured && catalog.some((m) => m.provider === p.name);
+            return (
+              <option key={p.name} value={p.name} disabled={!usable}>
+                {PROVIDER_NAME[p.name] ?? p.label}{p.configured ? '' : ' (no API key)'}
+              </option>
+            );
+          })}
+        </select>
+      </label>
+      <label>
+        <span className={s.eyebrow}>Model</span>
+        <select className={s.input} value={model} disabled={busy} onChange={(e) => { setDraft(e.target.value); setMessage(null); }}>
+          {catalog.filter((m) => m.provider === provider).map((m) => (
+            <option key={m.id} value={m.id}>{m.label}{m.tier === 'fast' ? ' · fastest' : m.tier === 'frontier' ? ' · most capable' : ''}</option>
+          ))}
+        </select>
+      </label>
+      {changed ? (
+        <>
+          <button type="button" className={s.primary} disabled={busy || !find(model)?.available} onClick={() => void apply()}>
+            {busy ? 'Switching…' : 'Use for all shared agents'}
+          </button>
+          {draft && <button type="button" className={s.button} disabled={busy} onClick={() => { setDraft(null); setMessage(null); }}>Cancel</button>}
+          {inUse.length > 1 && !draft && <span className={s.muted}>Shared agents currently use {inUse.length} different models.</span>}
+        </>
+      ) : (
+        <span className={s.muted}>In use by every shared agent</span>
+      )}
+      {message && <span role={message.error ? 'alert' : 'status'} className={message.error ? s.error : s.muted}>{message.text}</span>}
+    </div>
+  );
+}
+
 function Directory(props: {
+  ws: string;
   agents: Agent[];
   loading: boolean;
   error: unknown;
@@ -362,7 +450,7 @@ function Directory(props: {
         <div>
           <div className={s.eyebrow}>Your Agno team</div>
           <h1>A coordinated team of workspace specialists.</h1>
-          <p className={s.muted}>Agno coordinates the team using OpenAI (ChatGPT) by default while preserving each agent's configured model. Agents only see what you can access, and anything that changes data waits for your review.</p>
+          <p className={s.muted}>Agno coordinates the team on the API chosen below. Agents only see what you can access, and anything that changes data waits for your review.</p>
         </div>
         {props.admin && (
           <div className={s.actions}>
@@ -370,6 +458,7 @@ function Directory(props: {
           </div>
         )}
       </header>
+      {props.status && !props.loading && <ApiSelector ws={props.ws} status={props.status} agents={props.agents} admin={props.admin} />}
       {props.notice}
       {props.error ? <p className={s.error} role="alert">{errorText(props.error)}</p> : null}
       {coordinator && (

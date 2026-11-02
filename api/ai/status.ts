@@ -134,7 +134,7 @@ export async function GET(request: Request): Promise<Response> {
     );
     return json({
       provider: { name: env().defaultProvider, configured: providerConfigured, refusal_fallback: env().refusalFallback },
-      providers: providers.map((p) => ({ name: p.name, label: p.label, configured: p.configured })),
+      providers: providers.map((p) => ({ name: p.name, label: p.label, configured: p.configured, default_model: p.default_model })),
       provider_key_management: {
         allowed: canManageProviderKeys,
         providers: canManageProviderKeys

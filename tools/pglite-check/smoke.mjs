@@ -128,6 +128,19 @@ export default async function smoke(db, legacy) {
   const bModels = await h.admin(`SELECT DISTINCT v.model FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1`, [wsB]);
   check(!bModels.some((r) => r.model === 'claude-sonnet-5-5'), 'workspace B agents are unaffected');
 
+  // One-step API switch from the Agents page
+  check(await h.denied(h.user(member, `SELECT ai_use_model($1, 'gpt-6.1-sol')`, [wsA])), 'members cannot switch the API');
+  check(await h.denied(h.user(owner, `SELECT ai_use_model($1, 'gpt-6.1-sol')`, [wsA]), /no key/), 'switching to an API without a server key is refused');
+  await h.svc(`SELECT ai_report_platform('{"anthropic":true,"openai":true}', 'claude-opus-5-5')`);
+  check(await h.denied(h.user(owner, `SELECT ai_use_model($1, 'llama3')`, [wsA]), /catalog/), 'models outside the catalog are refused');
+  const switched = (await h.user(owner, `SELECT ai_use_model($1, 'gpt-6.1-sol') AS n`, [wsA]))[0].n;
+  const onSol = await h.admin(`SELECT DISTINCT v.model FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1 AND a.archived_at IS NULL`, [wsA]);
+  const solSettings = (await h.svc('SELECT (ai_settings_for($1)).*', [wsA]))[0];
+  check(switched >= 5 && onSol.length === 1 && onSol[0].model === 'gpt-6.1-sol' && solSettings.default_model === 'gpt-6.1-sol' && solSettings.allowed_models.includes('gpt-6.1-sol'),
+    `the API switch allowed gpt-6.1-sol, made it the default and moved ${switched} agents to it`);
+  check(!(await h.admin(`SELECT DISTINCT v.model FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1`, [wsB])).some((r) => r.model === 'claude-sonnet-5-5'), 'the API switch leaves workspace B alone');
+  await h.svc(`SELECT ai_report_platform('{"anthropic":true,"openai":false}', 'claude-opus-5-5')`);
+
   // Roster
   const handles = (await h.admin(`SELECT handle FROM workspace_agents WHERE workspace_id = $1 AND is_builtin AND archived_at IS NULL ORDER BY handle`, [wsB])).map((r) => r.handle);
   const expectedHandles = [

@@ -7,6 +7,8 @@ different providers. Model ids beginning with `gemini-` use Google Gemini; `gpt-
 
 The current production roster runs on OpenAI: all 20 built-in agents use `gpt-6.1-sol`. The 2026-11-02 migration moved every agent that was on Cerebras `gpt-oss-120b` to a new version on `gpt-6.1-sol`; earlier versions, conversations and runs remain readable, and `gpt-oss-120b` stays selectable. Workspaces can also choose `gpt-6.1-terra`, `gpt-6-luna` (cheapest) or `gpt-6-astra` (most capable, five times the price of Sol) in AI settings. This needs an OpenAI API key from platform.openai.com; a ChatGPT subscription does not include API access.
 
+To change the API, a workspace admin uses the **API** and **Model** selectors at the top of the Agents page and chooses **Use for all shared agents**. That calls `ai_use_model`, which in one transaction allows the model, makes it the workspace default and gives every shared agent a new version on it (private agents are unchanged). APIs without a key on the server cannot be chosen. Everyone else sees which API the team runs on.
+
 ## Server configuration (api and worker)
 
 | Variable | Purpose |
