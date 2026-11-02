@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { toResponseInputItems } from 'openai/lib/responses/ResponseInputItems';
 import type {
   FunctionTool,
   Response,
@@ -126,6 +127,25 @@ function parseArguments(raw: string): unknown {
   }
 }
 
+/**
+ * The SDK enriches parsed response objects with convenience fields such as
+ * `parsed_arguments` and `parsed`. They are not part of the Responses API
+ * input schema and must never be serialized into the next stateless turn.
+ */
+function stripParsedMetadata<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(stripParsedMetadata) as T;
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => key !== 'parsed_arguments' && key !== 'parsed')
+      .map(([key, child]) => [key, stripParsedMetadata(child)]),
+  ) as T;
+}
+
+export function replayItems(output: ResponseOutputItem[]): ResponseInputItem[] {
+  return stripParsedMetadata(toResponseInputItems(output));
+}
+
 export function interpretResponse(response: Response): TurnResult {
   const output = response.output ?? [];
   let text = '';
@@ -249,10 +269,11 @@ class OpenAISession implements ModelSession {
     }
 
     const result = interpretResponse(response);
-    // Append-only transcript: every output item (reasoning included) goes
-    // back unchanged so the next turn continues it.
+    // Append-only transcript: normalize response items into the documented
+    // input shape before replaying them. The SDK may decorate streamed calls
+    // with parsed-only fields that the wire API rejects.
     if (result.stop === 'tool_use') {
-      for (const item of response.output as ResponseOutputItem[]) this.items.push(item as ResponseInputItem);
+      this.items.push(...replayItems(response.output as ResponseOutputItem[]));
     }
     return result;
   }

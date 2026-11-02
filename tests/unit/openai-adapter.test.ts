@@ -86,7 +86,10 @@ describe('OpenAI provider adapter', () => {
       completedStream(
         responseObject([
           { type: 'reasoning', id: 'rs_1', summary: [], encrypted_content: 'enc-1' },
-          { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'read_file', arguments: '{"item_id":"abc"}', status: 'completed' },
+          {
+            type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'read_file',
+            arguments: '{"item_id":"abc"}', parsed_arguments: { item_id: 'abc' }, status: 'completed', created_by: 'sdk',
+          },
         ]),
       ),
     );
@@ -135,6 +138,12 @@ describe('OpenAI provider adapter', () => {
     const items = requests[1].input as Json[];
     expect(items.slice(3).map((i) => i.type)).toEqual(['reasoning', 'function_call', 'function_call_output']);
     expect(items[3].encrypted_content).toBe('enc-1');
+    expect(items[4]).toEqual({
+      type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'read_file',
+      arguments: '{"item_id":"abc"}', status: 'completed',
+    });
+    expect(items[4].parsed_arguments).toBeUndefined();
+    expect(items[4].created_by).toBeUndefined();
     expect(items[5]).toEqual({ type: 'function_call_output', call_id: 'call_1', output: 'EUR 180 per night' });
   });
 
