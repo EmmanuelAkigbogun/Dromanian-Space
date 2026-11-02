@@ -44,7 +44,8 @@ describe('standalone compose safety', () => {
     expect(dockerfile).toContain('uv sync --locked');
     expect(project).toContain('agno[anthropic,cerebras,google,openai]==3.1.10');
     expect(project).not.toContain('google-adk');
-    expect(compose).toContain('AI_DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-cerebras}');
+    expect(compose).toContain('AI_DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-openai}');
+    expect(compose).toContain('AI_DEFAULT_OPENAI_MODEL: ${AI_DEFAULT_OPENAI_MODEL:-gpt-6.1-sol}');
     expect(compose).toContain('CEREBRAS_API_KEY: ${CEREBRAS_API_KEY:-}');
     const lock = read('agno/uv.lock');
     expect(lock).toContain('name = "agno"');

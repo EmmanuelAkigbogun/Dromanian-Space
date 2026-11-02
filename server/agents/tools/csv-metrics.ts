@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import { rpc, serviceClient } from '../../database.js';
 import { parseCsv } from '../../knowledge/csv.js';
-import { parseXlsx } from '@/app/routes/CRM/spreadsheet.js';
+// Relative, not '@/': the server bundle treats '@/' as an external package.
+import { parseXlsx } from '../../../src/app/routes/CRM/spreadsheet.js';
 import { defineTool } from './types.js';
 
 const MAX_SPREADSHEET_BYTES = 20 * 1024 * 1024;

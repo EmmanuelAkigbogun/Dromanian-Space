@@ -28,6 +28,7 @@ describe('provider routing', () => {
   it('derives the provider from the model id', () => {
     expect(providerNameFor('claude-opus-5-5')).toBe('anthropic');
     expect(providerNameFor('gpt-5.4-mini')).toBe('openai');
+    expect(providerNameFor('gpt-6.1-sol')).toBe('openai');
     expect(providerNameFor('o4-mini')).toBe('openai');
     expect(providerNameFor('gemini-3.8-flash')).toBe('gemini');
     expect(providerNameFor('gpt-oss-120b')).toBe('cerebras');
@@ -37,7 +38,7 @@ describe('provider routing', () => {
 
   it('defaults new workspaces to the configured provider', () => {
     setEnv({ OPENAI_API_KEY: 'sk', AI_DEFAULT_PROVIDER: 'anthropic' });
-    expect(platformDefaultModel()).toBe('gpt-5.4');
+    expect(platformDefaultModel()).toBe('gpt-6.1-sol');
     setEnv({ OPENAI_API_KEY: 'sk', ANTHROPIC_API_KEY: 'sk', AI_DEFAULT_PROVIDER: 'openai', AI_DEFAULT_OPENAI_MODEL: 'gpt-5.6-sol' });
     expect(platformDefaultModel()).toBe('gpt-5.6-sol');
     setEnv({ ANTHROPIC_API_KEY: 'sk' });

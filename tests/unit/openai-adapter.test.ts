@@ -207,6 +207,9 @@ describe('reasoning effort mapping', () => {
   it('maps effort per model family', () => {
     expect(reasoningEffortFor('gpt-5.4', 'max')).toBe('xhigh');
     expect(reasoningEffortFor('gpt-5.6-sol', 'xhigh')).toBe('xhigh');
+    expect(reasoningEffortFor('gpt-5.6-terra', 'max')).toBe('max');
+    expect(reasoningEffortFor('gpt-6.1-sol', 'max')).toBe('max');
+    expect(reasoningEffortFor('gpt-6-luna', 'low')).toBe('low');
     expect(reasoningEffortFor('gpt-5', 'max')).toBe('high');
     expect(reasoningEffortFor('gpt-5.1', 'xhigh')).toBe('high');
     expect(reasoningEffortFor('o3', 'low')).toBe('low');

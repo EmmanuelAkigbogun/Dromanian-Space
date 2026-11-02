@@ -140,7 +140,7 @@ const CONNECTED_ACTIONS: Record<string, string> = {
 
 
 const PROVIDER_KEY: Record<string, string> = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY', cerebras: 'CEREBRAS_API_KEY' };
-const PROVIDER_NAME: Record<string, string> = { anthropic: 'Anthropic', openai: 'OpenAI', gemini: 'Google Gemini', cerebras: 'Cerebras Cloud' };
+const PROVIDER_NAME: Record<string, string> = { anthropic: 'Anthropic', openai: 'OpenAI (ChatGPT)', gemini: 'Google Gemini', cerebras: 'Cerebras Cloud' };
 
 function modelLabel(id: string, status: Status | undefined): string {
   const m = status?.models?.find((x) => x.id === id);
@@ -362,7 +362,7 @@ function Directory(props: {
         <div>
           <div className={s.eyebrow}>Your Agno team</div>
           <h1>A coordinated team of workspace specialists.</h1>
-          <p className={s.muted}>Agno coordinates the team using Cerebras by default while preserving each agent's configured model. Agents only see what you can access, and anything that changes data waits for your review.</p>
+          <p className={s.muted}>Agno coordinates the team using OpenAI (ChatGPT) by default while preserving each agent's configured model. Agents only see what you can access, and anything that changes data waits for your review.</p>
         </div>
         {props.admin && (
           <div className={s.actions}>

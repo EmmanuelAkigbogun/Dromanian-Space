@@ -26,7 +26,7 @@ from agno.media import Image
 from agno.models.anthropic import Claude
 from agno.models.cerebras import Cerebras
 from agno.models.google import Gemini
-from agno.models.openai import OpenAIChat
+from agno.models.openai import OpenAIResponses
 from agno.team import Team
 from agno.team.mode import TeamMode
 from agno.tools.function import Function
@@ -76,7 +76,19 @@ def _provider_key(provider: str) -> str | None:
     )
 
 
-def _model(model: str) -> Gemini | Claude | Cerebras | OpenAIChat:
+def _openai_reasoning_effort(model: str, effort: str | None) -> str | None:
+    """Mirror of server/ai/openai.ts reasoningEffortFor; older chat models reject the parameter."""
+    lower = model.lower().removeprefix("openai/")
+    if not effort or not re.match(r"^(gpt-([5-9]|\d{2,})|o\d)", lower):
+        return None
+    if effort not in {"max", "xhigh"}:
+        return effort
+    if re.match(r"^gpt-([6-9]|\d{2,})", lower) or re.match(r"^gpt-5\.([6-9]|\d{2,})", lower):
+        return effort
+    return "xhigh" if re.match(r"^gpt-5\.([2-9]|\d{2,})", lower) else "high"
+
+
+def _model(model: str, effort: str | None = None) -> Gemini | Claude | Cerebras | OpenAIResponses:
     lower = model.lower()
     timeout = max(5.0, min(float(os.getenv("AGNO_PROVIDER_REQUEST_TIMEOUT_SECONDS", "45")), 180.0))
     if lower.startswith("gemini"):
@@ -99,12 +111,20 @@ def _model(model: str) -> Gemini | Claude | Cerebras | OpenAIChat:
         )
     if key := _provider_key("openai"):
         os.environ["OPENAI_API_KEY"] = key
-    return OpenAIChat(
+    # GPT-6 models only accept function tools through the Responses API.
+    # store=False matches the Node adapter: OpenAI keeps no response state and
+    # Agno replays the encrypted reasoning items between tool turns instead.
+    project = os.getenv("OPENAI_PROJECT_ID") or None
+    return OpenAIResponses(
         id=model.removeprefix("openai/"),
         api_key=key,
+        organization=os.getenv("OPENAI_ORG_ID") or None,
+        client_params={"project": project} if project else None,
         base_url=os.getenv("OPENAI_BASE_URL") or None,
         timeout=timeout,
         retries=1,
+        store=False,
+        reasoning_effort=_openai_reasoning_effort(model, effort),
     )
 
 
@@ -223,7 +243,7 @@ def _build_runtime(
                 name=str(child.get("name", child_name)),
                 role=str(child.get("role") or child.get("goal") or "Workspace specialist"),
                 description=str(child.get("description") or child.get("role") or child.get("goal") or "Workspace specialist"),
-                model=_model(str(child["model"])),
+                model=_model(str(child["model"]), child.get("effort")),
                 instructions=[_instruction(child, manager=False, specialists=[])],
                 tools=_tools(child, specs, callback_url, callback_token, run_id, native_tools),
                 tool_call_limit=max(1, min(int(child.get("max_iter", 12)), 30)),
@@ -236,7 +256,7 @@ def _build_runtime(
         "id": name,
         "name": str(config.get("name", name)),
         "description": str(config.get("description") or config.get("role") or config.get("goal") or "Workspace agent"),
-        "model": _model(str(config["model"])),
+        "model": _model(str(config["model"]), config.get("effort")),
         "instructions": [_instruction(config, manager=bool(sub_agents), specialists=specialist_configs)],
         "tools": _tools(config, specs, callback_url, callback_token, run_id, native_tools),
         "markdown": True,
@@ -293,10 +313,18 @@ def _images(payload: dict[str, Any]) -> list[Image]:
 def _add_usage(total: dict[str, int], event: Any) -> None:
     if not str(getattr(event, "event", "")).endswith("ModelRequestCompleted"):
         return
-    total["input_tokens"] += int(getattr(event, "input_tokens", 0) or 0)
+    input_tokens = int(getattr(event, "input_tokens", 0) or 0)
+    cache_read = int(getattr(event, "cache_read_tokens", 0) or 0)
+    cache_write = int(getattr(event, "cache_write_tokens", 0) or 0)
+    # The ledger stores cached tokens separately, as Anthropic reports them.
+    # OpenAI-style providers count them inside input_tokens, so remove them
+    # there to avoid charging cached input twice.
+    if str(getattr(event, "model_provider", "") or "") != "Anthropic":
+        input_tokens = max(0, input_tokens - cache_read - cache_write)
+    total["input_tokens"] += input_tokens
     total["output_tokens"] += int(getattr(event, "output_tokens", 0) or 0)
-    total["cache_read_tokens"] += int(getattr(event, "cache_read_tokens", 0) or 0)
-    total["cache_write_tokens"] += int(getattr(event, "cache_write_tokens", 0) or 0)
+    total["cache_read_tokens"] += cache_read
+    total["cache_write_tokens"] += cache_write
 
 
 def _is_retryable_provider_error(error: Exception) -> bool:

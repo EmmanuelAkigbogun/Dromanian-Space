@@ -26,15 +26,16 @@ import {
 // sends it back each turn, so nothing depends on OpenAI-side conversation
 // state and a run restarted on another worker behaves the same.
 
-type OpenAIEffort = 'low' | 'medium' | 'high' | 'xhigh';
+type OpenAIEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /** Reasoning models take `reasoning.effort`; older chat models reject it. */
 export function reasoningEffortFor(model: string, effort: Effort): OpenAIEffort | null {
-  if (!/^(gpt-5|o\d)/.test(model)) return null;
-  // xhigh is accepted from gpt-5.2 on; earlier reasoning models stop at high.
-  const extended = /^gpt-5\.([2-9]|\d{2,})/.test(model);
-  if (effort === 'max' || effort === 'xhigh') return extended ? 'xhigh' : 'high';
-  return effort;
+  if (!/^(gpt-([5-9]|\d{2,})|o\d)/.test(model)) return null;
+  if (effort !== 'max' && effort !== 'xhigh') return effort;
+  // max is accepted from gpt-5.6 and GPT-6 on, xhigh from gpt-5.2 on; earlier
+  // reasoning models stop at high. Mirrored in agno/app.py.
+  if (/^gpt-([6-9]|\d{2,})|^gpt-5\.([6-9]|\d{2,})/.test(model)) return effort;
+  return /^gpt-5\.([2-9]|\d{2,})/.test(model) ? 'xhigh' : 'high';
 }
 
 let client: OpenAI | null = null;

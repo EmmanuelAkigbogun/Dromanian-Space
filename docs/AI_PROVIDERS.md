@@ -1,11 +1,11 @@
 # AI providers
 
-Agents run on external model APIs: **Cerebras Cloud**, **Anthropic (Claude)**, **OpenAI**, and **Google Gemini**. All can be configured at
+Agents run on external model APIs: **OpenAI (ChatGPT)**, **Anthropic (Claude)**, **Google Gemini**, and **Cerebras Cloud**. All can be configured at
 once. Each agent version stores a model id, and the provider follows from it (`claude-…` is
 Anthropic; `gpt-…`, `o…` and `chatgpt-…` are OpenAI). So specialists in one Team Chat run can use
 different providers. Model ids beginning with `gemini-` use Google Gemini; `gpt-oss-120b` and `cerebras/...` use Cerebras. No GPU and no local model server are needed.
 
-The current production roster is Cerebras-first: all 20 built-in agents use `gpt-oss-120b`. Older built-ins are retired from the active roster while their conversations and runs remain readable.
+The current production roster runs on OpenAI: all 20 built-in agents use `gpt-6.1-sol`. The 2026-11-02 migration moved every agent that was on Cerebras `gpt-oss-120b` to a new version on `gpt-6.1-sol`; earlier versions, conversations and runs remain readable, and `gpt-oss-120b` stays selectable. Workspaces can also choose `gpt-6.1-terra`, `gpt-6-luna` (cheapest) or `gpt-6-astra` (most capable, five times the price of Sol) in AI settings. This needs an OpenAI API key from platform.openai.com; a ChatGPT subscription does not include API access.
 
 ## Server configuration (api and worker)
 
@@ -15,7 +15,7 @@ The current production roster is Cerebras-first: all 20 built-in agents use `gpt
 | `ANTHROPIC_REFUSAL_FALLBACK` | `on` (default) or `off`: server-side refusal fallback for models that support it. |
 | `AI_DEFAULT_ANTHROPIC_MODEL` | Default Claude model for new workspaces (`claude-opus-5-5`). |
 | `OPENAI_API_KEY` | Enables OpenAI models. |
-| `AI_DEFAULT_OPENAI_MODEL` | Default OpenAI model for new workspaces (`gpt-5.4`). |
+| `AI_DEFAULT_OPENAI_MODEL` | Default OpenAI model for new workspaces (`gpt-6.1-sol`). |
 | `OPENAI_BASE_URL`, `OPENAI_ORG_ID`, `OPENAI_PROJECT_ID` | Optional OpenAI client settings. |
 | `GEMINI_API_KEY` | Enables Google Gemini models. |
 | `GEMINI_API` | Compatibility alias for `GEMINI_API_KEY` (accepted for existing Coolify setups). |
@@ -23,7 +23,7 @@ The current production roster is Cerebras-first: all 20 built-in agents use `gpt
 | `CEREBRAS_API_KEY` | Enables Cerebras Cloud models. |
 | `CEREBRAS_DIGITALROMANIAN` | Compatibility alias for `CEREBRAS_API_KEY`. |
 | `AI_DEFAULT_CEREBRAS_MODEL` | Default Cerebras model (`gpt-oss-120b`). |
-| `AI_DEFAULT_PROVIDER` | `cerebras`, `anthropic`, `openai`, or `gemini`: which default applies to new workspaces. If it has no key, another configured provider is used. |
+| `AI_DEFAULT_PROVIDER` | `openai` (compose default), `anthropic`, `gemini`, or `cerebras`: which default applies to new workspaces. If it has no key, another configured provider is used. |
 
 Keys are server-only. The platform administrator can enter or replace them in **Agents → AI
 settings**. The browser submits a key once over the authenticated same-origin API; the key is
@@ -32,7 +32,7 @@ never returned to the browser, logged, or stored as plaintext. Both the API and 
 replacement without a redeploy.
 
 Coolify runtime secrets remain supported as a fallback. A key saved through AI settings overrides
-the matching `CEREBRAS_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY` environment variable. At startup the server
+the matching `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, or `CEREBRAS_API_KEY` environment variable. At startup the server
 records only which providers are configured (booleans) and the platform default model.
 `GET /api/health` and `/api/ready` report the same booleans.
 
@@ -81,7 +81,7 @@ concurrency limit apply to every provider.
 
 ## How each provider is called
 
-Cerebras runs through the isolated Agno service using Agno's native Cerebras adapter and the model id `gpt-oss-120b`. The key remains server-only, tools return through the authenticated worker bridge, and persistent state continues to live in this deployment's database.
+Agent runs go through the isolated Agno service. OpenAI models use Agno's `OpenAIResponses` adapter, because GPT-6 models accept function tools only through the Responses API. Requests are stateless (`store: false`): Agno replays the encrypted reasoning items between tool turns, so OpenAI keeps no response state. Agent effort maps to `reasoning.effort` (`max` from gpt-5.6 and GPT-6 on). Cerebras uses Agno's native Cerebras adapter and the model id `gpt-oss-120b`. Keys remain server-only, tools return through the authenticated worker bridge, and persistent state continues to live in this deployment's database. Cached input tokens are recorded separately from fresh input for every provider, so they are not counted twice in budgets or cost estimates.
 
 Gemini uses the streaming Interactions API from `@google/genai`, sends the stateless transcript on every turn, exposes workspace actions as function tools, and uses Google's search tool when web research is enabled. Agent effort maps to Gemini's thinking level.
 

@@ -11,13 +11,13 @@ The private `agno` service exposes the same authenticated contract used by the w
 - `POST /cancel/:run_id` terminates the isolated process for that run.
 - Tool calls return to the worker's private `/tool` bridge with a per-run bearer token. The worker executes each tool under the requester's permissions and existing approval rules.
 
-Each specialist becomes a native Agno `Agent`; a coordinator becomes a native Agno `Team` in coordinate mode. Agno handles delegation and synthesis while durable state remains in the Darkspace database. Cerebras `gpt-oss-120b` is the built-in team's default through Agno's native Cerebras adapter. Existing Gemini, OpenAI and Anthropic model selections remain supported through their native Agno adapters.
+Each specialist becomes a native Agno `Agent`; a coordinator becomes a native Agno `Team` in coordinate mode. Agno handles delegation and synthesis while durable state remains in the Darkspace database. OpenAI `gpt-6.1-sol` is the built-in team's default through Agno's `OpenAIResponses` adapter (stateless, with each agent's effort sent as `reasoning.effort`). Cerebras, Gemini and Anthropic model selections remain supported through their native Agno adapters.
 
 ## Credentials and data
 
 The runtime reuses the existing server-only provider configuration. It first checks the encrypted provider-key file under the mounted storage root, then the existing environment variables. Cerebras accepts `CEREBRAS_API_KEY` and the compatibility alias `CEREBRAS_DIGITALROMANIAN`; Gemini's `GEMINI_API` alias also remains accepted. Keys are never sent to the browser or written to repository files.
 
-The Cerebras roster migration archives older built-ins without deleting their conversations, runs, events, sources, citations or usage. Persistent storage locations and access rules remain unchanged.
+The Cerebras roster migration archived older built-ins, and the OpenAI migration moved the team to new `gpt-6.1-sol` versions, without deleting conversations, runs, events, sources, citations or usage. Persistent storage locations and access rules remain unchanged.
 
 ## Pinned deployment
 

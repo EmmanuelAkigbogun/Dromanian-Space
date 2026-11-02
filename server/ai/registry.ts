@@ -18,7 +18,7 @@ const PROVIDERS: Record<ProviderName, ModelProvider> = {
 
 export const PROVIDER_LABELS: Record<ProviderName, string> = {
   anthropic: 'Anthropic (Claude)',
-  openai: 'OpenAI',
+  openai: 'OpenAI (ChatGPT)',
   gemini: 'Google Gemini',
   cerebras: 'Cerebras Cloud',
 };

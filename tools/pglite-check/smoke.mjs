@@ -67,6 +67,12 @@ export default async function smoke(db, legacy) {
     check(by.recruiter?.version_no >= 2 && /HR assistant/.test(by.recruiter.instructions), 'upgrade: untouched Talia broadened to HR assistant');
     check(by.sales_rep?.instructions === 'Our own sales playbook.', 'upgrade: customized Rio left unchanged');
     check(Boolean(by.business_researcher), 'upgrade: new specialists added to the existing workspace');
+    const legacyModels = await h.admin(`SELECT DISTINCT v.model FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1 AND a.archived_at IS NULL`, [legacy.ws]);
+    check(legacyModels.length === 1 && legacyModels[0].model === 'gpt-6.1-sol', `upgrade: every active agent moved to ChatGPT gpt-6.1-sol (${legacyModels.map((r) => r.model).join(', ')})`);
+    const kept = await h.admin(`SELECT count(*)::int AS n FROM workspace_agent_versions WHERE workspace_id = $1 AND model = 'gpt-oss-120b'`, [legacy.ws]);
+    check(kept[0].n > 0, 'upgrade: earlier Cerebras versions are kept for history');
+    const legacySettings = (await h.svc('SELECT (ai_settings_for($1)).*', [legacy.ws]))[0];
+    check(legacySettings.default_model === 'gpt-6.1-sol' && ['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-luna', 'gpt-oss-120b'].every((m) => legacySettings.allowed_models.includes(m)), `upgrade: workspace defaults to gpt-6.1-sol and can still choose Cerebras (${legacySettings.allowed_models.join(', ')})`);
     const cost = await h.admin(`SELECT provider, cost_usd FROM ai_usage_ledger WHERE workspace_id = $1 AND kind = 'usage'`, [legacy.ws]);
     check(cost[0]?.provider === 'anthropic' && Number(cost[0]?.cost_usd) === 2, 'upgrade: existing usage backfilled with cost ($2.00 for 1M Sonnet input)');
   }
@@ -79,16 +85,18 @@ export default async function smoke(db, legacy) {
   // Catalog & platform state
   const models = await h.user(member, 'SELECT id, provider FROM ai_models');
   check(models.some((m) => m.id === 'gpt-5.4' && m.provider === 'openai'), 'members can read the model catalog');
+  const sol = (await h.admin(`SELECT provider, input_per_mtok, output_per_mtok, cache_read_per_mtok FROM ai_models WHERE id = 'gpt-6.1-sol'`))[0];
+  check(sol?.provider === 'openai' && Number(sol.input_per_mtok) === 2 && Number(sol.output_per_mtok) === 10 && Number(sol.cache_read_per_mtok) === 0.1, 'gpt-6.1-sol is an OpenAI model priced at $2/$10 per 1M tokens');
   check(await h.denied(h.user(owner, `SELECT ai_report_platform('{"openai":true}', 'gpt-5.4')`)), 'clients cannot report platform state');
   check(await h.denied(h.user(owner, `UPDATE ai_models SET input_per_mtok = 0 WHERE id = 'claude-opus-5-5'`)), 'clients cannot change prices');
   await h.svc(`SELECT ai_report_platform('{"anthropic":false,"openai":true}', 'gpt-5.4')`);
   const fresh = await h.createWorkspace(other, 'Fresh');
   const s = (await h.svc('SELECT (ai_settings_for($1)).*', [fresh]))[0];
-  check(s.default_model === 'gpt-5.4' && s.allowed_models.includes('gpt-oss-120b'), `OpenAI platform default keeps the Cerebras team model allowed (${s.allowed_models.join(', ')})`);
+  check(s.default_model === 'gpt-5.4' && s.allowed_models.includes('gpt-6.1-sol'), `the platform default keeps the ChatGPT team model allowed (${s.allowed_models.join(', ')})`);
   const seeded = await h.admin(`SELECT DISTINCT v.model FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1`, [fresh]);
-  check(seeded.length === 1 && seeded[0].model === 'gpt-oss-120b', 'new built-ins remain pinned to Cerebras gpt-oss-120b');
+  check(seeded.length === 1 && seeded[0].model === 'gpt-6.1-sol', 'new built-ins are pinned to ChatGPT gpt-6.1-sol');
   const run = (await h.svc(`SELECT agent_start_run($1, $2, (SELECT id FROM workspace_agents WHERE workspace_id = $2 AND handle = 'cerebras-research'), NULL, 'hi', '{}', 'interactive', '{}', '{"type":"private"}', $3, 1000) AS r`, [other.id, fresh, randomUUID()]))[0].r;
-  check(Boolean(run.run_id), 'a Cerebras agent run can start in the new workspace');
+  check(Boolean(run.run_id), 'a ChatGPT agent run can start in the new workspace');
   await h.svc(`SELECT ai_report_platform('{"anthropic":true,"openai":false}', 'claude-opus-5-5')`);
   check(await h.denied(h.user(owner, `SELECT ai_update_settings($1, '{"allowed_models":["claude-opus-5-5","llama3"],"default_model":"claude-opus-5-5"}')`, [wsA])), 'unsupported provider models are rejected');
 
@@ -130,11 +138,11 @@ export default async function smoke(db, legacy) {
     'project-manager', 'recruiting-assistant', 'sales-development', 'scout',
     'seo-specialist', 'social-calendar',
   ];
-  check(JSON.stringify(handles) === JSON.stringify(expectedHandles), `roster: 20 GitHub-sourced Cerebras agents without the deleted coding agent (${handles.join(', ')})`);
+  check(JSON.stringify(handles) === JSON.stringify(expectedHandles), `roster: 20 GitHub-sourced agents without the deleted coding agent (${handles.join(', ')})`);
   const archivedHandleCollisions = await h.admin(`SELECT a.handle FROM workspace_agents a JOIN agent_templates t ON t.handle = a.handle AND NOT t.retired WHERE a.workspace_id = $1 AND a.is_builtin AND a.archived_at IS NOT NULL AND a.template_key IS DISTINCT FROM t.key`, [wsB]);
   check(archivedHandleCollisions.length === 0, 'archived built-ins cannot reserve handles needed by the active roster');
   const [socialCalendar] = await h.admin(`SELECT v.instructions, v.tools, v.model FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1 AND a.handle = 'social-calendar'`, [wsB]);
-  check(socialCalendar?.model === 'gpt-oss-120b' && socialCalendar.tools.includes('propose_document') && !socialCalendar.tools.includes('propose_channel_message'), 'social calendar creates reviewed plans without publishing access');
+  check(socialCalendar?.model === 'gpt-6.1-sol' && socialCalendar.tools.includes('propose_document') && !socialCalendar.tools.includes('propose_channel_message'), 'social calendar creates reviewed plans without publishing access');
   const [coordinatorVersion] = await h.admin(`SELECT v.instructions FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1 AND a.handle = 'cerebras-team'`, [wsB]);
   check(!coordinatorVersion.instructions.includes('no more than four focused tasks'), 'coordinator no longer carries the deleted coding roster instructions');
 

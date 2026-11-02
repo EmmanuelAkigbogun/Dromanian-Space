@@ -1,7 +1,7 @@
 # Agent sources
 
 Darkspace runs one coordinator and 19 specialists. The runtime is Agno on
-Cerebras `gpt-oss-120b`; the specialist designs below are adapted from public
+OpenAI (ChatGPT) `gpt-6.1-sol`; the specialist designs below are adapted from public
 GitHub projects to Darkspace's existing, tenant-aware tools. The application
 does not send workspace data to those repositories or deploy their databases.
 

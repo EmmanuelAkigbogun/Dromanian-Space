@@ -50,6 +50,38 @@ def test_cerebras_model_uses_native_agno_provider(monkeypatch):
     assert os.environ["CEREBRAS_API_KEY"] == "csk-test-key"
 
 
+def test_openai_model_uses_stateless_responses_api(monkeypatch):
+    monkeypatch.setenv("STORAGE_ROOT", tempfile.mkdtemp())
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key")
+    monkeypatch.setenv("OPENAI_PROJECT_ID", "proj_test")
+    model = app._model("gpt-6.1-sol", "low")
+    assert type(model).__name__ == "OpenAIResponses"
+    assert model.id == "gpt-6.1-sol"
+    assert model.api_key == "sk-test-key"
+    assert model.store is False
+    assert model.reasoning_effort == "low"
+    assert model.client_params == {"project": "proj_test"}
+
+
+def test_openai_reasoning_effort_matches_model_support():
+    assert app._openai_reasoning_effort("gpt-6.1-sol", "max") == "max"
+    assert app._openai_reasoning_effort("gpt-5.6-terra", "max") == "max"
+    assert app._openai_reasoning_effort("gpt-5.4", "max") == "xhigh"
+    assert app._openai_reasoning_effort("gpt-5.1", "xhigh") == "high"
+    assert app._openai_reasoning_effort("gpt-6-luna", "medium") == "medium"
+    assert app._openai_reasoning_effort("gpt-4.1", "low") is None
+
+
+def test_usage_does_not_count_openai_cached_input_twice():
+    total = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
+    completed = "ModelRequestCompleted"
+    app._add_usage(total, SimpleNamespace(event=completed, model_provider="OpenAI", input_tokens=1000,
+                                          output_tokens=50, cache_read_tokens=800, cache_write_tokens=0))
+    app._add_usage(total, SimpleNamespace(event=completed, model_provider="Anthropic", input_tokens=100,
+                                          output_tokens=10, cache_read_tokens=500, cache_write_tokens=20))
+    assert total == {"input_tokens": 300, "output_tokens": 60, "cache_read_tokens": 1300, "cache_write_tokens": 20}
+
+
 def test_dynamic_agno_team_preserves_tools_and_specialists():
     spec = {
         "read_file": {

@@ -31,6 +31,7 @@ describe('model catalog and platform state', () => {
     expect(models.find((m) => m.id === 'claude-opus-5-5')?.provider).toBe('anthropic');
     expect(models.find((m) => m.id === 'gpt-5.4')?.provider).toBe('openai');
     expect(models.find((m) => m.id === 'gpt-oss-120b')?.provider).toBe('cerebras');
+    expect(models.find((m) => m.id === 'gpt-6.1-sol')?.provider).toBe('openai');
     await expectDenied(q(owner, `SELECT ai_report_platform('{"openai":true}', 'gpt-5.4')`));
     await expectDenied(q(owner, `UPDATE ai_models SET input_per_mtok = 0 WHERE id = 'claude-opus-5-5' RETURNING id`));
   });
@@ -54,11 +55,11 @@ describe('model catalog and platform state', () => {
       const s = (await service('SELECT (ai_settings_for($1)).*', [fresh]))[0];
       expect(s.default_model).toBe('gpt-5.4');
       expect(s.allowed_models).toContain('gpt-5.4');
-      expect(s.allowed_models).toContain('gpt-oss-120b');
-      // Built-ins keep their Cerebras model even when another platform default is reported.
+      expect(s.allowed_models).toContain('gpt-6.1-sol');
+      // Built-ins keep their ChatGPT model even when another platform default is reported.
       const seeded = await service(
         `SELECT DISTINCT v.model FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1`, [fresh]);
-      expect(seeded.map((r) => r.model)).toEqual(['gpt-oss-120b']);
+      expect(seeded.map((r) => r.model)).toEqual(['gpt-6.1-sol']);
       const unchanged = (await service('SELECT default_model FROM workspace_ai_settings WHERE workspace_id = $1', [wsA]))[0];
       expect(unchanged?.default_model).toBe(before?.default_model);
     } finally {

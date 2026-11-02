@@ -11,7 +11,7 @@ type ProviderName = 'anthropic' | 'openai' | 'gemini' | 'cerebras';
 const PROVIDERS: Array<{ name: ProviderName; label: string; hint: string }> = [
   { name: 'gemini', label: 'Google Gemini', hint: 'Key from aistudio.google.com' },
   { name: 'anthropic', label: 'Anthropic (Claude)', hint: 'Key from console.anthropic.com' },
-  { name: 'openai', label: 'OpenAI', hint: 'Key from platform.openai.com' },
+  { name: 'openai', label: 'OpenAI (ChatGPT)', hint: 'API key from platform.openai.com (billed separately from ChatGPT plans)' },
   { name: 'cerebras', label: 'Cerebras Cloud', hint: 'Key from cloud.cerebras.ai' },
 ];
 

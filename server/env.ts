@@ -68,7 +68,7 @@ export function env(): ServerEnv {
     defaultProvider: provider === 'openai' || provider === 'gemini' || provider === 'cerebras' ? provider : 'anthropic',
     defaultModels: {
       anthropic: read('AI_DEFAULT_ANTHROPIC_MODEL') ?? 'claude-opus-5-5',
-      openai: read('AI_DEFAULT_OPENAI_MODEL') ?? 'gpt-5.4',
+      openai: read('AI_DEFAULT_OPENAI_MODEL') ?? 'gpt-6.1-sol',
       gemini: read('AI_DEFAULT_GEMINI_MODEL') ?? 'gemini-3.8-flash',
       cerebras: read('AI_DEFAULT_CEREBRAS_MODEL') ?? 'gpt-oss-120b',
     },
