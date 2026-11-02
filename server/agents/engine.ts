@@ -15,7 +15,9 @@ import { PROVIDER_TOOLS, TOOL_REGISTRY, toolSpecs } from './tools/index.js';
 import { readConversation, memberChannels } from './tools/read.js';
 import { quoteData, type AgentTool, type RunContext, type RunScope, type SourceKind, type ToolOutput } from './tools/types.js';
 
-const HEARTBEAT_MS = 5000;
+// Cancellation is persisted by the API. Poll quickly enough that Stop feels
+// immediate and the same signal aborts both native provider and remote runs.
+const HEARTBEAT_MS = 1000;
 // Viewers follow a run by reading its checkpoints, so keep them frequent.
 const CHECKPOINT_MS = 500;
 /** Stop before the worker's own limit so partial output is kept. */

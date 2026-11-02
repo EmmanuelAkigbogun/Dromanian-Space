@@ -545,6 +545,7 @@ function AgentView(props: {
   const [message, setMessage] = useState(initial);
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [following, setFollowing] = useState<string | null>(null);
   const [stream, setStream] = useState('');
   const [progress, setProgress] = useState('');
@@ -712,6 +713,7 @@ function AgentView(props: {
     if (!mounted.current) return;
     if (name === 'run') {
       requestKey.current = null;
+      setStopping(false);
       setMessage('');
       clearImages();
       setFollowing(String(data.run_id));
@@ -732,6 +734,7 @@ function AgentView(props: {
     else if (name === 'team') setLiveTeam((data.tasks as LiveTask[]) ?? []);
     else if (name === 'warning' && data.message) setProgress(String(data.message));
     else if (name === 'done') {
+      setStopping(false);
       setProgress('');
       setElapsedSeconds(0);
       if (data.error_message) setError(String(data.error_message));
@@ -768,6 +771,7 @@ function AgentView(props: {
     e.preventDefault();
     if (!agent || (!message.trim() && images.length === 0)) return;
     setSending(true);
+    setStopping(false);
     setError('');
     setStream('');
     setLiveTeam([]);
@@ -798,6 +802,7 @@ function AgentView(props: {
     } finally {
       if (mounted.current) {
         setSending(false);
+        setStopping(false);
         setFollowing(null);
         setStream('');
         setLiveTeam([]);
@@ -814,6 +819,27 @@ function AgentView(props: {
     } catch (err) {
       setError(errorText(err));
     }
+  }
+
+  async function stopRun() {
+    if (!activeRunId || stopping) return;
+    setStopping(true);
+    setError('');
+    setProgress('Stopping this run');
+    try {
+      await result(platform.rpc('agent_cancel_run', { p_run_id: activeRunId }));
+      await refresh();
+    } catch (err) {
+      setStopping(false);
+      setError(errorText(err));
+    }
+  }
+
+  function sendOnEnter(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing) return;
+    e.preventDefault();
+    if (!available || sending || !!running || (!message.trim() && images.length === 0)) return;
+    e.currentTarget.form?.requestSubmit();
   }
 
   const tasks: LiveTask[] = liveTeam.length
@@ -914,8 +940,8 @@ function AgentView(props: {
                 </span>
               </div>
               {activeRunId && (
-                <button type="button" className={s.button} onClick={() => void action(() => result(platform.rpc('agent_cancel_run', { p_run_id: activeRunId })))}>
-                  Stop
+                <button type="button" className={s.button} onClick={() => void stopRun()} disabled={stopping}>
+                  {stopping ? 'Stopping...' : 'Stop'}
                 </button>
               )}
             </section>
@@ -978,6 +1004,7 @@ function AgentView(props: {
                     requestKey.current = null;
                   }}
                   onPaste={pasteImages}
+                  onKeyDown={sendOnEnter}
                   maxLength={20000}
                   disabled={sending}
                 />
