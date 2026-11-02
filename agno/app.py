@@ -69,6 +69,15 @@ def _provider_key(provider: str) -> str | None:
             return AESGCM(key).decrypt(iv, ciphertext, f"provider:{provider}:v1".encode()).decode()
     except (FileNotFoundError, InvalidTag, KeyError, ValueError, json.JSONDecodeError):
         pass
+    except OSError as error:
+        # An unreadable key file must not break providers configured through
+        # the environment; say why saved keys are being skipped.
+        print(
+            json.dumps({"level": "error", "message": "Saved provider keys are unreadable; using environment keys",
+                        "error": f"{type(error).__name__}: {error.strerror or error}"}),
+            file=sys.stderr,
+            flush=True,
+        )
     return (
         os.getenv(environment)
         or (os.getenv("GEMINI_API") if provider == "gemini" else None)

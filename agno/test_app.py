@@ -63,6 +63,13 @@ def test_openai_model_uses_stateless_responses_api(monkeypatch):
     assert model.client_params == {"project": "proj_test"}
 
 
+def test_unreadable_saved_keys_fall_back_to_environment(monkeypatch, capsys):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-env-key")
+    with patch("builtins.open", side_effect=PermissionError(13, "Permission denied")):
+        assert app._provider_key("openai") == "sk-env-key"
+    assert "Saved provider keys are unreadable" in capsys.readouterr().err
+
+
 def test_openai_reasoning_effort_matches_model_support():
     assert app._openai_reasoning_effort("gpt-6.1-sol", "max") == "max"
     assert app._openai_reasoning_effort("gpt-5.6-terra", "max") == "max"

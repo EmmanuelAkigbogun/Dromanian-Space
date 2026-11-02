@@ -42,6 +42,9 @@ describe('standalone compose safety', () => {
     expect(compose).toContain('AGNO_TOOL_CALLBACK_URL: http://worker:3001/tool');
     expect(dockerfile).toContain('ghcr.io/astral-sh/uv:0.13.5');
     expect(dockerfile).toContain('uv sync --locked');
+    // Agno must run as the server's uid to read provider keys saved in AI settings (0600).
+    expect(dockerfile).toMatch(/FROM python[^\n]* AS agno[\s\S]*?USER 1000:1000/);
+    expect(dockerfile).not.toContain('USER nobody');
     expect(project).toContain('agno[anthropic,cerebras,google,openai]==3.1.10');
     expect(project).not.toContain('google-adk');
     expect(compose).toContain('AI_DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-openai}');

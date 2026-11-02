@@ -42,7 +42,11 @@ WORKDIR /app
 COPY agno/pyproject.toml agno/uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-dev --no-install-project
 COPY agno/app.py ./app.py
-USER nobody
+# Same uid as the server image's `node` user, which writes the shared storage
+# volume: provider keys saved in AI settings are owner-only (0600 in a 0700
+# directory). The volume is mounted read-only here, so Agno can read them but
+# never change them.
+USER 1000:1000
 EXPOSE 8000
 CMD ["/app/.venv/bin/python", "app.py"]
 
