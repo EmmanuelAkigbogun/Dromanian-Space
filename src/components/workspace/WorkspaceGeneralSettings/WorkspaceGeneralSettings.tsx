@@ -15,6 +15,7 @@ import { getForwardedAttachmentPolicy, updateProfile } from '@/lib/profile';
 import { canUpdateWorkspace, canUploadAvatar } from '@/lib/workspace/permissions';
 import type { ForwardedAttachmentPolicy } from '@/types/profile';
 import styles from './WorkspaceGeneralSettings.module.css';
+import { Floating } from '@/lib/overlay/Floating';
 
 export function WorkspaceGeneralSettings() {
   const { currentWorkspace, currentRole, updateWorkspace: ctxUpdateWorkspace } = useWorkspace();
@@ -239,8 +240,7 @@ export function WorkspaceGeneralSettings() {
             </button>
           )}
 
-          {avatarMenuOpen && (
-            <div className={styles.avatarMenu} role="menu" aria-label="Avatar options" ref={avatarMenuRef}>
+          <Floating open={avatarMenuOpen} anchor={avatarEditButtonRef} placement="bottom" offset={8} className={styles.avatarMenu} role="menu" aria-label="Avatar options" ref={avatarMenuRef}>
               <button
                 type="button"
                 className={styles.avatarMenuItem}
@@ -298,8 +298,7 @@ export function WorkspaceGeneralSettings() {
                   <span className={styles.avatarMenuItemHint}>Upload your own image</span>
                 </span>
               </button>
-            </div>
-          )}
+          </Floating>
 
           {showEmojiPicker && (
             <EmojiPicker

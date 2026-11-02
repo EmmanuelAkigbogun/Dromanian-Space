@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { canInviteMembers } from '@/lib/workspace';
 import { WorkspaceAvatar } from '@/components/workspace/WorkspaceAvatar';
 import { CreateWorkspaceDialog } from '@/components/workspace/CreateWorkspaceDialog';
 import { InviteMemberDialog } from '@/components/workspace/members/InviteMemberDialog';
+import { Floating } from '@/lib/overlay/Floating';
 import styles from './WorkspaceSwitcher.module.css';
 
 interface WorkspaceSwitcherProps {
@@ -17,25 +18,10 @@ export function WorkspaceSwitcher({ collapsed = false }: WorkspaceSwitcherProps)
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
 
   const canInvite = currentWorkspace ? canInviteMembers(currentRole) : false;
 
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   function handleToggle() {
-    if (!isOpen && collapsed && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      setDropdownPos({ top: rect.bottom + 4, left: rect.right + 4 });
-    }
     setIsOpen(!isOpen);
   }
 
@@ -67,8 +53,7 @@ export function WorkspaceSwitcher({ collapsed = false }: WorkspaceSwitcherProps)
             <WorkspaceAvatar name={currentWorkspace?.name ?? '+'} avatarUrl={currentWorkspace?.avatar_url ?? null} size="md" />
           </button>
 
-          {isOpen && dropdownPos && (
-            <div className={styles.dropdown} role="listbox" style={{ top: dropdownPos.top, left: dropdownPos.left, position: 'fixed' }}>
+          <Floating open={isOpen} anchor={triggerRef} placement="right-start" offset={4} onDismiss={() => setIsOpen(false)} className={styles.dropdown} role="listbox">
               <div className={styles.sectionLabel}>Workspaces</div>
               {workspaces.map((workspace) => (
                 <button
@@ -114,8 +99,7 @@ export function WorkspaceSwitcher({ collapsed = false }: WorkspaceSwitcherProps)
                   Invite member
                 </button>
               )}
-            </div>
-          )}
+          </Floating>
         </div>
 
         <CreateWorkspaceDialog open={isDialogOpen} onClose={handleDialogClose} />
@@ -141,8 +125,7 @@ export function WorkspaceSwitcher({ collapsed = false }: WorkspaceSwitcherProps)
           </svg>
         </button>
 
-        {isOpen && (
-          <div className={styles.dropdown} role="listbox">
+        <Floating open={isOpen} anchor={dropdownRef} placement="bottom-start" offset={4} matchWidth onDismiss={() => setIsOpen(false)} className={styles.dropdown} role="listbox">
             <div className={styles.sectionLabel}>Workspaces</div>
             {workspaces.map((workspace) => (
               <button
@@ -188,8 +171,7 @@ export function WorkspaceSwitcher({ collapsed = false }: WorkspaceSwitcherProps)
                 Invite member
               </button>
             )}
-          </div>
-        )}
+        </Floating>
       </div>
 
       <CreateWorkspaceDialog open={isDialogOpen} onClose={handleDialogClose} />

@@ -15,6 +15,7 @@ import {
   logDataExport,
 } from '@/lib/workspace/export';
 import { ExportAutomationsDialog } from '@/components/automation/ExportAutomationsDialog/ExportAutomationsDialog';
+import { Floating, isInFloatingLayer } from '@/lib/overlay/Floating';
 import styles from './WorkspaceDataExport.module.css';
 
 interface ProjectOption {
@@ -50,13 +51,12 @@ export function WorkspaceDataExport() {
   const [format, setFormat] = useState<'json' | 'csv'>('json');
   const [showAutomationExport, setShowAutomationExport] = useState(false);
   const [showProjectDropdown, setShowProjectDropdown] = useState(false);
-  const [projectDropdownPos, setProjectDropdownPos] = useState<{ top: number; left: number } | null>(null);
   const projectDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!showProjectDropdown) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (projectDropdownRef.current && !projectDropdownRef.current.contains(e.target as Node)) {
+      if (projectDropdownRef.current && !projectDropdownRef.current.contains(e.target as Node) && !isInFloatingLayer(e.target)) {
         setShowProjectDropdown(false);
       }
     };
@@ -144,18 +144,11 @@ export function WorkspaceDataExport() {
           <button
             type="button"
             className={styles.projectSelect}
-            onClick={(e) => {
+            onClick={() => {
               if (showProjectDropdown) {
                 setShowProjectDropdown(false);
                 return;
               }
-              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-              const spaceBelow = window.innerHeight - rect.bottom;
-              const dropdownHeight = Math.min((projects.length + 1) * 36, 280);
-              setProjectDropdownPos({
-                top: spaceBelow < dropdownHeight ? rect.top - dropdownHeight - 4 : rect.bottom + 4,
-                left: Math.max(8, rect.right - 160),
-              });
               setShowProjectDropdown(true);
             }}
             title="Filter by project"
@@ -164,11 +157,7 @@ export function WorkspaceDataExport() {
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
-          {showProjectDropdown && projectDropdownPos && (
-            <div
-              className={styles.projectDropdown}
-              style={{ position: 'fixed', top: projectDropdownPos.top, left: projectDropdownPos.left }}
-            >
+          <Floating open={showProjectDropdown} anchor={projectDropdownRef} placement="bottom-end" offset={4} className={styles.projectDropdown}>
               <button
                 type="button"
                 className={`${styles.projectOption} ${!selectedProjectId ? styles.projectOptionActive : ''}`}
@@ -192,8 +181,7 @@ export function WorkspaceDataExport() {
                   {p.name}
                 </button>
               ))}
-            </div>
-          )}
+          </Floating>
         </div>
         <Button
           onClick={() =>

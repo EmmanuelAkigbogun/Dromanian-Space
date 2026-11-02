@@ -3,12 +3,11 @@ import {
   useContext,
   useState,
   useRef,
-  useEffect,
   useCallback,
   type ReactNode,
   type ReactElement,
 } from 'react';
-import { Portal } from '@/lib/overlay/Portal';
+import { Floating, type FloatingPlacement } from '@/lib/overlay/Floating';
 import styles from './Popover.module.css';
 
 type PopoverSide = 'top' | 'bottom' | 'left' | 'right';
@@ -43,27 +42,8 @@ function Popover({ children, defaultOpen = false }: PopoverProps) {
   const onClose = useCallback(() => setOpen(false), []);
   const onToggle = useCallback(() => setOpen((prev) => !prev), []);
 
-  useEffect(() => {
-    if (!open) return;
-
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (triggerRef.current && !triggerRef.current.contains(target)) {
-        onClose();
-      }
-    };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [open, onClose]);
+  // Outside clicks and Escape are handled by the floating content, which
+  // counts clicks inside the popover as inside (it is portaled out of this tree).
 
   return (
     <PopoverContext.Provider value={{ open, triggerRef, onOpen, onClose, onToggle }}>
@@ -84,7 +64,7 @@ function Trigger({ children, asChild }: TriggerProps) {
 
   if (asChild) {
     return (
-      <span ref={triggerRef as React.RefObject<HTMLSpanElement>}>
+      <span ref={triggerRef as React.RefObject<HTMLSpanElement>} onClick={handleClick}>
         {children}
       </span>
     );
@@ -117,83 +97,24 @@ function Content({
   sideOffset = 8,
   showArrow = false,
 }: ContentProps) {
-  const { open, triggerRef } = usePopoverContext();
-  const contentRef = useRef<HTMLDivElement>(null);
-  const arrowRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-
-  useEffect(() => {
-    if (!open || !triggerRef.current || !contentRef.current) return;
-
-    const trigger = triggerRef.current.getBoundingClientRect();
-    const content = contentRef.current.getBoundingClientRect();
-
-    let top = 0;
-    let left = 0;
-
-    switch (side) {
-      case 'bottom':
-        top = trigger.bottom + sideOffset;
-        break;
-      case 'top':
-        top = trigger.top - content.height - sideOffset;
-        break;
-      case 'left':
-        left = trigger.left - content.width - sideOffset;
-        break;
-      case 'right':
-        left = trigger.right + sideOffset;
-        break;
-    }
-
-    if (side === 'bottom' || side === 'top') {
-      switch (align) {
-        case 'start':
-          left = trigger.left;
-          break;
-        case 'center':
-          left = trigger.left + (trigger.width - content.width) / 2;
-          break;
-        case 'end':
-          left = trigger.right - content.width;
-          break;
-      }
-    } else {
-      switch (align) {
-        case 'start':
-          top = trigger.top;
-          break;
-        case 'center':
-          top = trigger.top + (trigger.height - content.height) / 2;
-          break;
-        case 'end':
-          top = trigger.bottom - content.height;
-          break;
-      }
-    }
-
-    // Keep within viewport
-    left = Math.max(8, Math.min(left, window.innerWidth - content.width - 8));
-    top = Math.max(8, Math.min(top, window.innerHeight - content.height - 8));
-
-    setPosition({ top, left });
-  }, [open, side, align, sideOffset, triggerRef]);
-
-  if (!open) return null;
+  const { open, triggerRef, onClose } = usePopoverContext();
+  const placement = (align === 'center' ? side : `${side}-${align}`) as FloatingPlacement;
 
   return (
-    <Portal>
-      <div
-        ref={contentRef}
-        className={styles.content}
-        role="dialog"
-        aria-modal="false"
-        style={{ top: position.top, left: position.left }}
-      >
-        {showArrow && <div ref={arrowRef} className={styles.arrow} data-side={side} />}
-        {children}
-      </div>
-    </Portal>
+    <Floating
+      open={open}
+      anchor={triggerRef}
+      placement={placement}
+      offset={sideOffset}
+      onDismiss={onClose}
+      className={styles.content}
+      role="dialog"
+      aria-modal="false"
+      style={{ zIndex: 'var(--z-popover)' }}
+    >
+      {showArrow && <div className={styles.arrow} data-side={side} />}
+      {children}
+    </Floating>
   );
 }
 

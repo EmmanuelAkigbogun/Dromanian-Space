@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useChannel } from '@/hooks/useChannel';
 import { useDmDisplayNames } from '@/hooks/useDmDisplayNames';
 import styles from './ChannelSidebar.module.css';
+import { Floating } from '@/lib/overlay/Floating';
 
 interface ChannelSidebarProps {
   collapsed?: boolean;
@@ -17,27 +18,12 @@ export function ChannelSidebar({ collapsed = false }: ChannelSidebarProps) {
   const [listCollapsed, setListCollapsed] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
 
   const activeSlug = params.slug;
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   if (!hasChannels) return null;
 
   function handleToggle() {
-    if (!isOpen && collapsed && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      setDropdownPos({ top: rect.bottom + 4, left: rect.right + 4 });
-    }
     setIsOpen(!isOpen);
   }
 
@@ -66,8 +52,7 @@ export function ChannelSidebar({ collapsed = false }: ChannelSidebarProps) {
           </svg>
         </button>
 
-        {isOpen && dropdownPos && (
-          <div className={styles.dropdown} role="listbox" style={{ top: dropdownPos.top, left: dropdownPos.left, position: 'fixed' }}>
+        <Floating open={isOpen} anchor={triggerRef} placement="right-start" offset={4} onDismiss={() => setIsOpen(false)} className={styles.dropdown} role="listbox">
             <div className={styles.sectionLabel}>Channels</div>
             {channels.map((channel) => {
               const isActive = channel.slug === activeSlug;
@@ -92,8 +77,7 @@ export function ChannelSidebar({ collapsed = false }: ChannelSidebarProps) {
                 </button>
               );
             })}
-          </div>
-        )}
+        </Floating>
       </div>
     );
   }

@@ -9,6 +9,7 @@ import { useThreadCountsSafe } from '@/app/providers/ThreadProvider';
 import { uploadFile, isFileSizeValid, createFileAttachment, normalizeFileType, createLinkAttachment, deleteLinkAttachments, getLinkAttachmentUrls, extractUrls, removeUrlsFromText, LINK_ATTACHMENT_TYPE } from '@/lib/message';
 import { createScheduledMessage } from '@/lib/message/schedule';
 import { MentionDropdown } from './MentionDropdown';
+import { Floating } from '@/lib/overlay/Floating';
 import { RecordButton } from './RecordButton/RecordButton';
 import { UploadProgress } from '@/components/message/UploadProgress';
 import { AttachmentPreview } from '@/components/message/AttachmentPreview';
@@ -115,6 +116,8 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
   const [isDragging, setIsDragging] = useState(false);
   const [channelMemberIds, setChannelMemberIds] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const inputContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const channelId = overrideChannelId ?? channelCtx?.currentChannel?.id;
@@ -550,6 +553,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
 
   return (
     <div
+      ref={wrapperRef}
       className={`${styles.wrapper} ${isDragging ? styles.dragging : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -717,7 +721,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
             accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar"
           />
 
-          <div className={styles.inputContainer}>
+          <div className={styles.inputContainer} ref={inputContainerRef}>
             <textarea
               ref={textareaRef}
               className={`${styles.input} ${isOverLimit ? styles.inputOverLimit : ''}`}
@@ -732,6 +736,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
             />
             {mentionQuery !== null && (
               <MentionDropdown
+                anchor={inputContainerRef}
                 query={mentionQuery}
                 onSelect={handleMentionSelect}
                 onClose={() => setMentionQuery(null)}
@@ -804,8 +809,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
           </div>
         </div>
 
-        {isScheduleOpen && !activeEdit && (
-          <div className={styles.schedulePopover}>
+        <Floating open={isScheduleOpen && !activeEdit} anchor={wrapperRef} placement="top-end" offset={8} onDismiss={() => setIsScheduleOpen(false)} role="dialog" aria-label="Schedule message" className={styles.schedulePopover}>
             <span className={styles.schedulePopoverTitle}>Schedule message</span>
             <div className={styles.schedulePresets}>
               <button type="button" className={styles.schedulePreset} onClick={() => applyPreset(10)}>In 10 min</button>
@@ -831,8 +835,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
                 {isSending ? 'Saving...' : 'Schedule'}
               </button>
             </div>
-          </div>
-        )}
+        </Floating>
 
         <div className={styles.hint}>
           {activeEdit ? (

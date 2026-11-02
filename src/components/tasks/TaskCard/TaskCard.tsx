@@ -4,6 +4,7 @@ import { Tooltip } from '@/components/ui/Tooltip';
 import type { Task, TaskStatus } from '@/types/task';
 import { getStatusColor, getStatusLabel, getPriorityColor, TASK_STATUS_OPTIONS } from '@/types/task';
 import { formatRelativeTime } from '@/utils';
+import { Floating, isInFloatingLayer } from '@/lib/overlay/Floating';
 import styles from './TaskCard.module.css';
 
 interface TaskCardProps {
@@ -37,7 +38,6 @@ export const TaskCard = memo(function TaskCard({
 }: TaskCardProps) {
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -60,14 +60,13 @@ export const TaskCard = memo(function TaskCard({
   useEffect(() => {
     setShowStatusDropdown(false);
     setActiveIndex(-1);
-    setDropdownPos(null);
   }, [task]);
 
   useEffect(() => {
     if (!showStatusDropdown) return;
 
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node) && !isInFloatingLayer(e.target)) {
         setShowStatusDropdown(false);
       }
     };
@@ -318,13 +317,6 @@ export const TaskCard = memo(function TaskCard({
                   if (showStatusDropdown) {
                     setShowStatusDropdown(false);
                   } else {
-                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                    const spaceBelow = window.innerHeight - rect.bottom;
-                    const dropdownHeight = Math.min(visibleStatusOptions.length * 36, 280);
-                    setDropdownPos({
-                      top: spaceBelow < dropdownHeight ? rect.top - dropdownHeight - 4 : rect.bottom + 4,
-                      left: rect.right - 160,
-                    });
                     setActiveIndex(-1);
                     setShowStatusDropdown(true);
                   }
@@ -335,8 +327,7 @@ export const TaskCard = memo(function TaskCard({
                   <polyline points="6 9 12 15 18 9" />
                 </svg>
               </button>
-              {showStatusDropdown && dropdownPos && (
-                <div className={styles.statusDropdown} style={{ position: 'fixed', top: dropdownPos.top, left: dropdownPos.left }} tabIndex={0} onKeyDown={handleDropdownKeyDown} ref={(el) => { if (el) el.focus(); }}>
+              <Floating open={showStatusDropdown} anchor={dropdownRef} placement="bottom-end" offset={4} className={styles.statusDropdown} tabIndex={0} onKeyDown={handleDropdownKeyDown} ref={(el) => { if (el) el.focus(); }}>
                   {visibleStatusOptions.map((opt, i) => (
                     <button
                       key={opt.id}
@@ -357,8 +348,7 @@ export const TaskCard = memo(function TaskCard({
                       {opt.label}
                     </button>
                   ))}
-                </div>
-              )}
+              </Floating>
             </div>
           )}
         </div>

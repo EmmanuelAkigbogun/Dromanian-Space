@@ -11,6 +11,7 @@ import { EmojiPicker } from '@/components/ui/EmojiPicker';
 import { deleteAvatar, listUserAvatars } from '@/lib/profile';
 import type { AvatarDisplayStyle } from '@/types/profile';
 import styles from './ProfileEdit.module.css';
+import { Floating } from '@/lib/overlay/Floating';
 
 const AVATAR_STYLE_KEY = 'dark_space_avatar_style';
 
@@ -311,8 +312,7 @@ export function ProfileEdit() {
                   }
                 />
 
-                {avatarMenuOpen && (
-                  <div className={styles.avatarMenu} role="menu" aria-label="Avatar options" ref={avatarMenuRef}>
+                <Floating open={avatarMenuOpen} anchor={avatarEditButtonRef} placement="bottom" offset={8} className={styles.avatarMenu} role="menu" aria-label="Avatar options" ref={avatarMenuRef}>
                     <div className={styles.avatarMenuHeader}>
                       <span className={styles.avatarMenuTitle}>Avatar style</span>
                       <button
@@ -446,8 +446,7 @@ export function ProfileEdit() {
                         )}
                       </>
                     )}
-                  </div>
-                )}
+                </Floating>
               </div>
 
               <div className={styles.avatarStyleRow} role="radiogroup" aria-label="Avatar display style">

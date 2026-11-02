@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Avatar } from '@/components/ui/Avatar';
 import { Dialog } from '@/components/ui/Dialog';
 import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
+import { Floating } from '@/lib/overlay/Floating';
 import styles from './UserMenu.module.css';
 
 interface UserMenuProps {
@@ -16,17 +17,6 @@ export function UserMenu({ collapsed }: UserMenuProps) {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen]);
 
   function handleProfile() {
     setIsOpen(false);
@@ -91,8 +81,7 @@ export function UserMenu({ collapsed }: UserMenuProps) {
         <span className={styles.name}>{displayName}</span>
       </button>
 
-      {isOpen && (
-        <div className={styles.dropdown} role="menu">
+      <Floating open={isOpen} anchor={menuRef} placement="top-start" offset={4} matchWidth onDismiss={() => setIsOpen(false)} className={styles.dropdown} role="menu">
           <div className={styles.header}>
             <Avatar src={avatarUrl ?? undefined} name={displayName} size="lg" />
             <div className={styles.headerInfo}>
@@ -115,8 +104,7 @@ export function UserMenu({ collapsed }: UserMenuProps) {
             </svg>
             Sign out
           </button>
-        </div>
-      )}
+      </Floating>
     </div>
   );
 }

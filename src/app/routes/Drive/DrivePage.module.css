@@ -3,10 +3,6 @@
 }
 
 .menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: var(--z-dropdown);
   display: flex;
   flex-direction: column;
   min-width: 240px;

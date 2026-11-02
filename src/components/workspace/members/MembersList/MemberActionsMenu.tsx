@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
+import { Floating } from '@/lib/overlay/Floating';
 import styles from './MembersList.module.css';
 
 interface MemberActionsMenuProps {
@@ -15,19 +16,6 @@ export function MemberActionsMenu({ currentRole, canManage, onRoleChange, onRemo
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!isOpen) return;
-
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen]);
-
   return (
     <div className={styles.actionsMenu} ref={menuRef}>
       <button
@@ -35,6 +23,8 @@ export function MemberActionsMenu({ currentRole, canManage, onRoleChange, onRemo
         className={styles.actionsTrigger}
         onClick={() => setIsOpen(!isOpen)}
         aria-label="Member actions"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="12" cy="5" r="1" />
@@ -43,8 +33,7 @@ export function MemberActionsMenu({ currentRole, canManage, onRoleChange, onRemo
         </svg>
       </button>
 
-      {isOpen && (
-        <div className={styles.actionsDropdown}>
+      <Floating open={isOpen} anchor={menuRef} placement="bottom-end" offset={4} onDismiss={() => setIsOpen(false)} role="menu" className={styles.actionsDropdown}>
           {onToggleProjectManager && (
             <button
               type="button"
@@ -93,8 +82,7 @@ export function MemberActionsMenu({ currentRole, canManage, onRoleChange, onRemo
               Remove member
             </button>
           )}
-        </div>
-      )}
+      </Floating>
     </div>
   );
 }

@@ -381,17 +381,12 @@ textarea.descriptionArea:focus {
 }
 
 .dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: var(--z-dropdown);
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   padding: var(--space-1);
   min-width: 160px;
-  margin-top: var(--space-1);
 }
 
 .dropdownOption {

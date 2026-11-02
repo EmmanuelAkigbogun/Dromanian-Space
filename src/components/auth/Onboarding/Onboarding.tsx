@@ -8,6 +8,7 @@ import { EmojiPicker } from '@/components/ui/EmojiPicker';
 import { deleteAvatar, listUserAvatars } from '@/lib/profile';
 import type { AvatarDisplayStyle } from '@/types/profile';
 import styles from './Onboarding.module.css';
+import { Floating } from '@/lib/overlay/Floating';
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -247,8 +248,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                 }
               />
 
-              {avatarMenuOpen && (
-                <div className={styles.avatarMenu} role="menu" aria-label="Avatar options" ref={avatarMenuRef}>
+              <Floating open={avatarMenuOpen} anchor={avatarEditButtonRef} placement="bottom" offset={8} className={styles.avatarMenu} role="menu" aria-label="Avatar options" ref={avatarMenuRef}>
                   <div className={styles.avatarMenuHeader}>
                     <span className={styles.avatarMenuTitle}>Avatar style</span>
                     <button
@@ -382,8 +382,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                       )}
                     </>
                   )}
-                </div>
-              )}
+              </Floating>
 
               {showEmojiPicker && (
                 <EmojiPicker

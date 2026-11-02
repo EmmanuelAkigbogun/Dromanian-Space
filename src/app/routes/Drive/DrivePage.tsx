@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useWorkspaceContext } from '@/app/providers/WorkspaceProvider';
 import { useAuth } from '@/hooks/useAuth';
 import { Dialog } from '@/components/ui/Dialog';
+import { Floating } from '@/lib/overlay/Floating';
 import { platform, result, api, errorText, type RpcRow } from '@/features/platform/client';
 import { DriveItem } from './DriveItem';
 import s from '@/features/platform/Platform.module.css';
@@ -38,6 +39,7 @@ function DriveBrowser({ workspaceId: ws, userId, itemId, folderId }: {workspaceI
   const [error,setError] = useState('');
   const [uploads,setUploads] = useState<Array<{name:string; progress:number; error?:string; file:File}>>([]);
   const uploadInput = useRef<HTMLInputElement|null>(null);
+  const newMenuButton = useRef<HTMLButtonElement|null>(null);
   const abort = useRef<XMLHttpRequest|null>(null);
   const alive = useRef(true);
   useEffect(() => { alive.current=true; return () => { alive.current=false; abort.current?.abort(); }; }, []);
@@ -100,7 +102,7 @@ function DriveBrowser({ workspaceId: ws, userId, itemId, folderId }: {workspaceI
   const itemLink=(i:Item)=>`/drive/${i.kind==='folder'?'folder':'item'}/${i.id}`;
   return <div className={s.page} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(!busy)void uploadFiles([...e.dataTransfer.files]);}}>
     <header className={s.header}><div><div className={s.eyebrow}>Shared knowledge · Drive</div><h1>{folderId ? crumbs.data?.at(-1)?.name ?? 'Folder' : driveViews.find(v=>v[0]===view)?.[1] ?? 'Drive'}</h1><p className={s.muted}>Files are stored on this server. Your files stay private to you until you share them with a person, channel, project, or the workspace.</p></div><div className={s.actions}>
-      <div className={d.newMenu}><button className={s.button} aria-haspopup="menu" aria-expanded={newMenu} onClick={()=>setNewMenu(v=>!v)}>+ New</button>{newMenu&&<div className={d.menu} role="menu" onMouseLeave={()=>setNewMenu(false)}>{(['folder','document','docx','xlsx','pptx'] as CreateKind[]).map(k=><button key={k} role="menuitem" className={d.menuItem} onClick={()=>{setNewMenu(false);setName('');setCreate(k);}}><span className={d.menuIcon} data-kind={k}>{k==='folder'?'▱':k==='document'?'≡':k==='docx'?'W':k==='xlsx'?'X':'P'}</span>{k==='document'?'Document (Markdown)':CREATE_LABELS[k][0].toUpperCase()+CREATE_LABELS[k].slice(1)}</button>)}</div>}</div>
+      <div className={d.newMenu}><button ref={newMenuButton} className={s.button} aria-haspopup="menu" aria-expanded={newMenu} onClick={()=>setNewMenu(v=>!v)}>+ New</button><Floating open={newMenu} anchor={newMenuButton} placement="bottom-start" onDismiss={()=>setNewMenu(false)} className={d.menu} role="menu">{(['folder','document','docx','xlsx','pptx'] as CreateKind[]).map(k=><button key={k} role="menuitem" className={d.menuItem} onClick={()=>{setNewMenu(false);setName('');setCreate(k);}}><span className={d.menuIcon} data-kind={k}>{k==='folder'?'▱':k==='document'?'≡':k==='docx'?'W':k==='xlsx'?'X':'P'}</span>{k==='document'?'Document (Markdown)':CREATE_LABELS[k][0].toUpperCase()+CREATE_LABELS[k].slice(1)}</button>)}</Floating></div>
       <button className={s.primary} type="button" disabled={busy} onClick={()=>uploadInput.current?.click()}>
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 20h14"/></svg>
         {busy?'Uploading…':'Upload from computer'}

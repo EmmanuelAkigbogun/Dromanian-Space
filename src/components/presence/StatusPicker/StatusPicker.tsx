@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { usePresence, type PresenceStatus } from '@/hooks/usePresence';
 import { PresenceIndicator } from '@/components/presence/PresenceIndicator';
+import { Floating } from '@/lib/overlay/Floating';
 import styles from './StatusPicker.module.css';
 
 interface StatusOption {
@@ -33,29 +34,6 @@ export function StatusPicker({ className }: StatusPickerProps) {
     [setMyStatus],
   );
 
-  useEffect(() => {
-    if (!isOpen) return;
-
-    function handleClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') {
-        setIsOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [isOpen]);
-
   const classes = [styles.container, className].filter(Boolean).join(' ');
 
   return (
@@ -71,8 +49,16 @@ export function StatusPicker({ className }: StatusPickerProps) {
         <span className={styles.triggerLabel}>Set Status</span>
       </button>
 
-      {isOpen && (
-        <div className={styles.dropdown} role="listbox" aria-label="Set your status">
+      <Floating
+        open={isOpen}
+        anchor={containerRef}
+        placement="bottom-start"
+        offset={4}
+        onDismiss={() => setIsOpen(false)}
+        className={styles.dropdown}
+        role="listbox"
+        aria-label="Set your status"
+      >
           {STATUS_OPTIONS.map((option) => (
             <button
               key={option.label}
@@ -91,8 +77,7 @@ export function StatusPicker({ className }: StatusPickerProps) {
               <span className={styles.optionLabel}>{option.label}</span>
             </button>
           ))}
-        </div>
-      )}
+      </Floating>
     </div>
   );
 }

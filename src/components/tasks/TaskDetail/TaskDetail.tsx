@@ -19,6 +19,7 @@ import { getStatusColor, getStatusLabel, getPriorityColor, TASK_STATUS_OPTIONS, 
 import { toLocalDatetimeString, formatDateTime, formatDateOnly } from '@/utils';
 import type { Profile, ProjectColumn } from '@/types';
 import styles from './TaskDetail.module.css';
+import { Floating } from '@/lib/overlay/Floating';
 
 interface TaskDetailProps {
   task: Task;
@@ -74,6 +75,9 @@ export function TaskDetail({
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const statusBadgeRef = useRef<HTMLSpanElement>(null);
+  const priorityBadgeRef = useRef<HTMLSpanElement>(null);
+  const assigneeButtonRef = useRef<HTMLButtonElement>(null);
   const descInputRef = useRef<HTMLTextAreaElement>(null);
   const dueDateInputRef = useRef<HTMLInputElement>(null);
   const startDateInputRef = useRef<HTMLInputElement>(null);
@@ -569,6 +573,7 @@ export function TaskDetail({
         <div className={styles.panelHeader}>
           <div className={styles.headerLeft}>
             <span
+              ref={statusBadgeRef}
               className={styles.statusBadge}
               style={{
                 backgroundColor: `${getStatusColor(currentTask.status)}18`,
@@ -579,8 +584,7 @@ export function TaskDetail({
               <span className={styles.statusDot} style={{ backgroundColor: getStatusColor(currentTask.status) }} />
               {getStatusName(currentTask.status)}
             </span>
-            {showStatusDropdown && (
-              <div className={styles.dropdown}>
+            <Floating open={showStatusDropdown} anchor={statusBadgeRef} placement="bottom-start" offset={4} onDismiss={() => setShowStatusDropdown(false)} role="listbox" className={styles.dropdown}>
                 {statusColumns.map((option) => (
                   <button
                     key={option.id}
@@ -595,8 +599,7 @@ export function TaskDetail({
                     {option.name}
                   </button>
                 ))}
-              </div>
-            )}
+            </Floating>
           </div>
           <div className={styles.headerActions}>
             {isSaving && <Spinner size="sm" />}
@@ -786,6 +789,7 @@ export function TaskDetail({
             <span className={styles.fieldLabel}>Priority</span>
             <div style={{ position: 'relative' }}>
               <span
+                ref={priorityBadgeRef}
                 className={styles.priorityBadge}
                 style={{ color: getPriorityColor(currentTask.priority) }}
                 onClick={() => canEdit && setShowPriorityDropdown(!showPriorityDropdown)}
@@ -793,8 +797,7 @@ export function TaskDetail({
                 <span className={styles.priorityDot} style={{ backgroundColor: getPriorityColor(currentTask.priority) }} />
                 {TASK_PRIORITY_OPTIONS.find((p) => p.value === currentTask.priority)?.label ?? 'None'}
               </span>
-              {showPriorityDropdown && (
-                <div className={styles.dropdown}>
+              <Floating open={showPriorityDropdown} anchor={priorityBadgeRef} placement="bottom-start" offset={4} onDismiss={() => setShowPriorityDropdown(false)} role="listbox" className={styles.dropdown}>
                   {TASK_PRIORITY_OPTIONS.map((option) => (
                     <button
                       key={option.value}
@@ -809,8 +812,7 @@ export function TaskDetail({
                       {option.label}
                     </button>
                   ))}
-                </div>
-              )}
+              </Floating>
             </div>
           </div>
 
@@ -962,6 +964,7 @@ export function TaskDetail({
               <span className={styles.sectionTitle}>Assignees</span>
               {canEdit && (
                 <button
+                  ref={assigneeButtonRef}
                   type="button"
                   className={styles.headerButton}
                   onClick={() => setShowAssigneeDropdown(!showAssigneeDropdown)}
@@ -1006,8 +1009,7 @@ export function TaskDetail({
                   No assignees
                 </span>
               )}
-              {showAssigneeDropdown && (
-                <div className={styles.dropdown}>
+              <Floating open={showAssigneeDropdown} anchor={assigneeButtonRef} placement="bottom-end" offset={4} onDismiss={() => setShowAssigneeDropdown(false)} role="listbox" className={styles.dropdown}>
                   {unassignedMembers.length > 0 ? unassignedMembers.map((member) => (
                     <button
                       key={member.id}
@@ -1027,8 +1029,7 @@ export function TaskDetail({
                       All members assigned
                     </span>
                   )}
-                </div>
-              )}
+              </Floating>
             </div>
           </div>
 

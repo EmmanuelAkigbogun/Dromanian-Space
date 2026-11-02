@@ -35,6 +35,7 @@ import { seenByLabel, useChannelReceipts } from '@/hooks/useChannelReceipts';
 import type { LinkDisplayMode, Message, Profile } from '@/types';
 import type { ConnectionStatus } from '@/app/providers/MessageProvider';
 import styles from './DmConversationView.module.css';
+import { Floating } from '@/lib/overlay/Floating';
 
 interface FailedMsg {
   tempId: string;
@@ -444,16 +445,6 @@ export function DmConversationView() {
     if (otherProfile) setProfileModalUserId(otherProfile.id);
   }, [currentConversation?.type, otherProfile]);
 
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (pinnedMenuRef.current && !pinnedMenuRef.current.contains(event.target as Node)) {
-        setPinnedMenuOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   if (!currentConversation) {
     if (conversations.length === 0) {
       return (
@@ -569,8 +560,7 @@ export function DmConversationView() {
               <circle cx="12" cy="19" r="1" />
             </svg>
           </button>
-          {pinnedMenuOpen && (
-            <div className={styles.pinnedMenu} role="menu">
+          <Floating open={pinnedMenuOpen} anchor={pinnedMenuRef} placement="bottom-end" offset={4} onDismiss={() => setPinnedMenuOpen(false)} className={styles.pinnedMenu} role="menu">
               {bulk.selectedCount > 0 && (
                 <>
                   <div className={styles.pinnedMenuSectionLabel}>
@@ -638,8 +628,7 @@ export function DmConversationView() {
                 </svg>
                 {showPinned ? 'Hide pinned' : 'Pinned messages'}
               </button>
-            </div>
-          )}
+          </Floating>
         </div>
         {aiSession ? (
           <button

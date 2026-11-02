@@ -1,10 +1,13 @@
-import { useState, useEffect, useRef, memo, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, memo, useCallback, useMemo, type RefObject } from 'react';
 import { useProfiles } from '@/hooks/useProfiles';
 import { Avatar } from '@/components/ui/Avatar';
 import { getDisplayName } from '@/lib/message';
+import { Floating } from '@/lib/overlay/Floating';
 import styles from './MentionDropdown.module.css';
 
 interface MentionDropdownProps {
+  /** The composer input the list opens above. */
+  anchor: RefObject<HTMLElement | null>;
   query: string;
   onSelect: (username: string) => void;
   onClose: () => void;
@@ -16,6 +19,7 @@ interface MentionDropdownProps {
 type Item = { kind: 'all' } | { kind: 'member'; id: string; name: string; avatar: string | undefined };
 
 export const MentionDropdown = memo(function MentionDropdown({
+  anchor,
   query,
   onSelect,
   onClose,
@@ -70,7 +74,7 @@ export const MentionDropdown = memo(function MentionDropdown({
   if (items.length === 0) return null;
 
   return (
-    <div ref={listRef} className={styles.dropdown}>
+    <Floating open anchor={anchor} placement="top-start" offset={8} matchWidth ref={listRef} className={styles.dropdown} role="listbox">
       {items.map((item, index) => (
         <button
           key={item.kind === 'all' ? '@all' : item.id}
@@ -93,6 +97,6 @@ export const MentionDropdown = memo(function MentionDropdown({
           )}
         </button>
       ))}
-    </div>
+    </Floating>
   );
 });

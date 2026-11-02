@@ -2,12 +2,13 @@
 // with saved views, filters and footer calculations; deals also show as a
 // board; every record has a page with its details, notes and links. Each
 // client company can keep its own CRM (client_id), kept apart from ours.
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useRef } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useWorkspaceContext } from '@/app/providers/WorkspaceProvider';
 import { useAuth } from '@/hooks/useAuth';
 import { Dialog } from '@/components/ui/Dialog';
+import { Floating } from '@/lib/overlay/Floating';
 import { platform, result, errorText, workspacePeople } from '@/features/platform/client';
 import { RecordTable } from './RecordTable';
 import { DealsBoard } from './DealsBoard';
@@ -60,6 +61,7 @@ function CRM({ ws, userId, admin, kind, client }: { ws: string; userId: string; 
   const [pipelineId, setPipelineId] = useState('');
   const [dialog, setDialog] = useState<'new' | 'import' | 'client' | 'stages' | 'properties' | 'saveView' | null>(null);
   const [columnsOpen, setColumnsOpen] = useState(false);
+  const columnsButton = useRef<HTMLButtonElement>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -260,9 +262,8 @@ function CRM({ ws, userId, admin, kind, client }: { ws: string; userId: string; 
             )}
             {kind === 'deals' && <button className={s.button} onClick={() => setBoard(!board)}>{board ? 'Table' : 'Board'}</button>}
             <div className={s.menuWrap}>
-              <button className={s.button} onClick={() => setColumnsOpen(!columnsOpen)} aria-expanded={columnsOpen}>Columns</button>
-              {columnsOpen && (
-                <div className={s.menu} onMouseLeave={() => setColumnsOpen(false)}>
+              <button ref={columnsButton} className={s.button} onClick={() => setColumnsOpen(!columnsOpen)} aria-haspopup="dialog" aria-expanded={columnsOpen}>Columns</button>
+              <Floating open={columnsOpen} anchor={columnsButton} placement="bottom-start" offset={4} onDismiss={() => setColumnsOpen(false)} role="dialog" aria-label="Columns" className={s.menu}>
                   {columns.slice(1).map((c) => {
                     const hidden = view.columns[c.key]?.hidden ?? !c.shown;
                     return (
@@ -273,8 +274,7 @@ function CRM({ ws, userId, admin, kind, client }: { ws: string; userId: string; 
                     );
                   })}
                   {admin && <button className={s.ghost} onClick={() => { setColumnsOpen(false); setDialog('properties'); }}>Manage properties…</button>}
-                </div>
-              )}
+              </Floating>
             </div>
             <span className={s.spacer} />
             {kind !== 'deals' && <button className={s.button} onClick={() => setDialog('import')}>Import</button>}

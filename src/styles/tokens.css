@@ -166,12 +166,13 @@
   --transition-normal: 200ms ease;
   --transition-slow: 300ms ease;
 
-  /* Z-Index */
+  /* Z-Index. Surfaces first, then the transient layers opened from them:
+     menus open from pages, panels and modals, so they sit above all three. */
   --z-base: 0;
-  --z-dropdown: 1000;
   --z-sticky: 1100;
   --z-mobile-surface: 1200;
   --z-modal: 1300;
+  --z-dropdown: 1350;
   --z-popover: 1400;
   --z-tooltip: 1500;
   --z-toast: 1600;

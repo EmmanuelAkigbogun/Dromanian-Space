@@ -93,11 +93,6 @@
 }
 
 .dropdown {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  z-index: 20;
   max-height: 220px;
   overflow-y: auto;
   background-color: var(--color-surface);

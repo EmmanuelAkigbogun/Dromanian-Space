@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useChannel } from '@/hooks/useChannel';
 import { useBulkMessageActions } from '@/hooks/useBulkMessageActions';
 import { ShareMessageDialog } from '@/components/message/ShareMessageDialog';
 import { BulkDeleteConfirmDialog } from '@/components/message/BulkDeleteConfirmDialog';
 import type { Channel } from '@/types';
 import styles from './ChannelActionsMenu.module.css';
+import { Floating } from '@/lib/overlay/Floating';
 
 interface ChannelActionsMenuProps {
   channel: Channel;
@@ -23,16 +24,6 @@ export function ChannelActionsMenu({ channel, onEdit, onArchive, onDelete, onLea
   const menuRef = useRef<HTMLDivElement>(null);
   const { isMember } = useChannel();
   const bulk = useBulkMessageActions();
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   function handleAction(action: () => void) {
     setIsOpen(false);
@@ -59,8 +50,7 @@ export function ChannelActionsMenu({ channel, onEdit, onArchive, onDelete, onLea
         </svg>
       </button>
 
-      {isOpen && (
-        <div className={styles.menu} role="menu">
+      <Floating open={isOpen} anchor={menuRef} placement="bottom-end" offset={4} onDismiss={() => setIsOpen(false)} className={styles.menu} role="menu">
           {bulk.selectedCount > 0 && (
             <>
               <div className={styles.menuSectionLabel}>
@@ -224,8 +214,7 @@ export function ChannelActionsMenu({ channel, onEdit, onArchive, onDelete, onLea
             </svg>
             Delete channel
           </button>
-        </div>
-      )}
+      </Floating>
       <ShareMessageDialog
         open={bulk.forwardOpen}
         onClose={bulk.closeBulkForward}

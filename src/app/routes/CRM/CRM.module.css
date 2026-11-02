@@ -425,10 +425,6 @@
 }
 
 .menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: var(--z-popover);
   display: flex;
   flex-direction: column;
   gap: 2px;

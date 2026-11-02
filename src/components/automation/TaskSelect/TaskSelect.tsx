@@ -3,6 +3,7 @@ import { useWorkspace } from '@/hooks/useWorkspace';
 import { platform } from '@/lib/platform';
 import { getStatusLabel } from '@/types/task';
 import styles from './TaskSelect.module.css';
+import { Floating } from '@/lib/overlay/Floating';
 
 interface Task {
   id: string;
@@ -78,16 +79,6 @@ export function TaskSelect({ label, value, onChange, placeholder = 'Search tasks
     })();
   }, [value, selected?.id]);
 
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, []);
-
   const selectTask = (task: Task) => {
     setSelected(task);
     onChange(task.id, task.title, task.status ?? '');
@@ -130,8 +121,7 @@ export function TaskSelect({ label, value, onChange, placeholder = 'Search tasks
         )}
       </div>
 
-      {open && !selected && (
-        <div className={styles.dropdown}>
+      <Floating open={open && !selected} anchor={rootRef} placement="bottom-start" offset={4} matchWidth onDismiss={() => setOpen(false)} role="listbox" className={styles.dropdown}>
           {tasks.length === 0 && <span className={styles.empty}>No matching tasks</span>}
           {tasks.map((task) => (
             <button
@@ -144,8 +134,7 @@ export function TaskSelect({ label, value, onChange, placeholder = 'Search tasks
               <span className={styles.optionStatus}>{getStatusText(task.status)}</span>
             </button>
           ))}
-        </div>
-      )}
+      </Floating>
     </div>
   );
 }

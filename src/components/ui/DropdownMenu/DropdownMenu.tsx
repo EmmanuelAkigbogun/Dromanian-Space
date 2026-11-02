@@ -3,13 +3,11 @@ import {
   useContext,
   useState,
   useRef,
-  useEffect,
   useCallback,
   type ReactNode,
-  type MouseEvent,
   type KeyboardEvent,
 } from 'react';
-import { Portal } from '@/lib/overlay/Portal';
+import { Floating, type FloatingPlacement } from '@/lib/overlay/Floating';
 import styles from './DropdownMenu.module.css';
 
 interface DropdownContextValue {
@@ -39,33 +37,8 @@ function DropdownMenu({ children }: DropdownMenuProps) {
   const onOpen = useCallback(() => setOpen(true), []);
   const onClose = useCallback(() => setOpen(false), []);
   const onToggle = useCallback(() => setOpen((prev) => !prev), []);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const handleClickOutside = (event: MouseEvent | globalThis.MouseEvent) => {
-      const target = event.target as Node;
-      if (
-        triggerRef.current &&
-        !triggerRef.current.contains(target)
-      ) {
-        onClose();
-      }
-    };
-
-    const handleKeyDown = (event: KeyboardEvent | globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [open, onClose]);
+  // Outside clicks and Escape are handled by the floating content, which
+  // counts clicks inside the menu as inside (it is portaled out of this tree).
 
   return (
     <DropdownContext.Provider value={{ open, triggerRef, onOpen, onClose, onToggle }}>
@@ -85,7 +58,7 @@ function Trigger({ children, asChild }: TriggerProps) {
   if (asChild && typeof children === 'object' && children !== null && 'props' in children) {
     const child = children as React.ReactElement<Record<string, unknown>>;
     return (
-      <span ref={triggerRef as React.RefObject<HTMLSpanElement>}>
+      <span ref={triggerRef as React.RefObject<HTMLSpanElement>} onClick={onToggle}>
         {child}
       </span>
     );
@@ -111,40 +84,22 @@ interface ContentProps {
 }
 
 function Content({ children, side = 'bottom', align = 'start', sideOffset = 4 }: ContentProps) {
-  const { open, triggerRef } = useDropdownContext();
-  const contentRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-
-  useEffect(() => {
-    if (!open || !triggerRef.current || !contentRef.current) return;
-
-    const trigger = triggerRef.current.getBoundingClientRect();
-    const content = contentRef.current.getBoundingClientRect();
-
-    let top = side === 'bottom' ? trigger.bottom + sideOffset : trigger.top - content.height - sideOffset;
-    let left = align === 'start' ? trigger.left : align === 'end' ? trigger.right - content.width : trigger.left + (trigger.width - content.width) / 2;
-
-    // Keep within viewport
-    left = Math.max(8, Math.min(left, window.innerWidth - content.width - 8));
-    top = Math.max(8, Math.min(top, window.innerHeight - content.height - 8));
-
-    setPosition({ top, left });
-  }, [open, side, align, sideOffset, triggerRef]);
-
-  if (!open) return null;
+  const { open, triggerRef, onClose } = useDropdownContext();
+  const placement = (align === 'center' ? side : `${side}-${align}`) as FloatingPlacement;
 
   return (
-    <Portal>
-      <div
-        ref={contentRef}
-        className={styles.content}
-        role="menu"
-        data-side={side}
-        style={{ top: position.top, left: position.left }}
-      >
-        {children}
-      </div>
-    </Portal>
+    <Floating
+      open={open}
+      anchor={triggerRef}
+      placement={placement}
+      offset={sideOffset}
+      onDismiss={onClose}
+      className={styles.content}
+      role="menu"
+      data-side={side}
+    >
+      {children}
+    </Floating>
   );
 }
 

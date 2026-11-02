@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useWorkspace } from '@/hooks/useWorkspace';
 import { platform } from '@/lib/platform';
 import styles from './MemberMultiSelect.module.css';
+import { Floating } from '@/lib/overlay/Floating';
 
 interface Member {
   id: string;
@@ -45,16 +46,6 @@ export function MemberMultiSelect({
       setMembers((profiles ?? []) as unknown as Member[]);
     })();
   }, [currentWorkspace]);
-
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, []);
 
   const nameOf = (m: Member) => m.display_name || m.username || m.email;
 
@@ -125,8 +116,7 @@ export function MemberMultiSelect({
         )}
       </div>
 
-      {open && (
-        <div className={styles.dropdown} onClick={(e) => e.stopPropagation()}>
+      <Floating open={open} anchor={rootRef} placement="bottom-start" offset={4} matchWidth onDismiss={() => setOpen(false)} role="listbox" className={styles.dropdown} onClick={(e) => e.stopPropagation()}>
           <input
             type="text"
             className={styles.search}
@@ -151,8 +141,7 @@ export function MemberMultiSelect({
               </button>
             );
           })}
-        </div>
-      )}
+      </Floating>
     </div>
   );
 }

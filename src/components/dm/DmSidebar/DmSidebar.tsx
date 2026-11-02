@@ -14,6 +14,7 @@ import { getPresenceLabel, presenceToAvatarStatus } from '@/lib/presence';
 import type { ConversationWithParticipants } from '@/lib/conversation';
 import type { Profile } from '@/types';
 import styles from './DmSidebar.module.css';
+import { Floating } from '@/lib/overlay/Floating';
 
 interface DmSidebarProps {
   isCollapsed: boolean;
@@ -33,7 +34,6 @@ export const DmSidebar = memo(function DmSidebar({ isCollapsed }: DmSidebarProps
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
 
   useEffect(() => {
     if (!selectedUserId) { setSelectedProfile(null); return; }
@@ -45,23 +45,9 @@ export const DmSidebar = memo(function DmSidebar({ isCollapsed }: DmSidebarProps
     return () => { cancelled = true; };
   }, [selectedUserId]);
 
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   const handleCollapsedToggle = useCallback(() => {
-    if (!isDropdownOpen && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      setDropdownPos({ top: rect.bottom + 4, left: rect.left });
-    }
     setIsDropdownOpen((prev) => !prev);
-  }, [isDropdownOpen]);
+  }, []);
 
   const handleToggle = useCallback(() => {
     setIsExpanded((prev) => !prev);
@@ -123,8 +109,7 @@ export const DmSidebar = memo(function DmSidebar({ isCollapsed }: DmSidebarProps
           </svg>
         </button>
 
-        {isDropdownOpen && dropdownPos && (
-          <div className={styles.dropdown} role="listbox" style={{ top: dropdownPos.top, left: dropdownPos.left, position: 'fixed' }}>
+        <Floating open={isDropdownOpen} anchor={triggerRef} placement="right-start" offset={4} onDismiss={() => setIsDropdownOpen(false)} className={styles.dropdown} role="listbox">
             <div className={styles.sectionLabel}>Direct Messages</div>
             <div className={styles.buttonRow}>
               <button type="button" className={styles.newMessageButton} onClick={() => { setShowStartDm(true); setIsDropdownOpen(false); }}>
@@ -178,8 +163,7 @@ export const DmSidebar = memo(function DmSidebar({ isCollapsed }: DmSidebarProps
                 );
               })
             )}
-          </div>
-        )}
+        </Floating>
 
         <StartDmDialog open={showStartDm} onClose={() => setShowStartDm(false)} />
         <CreateGroupDialog open={showCreateGroup} onClose={() => setShowCreateGroup(false)} />
