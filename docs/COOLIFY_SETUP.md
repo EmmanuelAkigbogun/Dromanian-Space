@@ -25,6 +25,14 @@ markers and these persistent locations:
 
 ## 2. DNS and firewall
 
+After deployment, the platform administrator can open **Settings -> Domains**
+to connect a scoped Cloudflare API token, add zones, manage DNS records and
+publish hostnames through an existing remotely-managed Cloudflare Tunnel. The
+token needs `Zone:Read`, `DNS:Edit`, and (for tunnel publishing)
+`Account Cloudflare Tunnel:Edit`. Creating a zone returns its assigned
+nameservers; changing nameservers at the registrar is intentionally still a
+registrar-side action unless that registrar is separately integrated.
+
 Point `darkspace.purplehive.pro` and `turn.purplehive.pro` at the server. Permit:
 
 - HTTPS for the application through the existing reverse proxy;

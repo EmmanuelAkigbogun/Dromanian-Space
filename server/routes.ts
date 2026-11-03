@@ -15,6 +15,7 @@ import * as n8n from '../api/integrations/n8n.js';
 import * as auth from '../api/auth.js';
 import * as events from '../api/events.js';
 import * as calls from '../api/calls.js';
+import * as domains from '../api/domains.js';
 
 export type Handler = (request: Request) => Promise<Response>;
 export type ApiMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'HEAD';
@@ -56,4 +57,5 @@ export const ROUTES: Record<string, Partial<Record<ApiMethod, Handler>>> = {
   '/api/calls': { POST: calls.create },
   '/api/calls/active': { GET: calls.active },
   '/api/calls/ice': { GET: calls.ice },
+  '/api/domains': domains,
 };

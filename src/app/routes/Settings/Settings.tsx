@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useWorkspace } from '@/hooks/useWorkspace';
+import { useAuth } from '@/hooks/useAuth';
 import { canInviteMembers, canManageSettings } from '@/lib/workspace/permissions';
 import { Button } from '@/components/ui/Button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
@@ -15,20 +16,24 @@ import { WorkspacePreferences } from '@/components/workspace/WorkspacePreference
 import { TypographySettings } from '@/components/workspace/TypographySettings';
 import { ColorSettings } from '@/components/workspace/ColorSettings';
 import { FeatureSettings } from '@/components/workspace/FeatureSettings';
+import { DomainSettings } from '@/components/workspace/DomainSettings';
 import styles from './Settings.module.css';
 
 export function Settings() {
   const { currentWorkspace, currentRole } = useWorkspace();
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const canInvite = canInviteMembers(currentRole);
   const canManage = canManageSettings(currentRole);
+  const isPlatformAdmin = user?.app_metadata?.platform_admin === true;
 
   const requestedTab = searchParams.get('tab') ?? 'general';
   const validTabs = [
     'general',
     'members',
     'features',
+    'domains',
     'typography',
     'colors',
     'preferences',
@@ -37,7 +42,7 @@ export function Settings() {
     'import',
     'danger',
   ];
-  const initialTab = validTabs.includes(requestedTab) ? requestedTab : 'general';
+  const initialTab = validTabs.includes(requestedTab) && (requestedTab !== 'domains' || isPlatformAdmin) ? requestedTab : 'general';
 
   if (!currentWorkspace) return null;
 
@@ -65,6 +70,7 @@ export function Settings() {
           <TabsTrigger id="general">General</TabsTrigger>
           <TabsTrigger id="members">Members</TabsTrigger>
           {canManage && <TabsTrigger id="features">Features</TabsTrigger>}
+          {canManage && isPlatformAdmin && <TabsTrigger id="domains">Domains</TabsTrigger>}
           <TabsTrigger id="typography">Typography</TabsTrigger>
           <TabsTrigger id="colors">Colors</TabsTrigger>
           {canManage && <TabsTrigger id="preferences">Preferences</TabsTrigger>}
@@ -90,6 +96,14 @@ export function Settings() {
           <TabsContent id="features">
             <div className={styles.panel}>
               <FeatureSettings />
+            </div>
+          </TabsContent>
+        )}
+
+        {canManage && isPlatformAdmin && (
+          <TabsContent id="domains">
+            <div className={styles.panel}>
+              <DomainSettings />
             </div>
           </TabsContent>
         )}
