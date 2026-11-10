@@ -205,6 +205,12 @@ describe('standalone compose safety', () => {
     expect(restoreDrill).toContain('archive_sha256=$(sha256sum "$archive"');
     expect(restoreDrill).toContain('[[ "$verified_archive_sha256" != "$archive_sha256" ]]');
     expect(restoreDrill).toContain("printf '%s %s %s\\n' \"$drill_stamp\" \"$(basename \"$archive\")\" \"$archive_sha256\"");
+    expect(restoreDrill).toContain("compose config --images | grep '^pgvector/pgvector:'");
+    expect(restoreDrill).toContain('--network none --read-only --pids-limit 32');
+    expect(restoreDrill).toContain('--cap-drop ALL --security-opt no-new-privileges:true');
+    expect(restoreDrill).toContain('chown "$restore_db_owner" "$RESTORE_ROOT/app/postgres"');
+    expect(restoreDrill).toContain('chown 1000:1000 "$RESTORE_ROOT/cloud/storage"');
+    expect(restoreDrill.indexOf('chown "$restore_db_owner"')).toBeLessThan(restoreDrill.indexOf('compose up -d --wait db'));
 
     expect(preflight).toContain('RCLONE_REMOTE is empty in the protected backup environment');
     expect(preflight).toContain('backup_storage_policy=offsite');

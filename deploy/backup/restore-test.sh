@@ -65,6 +65,31 @@ case "${1:-}" in
     [[ -f "$STACK_ENV_FILE" ]] || { echo "Missing STACK_ENV_FILE: $STACK_ENV_FILE" >&2; exit 1; }
     if [[ -e "$RESTORE_ROOT" ]]; then echo "$RESTORE_ROOT exists; run '$0 down' first." >&2; exit 1; fi
     mkdir -p "$RESTORE_ROOT/app/postgres" "$RESTORE_ROOT/app/coturn" "$RESTORE_ROOT/cloud/storage"
+    # Bind mounts keep host ownership. Match the production image users before
+    # PostgreSQL or the application touches these otherwise-empty directories.
+    # Failing here is safer than starting a drill that can never prove restore.
+    mapfile -t restore_db_images < <(compose config --images | grep '^pgvector/pgvector:')
+    (( ${#restore_db_images[@]} == 1 )) || {
+      echo "Could not resolve exactly one pinned PostgreSQL image for the isolated drill." >&2
+      exit 1
+    }
+    restore_db_image=${restore_db_images[0]}
+    docker image inspect "$restore_db_image" >/dev/null 2>&1 || docker pull "$restore_db_image" >/dev/null
+    restore_db_owner=$(docker run --rm --network none --read-only --pids-limit 32 \
+      --cap-drop ALL --security-opt no-new-privileges:true --entrypoint sh "$restore_db_image" \
+      -c 'printf "%s:%s" "$(id -u postgres)" "$(id -g postgres)"')
+    [[ "$restore_db_owner" =~ ^[0-9]+:[0-9]+$ ]] || {
+      echo "Could not resolve the PostgreSQL uid/gid from the pinned image." >&2
+      exit 1
+    }
+    chown "$restore_db_owner" "$RESTORE_ROOT/app/postgres" || {
+      echo "Could not assign the isolated PostgreSQL directory to the pinned image user." >&2
+      exit 1
+    }
+    chown 1000:1000 "$RESTORE_ROOT/cloud/storage" || {
+      echo "Could not assign the isolated storage directory to uid 1000." >&2
+      exit 1
+    }
     touch "$RESTORE_ROOT/app/.dromanian-space-mount" "$RESTORE_ROOT/cloud/.dromanian-space-mount"
     echo "Starting isolated PostgreSQL (project $project)"
     compose up -d --wait db
