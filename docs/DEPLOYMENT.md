@@ -16,9 +16,14 @@ mount guard → PostgreSQL → migrations → PostgREST → API/worker → web
                                       └──────────→ Coturn (independent media relay)
 ```
 
-Before a production deploy, require the newest encrypted backup to have both a
-verified off-server copy and a successful isolated restore drill. The age
-private identity must then be removed from the server. Run
+Before a production deploy, require the newest encrypted backup to have an
+exact SHA-256 success proof and a successful isolated restore drill. The
+default/recommended `BACKUP_STORAGE_POLICY=offsite` additionally requires a
+verified off-server copy. An explicit `BACKUP_STORAGE_POLICY=local` skips
+`rclone` and offsite proof but emits a warning because host or disk loss can
+destroy both production data and its only backup; stale offsite markers are
+ignored under that policy. The age private identity must then be removed from
+the server. Run
 `PREFLIGHT_PHASE=predeploy deploy/preflight.sh` before changing the stack and
 `PREFLIGHT_PHASE=postdeploy deploy/preflight.sh` after it is healthy. Both
 enforce the recovery conditions against archive-name-and-SHA-256 proof markers;

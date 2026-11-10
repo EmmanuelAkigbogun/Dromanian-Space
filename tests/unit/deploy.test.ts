@@ -176,7 +176,7 @@ describe('standalone compose safety', () => {
     expect(smoke).toContain("redirect: 'error'");
   });
 
-  it('fails production preflight closed on unverified recovery or scraper state', () => {
+  it('enforces the selected recovery policy and fails preflight closed on unverified recovery', () => {
     const preflight = read('deploy/preflight.sh');
     const backup = read('deploy/backup/backup.sh');
     const restoreDrill = read('deploy/backup/restore-test.sh');
@@ -186,6 +186,13 @@ describe('standalone compose safety', () => {
     expect(backup).toContain('[[ "$remote_archive_sha256" == "$archive_sha256" ]]');
     expect(backup).toContain('last-offsite-success');
     expect(backup).toContain('Set RCLONE_REMOTE to an off-server rclone destination.');
+    expect(backup).toContain('BACKUP_STORAGE_POLICY=${BACKUP_STORAGE_POLICY:-offsite}');
+    expect(backup).toContain('case "$BACKUP_STORAGE_POLICY" in');
+    expect(backup).toContain("BACKUP_STORAGE_POLICY must be exactly 'offsite' or 'local'");
+    expect(backup).toContain('[[ "$BACKUP_STORAGE_POLICY" == offsite ]] && required_commands+=(rclone)');
+    expect(backup).toContain('if [[ "$BACKUP_STORAGE_POLICY" == offsite ]]; then');
+    expect(backup).toContain('BACKUP_STORAGE_POLICY=local keeps recovery archives on this host');
+    expect(backup).toContain('Local encrypted archive verified, but no off-server copy exists');
     expect(backup).toContain("grep -R -q --binary-files=without-match 'AGE-SECRET-KEY-'");
     expect(backup).toContain('remove it before backup');
     expect(backup).not.toContain('WARNING: no RCLONE_REMOTE set');
@@ -200,6 +207,11 @@ describe('standalone compose safety', () => {
     expect(restoreDrill).toContain("printf '%s %s %s\\n' \"$drill_stamp\" \"$(basename \"$archive\")\" \"$archive_sha256\"");
 
     expect(preflight).toContain('RCLONE_REMOTE is empty in the protected backup environment');
+    expect(preflight).toContain('backup_storage_policy=offsite');
+    expect(preflight).toContain('BACKUP_STORAGE_POLICY must be exactly offsite or local');
+    expect(preflight).toContain('backup storage policy is local-only; host or disk loss can destroy both production data and its backup');
+    expect(preflight).toContain('if [[ "$backup_storage_policy" == offsite ]]; then');
+    expect(preflight).toContain('any stale offsite marker is ignored');
     expect(preflight).toContain('latest encrypted backup has no matching off-server verification');
     expect(preflight).toContain('latest encrypted backup has no matching isolated restore drill');
     expect(preflight).toContain('latest_sha256=$(sha256sum "$latest"');

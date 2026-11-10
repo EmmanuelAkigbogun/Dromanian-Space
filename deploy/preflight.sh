@@ -236,6 +236,29 @@ else
 fi
 
 section "Backups"
+backup_storage_policy=offsite
+if [[ -r "$BACKUP_ENV_FILE" ]]; then
+  configured_backup_storage_policy=$(sed -n 's/^[[:space:]]*BACKUP_STORAGE_POLICY[[:space:]]*=[[:space:]]*//p' "$BACKUP_ENV_FILE" | tail -1)
+  configured_backup_storage_policy=${configured_backup_storage_policy%%#*}
+  configured_backup_storage_policy=$(printf '%s' "$configured_backup_storage_policy" | tr -d '[:space:]')
+  configured_backup_storage_policy=${configured_backup_storage_policy#\"}; configured_backup_storage_policy=${configured_backup_storage_policy%\"}
+  configured_backup_storage_policy=${configured_backup_storage_policy#\'}; configured_backup_storage_policy=${configured_backup_storage_policy%\'}
+  [[ -n "$configured_backup_storage_policy" ]] && backup_storage_policy=$configured_backup_storage_policy
+else
+  fail "protected backup environment is missing or unreadable"
+fi
+case "$backup_storage_policy" in
+  offsite) pass "backup storage policy is offsite" ;;
+  local)
+    warn "backup storage policy is local-only; host or disk loss can destroy both production data and its backup"
+    ;;
+  *)
+    fail "BACKUP_STORAGE_POLICY must be exactly offsite or local"
+    # Preserve the default fail-closed recovery requirements after invalid input.
+    backup_storage_policy=offsite
+    ;;
+esac
+
 latest=$(ls -1t "$BACKUP_DIR"/dromanian-space-*.tar.age 2>/dev/null | head -1)
 if [[ -n "$latest" ]]; then
   latest_name=$(basename "$latest")
@@ -256,12 +279,16 @@ if [[ -n "$latest" ]]; then
     && pass "latest encrypted backup completed successfully" \
     || fail "latest encrypted backup is not the recorded successful backup"
 
-  offsite_archive=""; offsite_sha256=""
-  [[ -r "$OFFSITE_SUCCESS_MARKER" ]] \
-    && read -r _ offsite_archive offsite_sha256 _ < "$OFFSITE_SUCCESS_MARKER"
-  [[ -n "$latest_sha256" && "$offsite_archive" == "$latest_name" && "$offsite_sha256" == "$latest_sha256" ]] \
-    && pass "latest encrypted backup was verified off-server" \
-    || fail "latest encrypted backup has no matching off-server verification"
+  if [[ "$backup_storage_policy" == offsite ]]; then
+    offsite_archive=""; offsite_sha256=""
+    [[ -r "$OFFSITE_SUCCESS_MARKER" ]] \
+      && read -r _ offsite_archive offsite_sha256 _ < "$OFFSITE_SUCCESS_MARKER"
+    [[ -n "$latest_sha256" && "$offsite_archive" == "$latest_name" && "$offsite_sha256" == "$latest_sha256" ]] \
+      && pass "latest encrypted backup was verified off-server" \
+      || fail "latest encrypted backup has no matching off-server verification"
+  else
+    warn "off-server proof is not required by the explicit local-only policy; any stale offsite marker is ignored"
+  fi
 
   drill_archive=""; drill_sha256=""
   [[ -r "$RESTORE_DRILL_MARKER" ]] \
@@ -273,7 +300,7 @@ else
   fail "no encrypted backup found in $BACKUP_DIR"
 fi
 
-if [[ -r "$BACKUP_ENV_FILE" ]]; then
+if [[ "$backup_storage_policy" == offsite && -r "$BACKUP_ENV_FILE" ]]; then
   rclone_remote=$(sed -n 's/^[[:space:]]*RCLONE_REMOTE[[:space:]]*=[[:space:]]*//p' "$BACKUP_ENV_FILE" | tail -1)
   rclone_remote=${rclone_remote%%#*}
   rclone_remote=$(printf '%s' "$rclone_remote" | tr -d '[:space:]')
@@ -281,8 +308,6 @@ if [[ -r "$BACKUP_ENV_FILE" ]]; then
   rclone_remote=${rclone_remote#\'}; rclone_remote=${rclone_remote%\'}
   [[ -n "$rclone_remote" ]] && pass "off-server backup destination is configured" \
     || fail "RCLONE_REMOTE is empty in the protected backup environment"
-else
-  fail "protected backup environment is missing or unreadable"
 fi
 
 identity_found=false

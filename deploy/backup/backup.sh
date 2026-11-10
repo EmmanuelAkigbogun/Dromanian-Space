@@ -18,7 +18,10 @@
 #   WORKER_CONTAINER     optional override; exact project worker is auto-discovered and paused
 #   N8N_DB_CONTAINER     optional; its database is added to the archive
 #   RETENTION_DAYS       14 (local copies)
-#   RCLONE_REMOTE        required off-server destination, e.g. offsite:dromanian-space
+#   BACKUP_STORAGE_POLICY offsite (default) or local. Local keeps the only copy
+#                         on this host and is less resilient to host/disk loss.
+#   RCLONE_REMOTE        required when BACKUP_STORAGE_POLICY=offsite, e.g.
+#                         offsite:dromanian-space
 #   HEALTHCHECK_URL      optional ping URL (healthchecks.io, Uptime Kuma push): <url> on
 #                        success, <url>/fail on failure
 # Writes BACKUP_ROOT/last-success or BACKUP_ROOT/last-failure for monitoring.
@@ -33,6 +36,7 @@ DB_DATA_DIR=${DB_DATA_DIR:-/srv/app-data/dromanian-space/postgres}
 APP_COMPOSE_PROJECT=${APP_COMPOSE_PROJECT:-}
 DB_USER=${DB_USER:-postgres}
 RETENTION_DAYS=${RETENTION_DAYS:-14}
+BACKUP_STORAGE_POLICY=${BACKUP_STORAGE_POLICY:-offsite}
 RCLONE_REMOTE=${RCLONE_REMOTE:-}
 API_CONTAINER=${API_CONTAINER:-}
 WORKER_CONTAINER=${WORKER_CONTAINER:-}
@@ -72,12 +76,25 @@ on_exit() {
 trap on_exit EXIT
 
 mkdir -p "$BACKUP_ROOT"
-step="checking off-server destination"
-[[ -n "$RCLONE_REMOTE" ]] || {
-  echo "Set RCLONE_REMOTE to an off-server rclone destination." >&2
-  exit 1
-}
-for cmd in docker age tar sha256sum flock realpath rclone grep; do
+case "$BACKUP_STORAGE_POLICY" in
+  offsite)
+    step="checking off-server destination"
+    [[ -n "$RCLONE_REMOTE" ]] || {
+      echo "Set RCLONE_REMOTE to an off-server rclone destination." >&2
+      exit 1
+    }
+    ;;
+  local)
+    echo "WARNING: BACKUP_STORAGE_POLICY=local keeps recovery archives on this host; host or disk loss can destroy both production data and its backup." >&2
+    ;;
+  *)
+    echo "BACKUP_STORAGE_POLICY must be exactly 'offsite' or 'local' (got '$BACKUP_STORAGE_POLICY')." >&2
+    exit 1
+    ;;
+esac
+required_commands=(docker age tar sha256sum flock realpath grep)
+[[ "$BACKUP_STORAGE_POLICY" == offsite ]] && required_commands+=(rclone)
+for cmd in "${required_commands[@]}"; do
   command -v "$cmd" >/dev/null || { step="checking $cmd"; echo "Missing command: $cmd" >&2; exit 1; }
 done
 step="checking data mounts"
@@ -289,23 +306,33 @@ echo "Wrote $archive ($(du -h "$archive" | cut -f1))"
 step="applying retention"
 find "$BACKUP_ROOT" -maxdepth 1 -name 'dromanian-space-*.tar.age' -mtime +"$RETENTION_DAYS" -print -delete
 
-step="copying off-server"
-rclone copy "$archive" "$RCLONE_REMOTE"
-rclone check --one-way --include "$(basename "$archive")" "$BACKUP_ROOT" "$RCLONE_REMOTE"
-verified_archive_sha256=$(sha256sum "$archive" | awk '{print $1}')
-[[ "$verified_archive_sha256" == "$archive_sha256" ]] || {
-  echo "Encrypted archive changed while it was copied off-server; refusing recovery proof." >&2
-  exit 1
-}
-remote_archive_sha256=$(rclone cat "${RCLONE_REMOTE%/}/$(basename "$archive")" | sha256sum | awk '{print $1}')
-[[ "$remote_archive_sha256" == "$archive_sha256" ]] || {
-  echo "Off-server archive bytes do not match the local encrypted archive; refusing recovery proof." >&2
-  exit 1
-}
-marker_tmp="$BACKUP_ROOT/.last-offsite-success.$$"
-printf '%s %s %s\n' "$stamp" "$(basename "$archive")" "$archive_sha256" > "$marker_tmp"
-mv -f -- "$marker_tmp" "$OFFSITE_SUCCESS_MARKER"
-echo "Copied and verified off-server at $RCLONE_REMOTE"
+if [[ "$BACKUP_STORAGE_POLICY" == offsite ]]; then
+  step="copying off-server"
+  rclone copy "$archive" "$RCLONE_REMOTE"
+  rclone check --one-way --include "$(basename "$archive")" "$BACKUP_ROOT" "$RCLONE_REMOTE"
+  verified_archive_sha256=$(sha256sum "$archive" | awk '{print $1}')
+  [[ "$verified_archive_sha256" == "$archive_sha256" ]] || {
+    echo "Encrypted archive changed while it was copied off-server; refusing recovery proof." >&2
+    exit 1
+  }
+  remote_archive_sha256=$(rclone cat "${RCLONE_REMOTE%/}/$(basename "$archive")" | sha256sum | awk '{print $1}')
+  [[ "$remote_archive_sha256" == "$archive_sha256" ]] || {
+    echo "Off-server archive bytes do not match the local encrypted archive; refusing recovery proof." >&2
+    exit 1
+  }
+  marker_tmp="$BACKUP_ROOT/.last-offsite-success.$$"
+  printf '%s %s %s\n' "$stamp" "$(basename "$archive")" "$archive_sha256" > "$marker_tmp"
+  mv -f -- "$marker_tmp" "$OFFSITE_SUCCESS_MARKER"
+  echo "Copied and verified off-server at $RCLONE_REMOTE"
+else
+  step="verifying local encrypted archive"
+  verified_archive_sha256=$(sha256sum "$archive" | awk '{print $1}')
+  [[ "$verified_archive_sha256" == "$archive_sha256" ]] || {
+    echo "Encrypted local archive changed before its recovery proof was recorded." >&2
+    exit 1
+  }
+  echo "WARNING: Local encrypted archive verified, but no off-server copy exists under the selected policy." >&2
+fi
 
 success_marker_tmp="$BACKUP_ROOT/.last-success.$$"
 printf '%s %s %s\n' "$stamp" "$(basename "$archive")" "$archive_sha256" > "$success_marker_tmp"

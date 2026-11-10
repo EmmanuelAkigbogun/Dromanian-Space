@@ -77,10 +77,13 @@ Never expose PostgreSQL or PostgREST publicly.
 
 ## 4. Back up before the first migration
 
-Install age and rclone, configure a generic S3-compatible remote, keep the age
-private identity offline, and install the timer described in
-[DISASTER_RECOVERY.md](DISASTER_RECOVERY.md). Take a backup and complete the
-isolated restore drill before deploying a migration to production.
+Install age, keep the age private identity offline, and install the timer
+described in [DISASTER_RECOVERY.md](DISASTER_RECOVERY.md). The recommended
+default `BACKUP_STORAGE_POLICY=offsite` also requires rclone and a generic
+S3-compatible remote. If you deliberately set `BACKUP_STORAGE_POLICY=local`,
+no rclone remote is needed, but host or disk loss can destroy both production
+data and its only backup. Take a backup and complete the isolated restore drill
+before deploying a migration to production.
 
 An existing installation without a valid backup is a deployment blocker.
 
@@ -88,16 +91,20 @@ An existing installation without a valid backup is a deployment blocker.
 
 Use a short maintenance window:
 
-1. Confirm `RCLONE_REMOTE` is configured, run a new backup, and run the isolated
-   restore drill against that exact newest archive. Confirm the success,
-   off-site and drill markers all contain its current SHA-256, then remove the
+1. Confirm protected `backup.env` selects `offsite` (recommended) or an
+   intentional `local` policy, run a new backup, and run the isolated restore
+   drill against that exact newest archive. Confirm the success and drill
+   markers contain its current SHA-256; offsite mode additionally requires the
+   matching offsite marker and a configured `RCLONE_REMOTE`. Then remove the
    age private identity from the host. The drill starts no LiveKit or Coturn
    containers and binds only its web gateway to `127.0.0.1:18000`.
 2. Export `APP_COMPOSE_PROJECT` with the stack's exact
    `com.docker.compose.project` label (or pin `DB_CONTAINER`), then run
    `PREFLIGHT_PHASE=predeploy deploy/preflight.sh` and require it to pass.
-   It rejects stale/local-only backup evidence, a missing restore proof and
-   private identity material left in production config. It also verifies the
+   It rejects evidence that does not satisfy the selected backup policy, a
+   missing restore proof and private identity material left in production
+   config. Local mode warns about same-host loss and ignores stale offsite
+   markers; offsite mode still fails without current offsite proof. It also verifies the
    selected database's project, service label and persistent bind, so another
    Compose stack on the host cannot satisfy the gate. On an upgrade from a
    release that predates Crawl4AI, the scraper check is explicitly deferred.
