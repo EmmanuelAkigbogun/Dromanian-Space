@@ -82,6 +82,12 @@ services:
         condition: service_healthy
     ports: !override
       - "127.0.0.1:18000:8080"
+    # Docker does not activate published ports for a container attached only
+    # to an internal network. Give only the secret-free web gateway a second
+    # bridge, while keeping every credential-bearing service internal.
+    networks: !override
+      - default
+      - restore-loopback
 
 # Restored queues and credentials must never reach third-party services during
 # a drill. Published loopback web access remains available for health/manual
@@ -89,3 +95,5 @@ services:
 networks:
   default:
     internal: true
+  restore-loopback:
+    driver: bridge

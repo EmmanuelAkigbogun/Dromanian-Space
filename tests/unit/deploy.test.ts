@@ -212,7 +212,6 @@ describe('standalone compose safety', () => {
     expect(restoreDrill).toContain('chown "$restore_db_owner" "$RESTORE_ROOT/app/postgres"');
     expect(restoreDrill).toContain('chown 1000:1000 "$RESTORE_ROOT/cloud/storage"');
     expect(restoreDrill.indexOf('chown "$restore_db_owner"')).toBeLessThan(restoreDrill.indexOf('compose up -d --wait db'));
-
     expect(preflight).toContain('RCLONE_REMOTE is empty in the protected backup environment');
     expect(preflight).toContain('backup_storage_policy=offsite');
     expect(preflight).toContain('BACKUP_STORAGE_POLICY must be exactly offsite or local');
@@ -298,6 +297,11 @@ describe('standalone compose safety', () => {
     expect(restoreOverride).toMatch(/livekit:[\s\S]*?profiles: \["media-restore-test"\][\s\S]*?ports: !override \[\]/);
     expect(restoreOverride).toMatch(/coturn:[\s\S]*?profiles: \["media-restore-test"\][\s\S]*?ports: !override \[\]/);
     expect(restoreOverride).toMatch(/networks:[\s\S]*?default:[\s\S]*?internal: true/);
+    expect(restoreOverride).toContain('- "127.0.0.1:18000:8080"');
+    expect(restoreOverride).toContain('networks: !override\n      - default\n      - restore-loopback');
+    expect(restoreOverride.match(/- restore-loopback/g)).toHaveLength(1);
+    expect(restoreOverride).toContain('restore-loopback:\n    driver: bridge');
+    expect(restoreOverride).toContain('default:\n    internal: true');
   });
 
   it('contains no external auth or managed backend service', () => {
