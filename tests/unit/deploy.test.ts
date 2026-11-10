@@ -247,6 +247,7 @@ describe('standalone compose safety', () => {
     expect(preflight).toContain('stock bridge is empty for the isolated scraper rollout');
     expect(preflight).toContain('stock bridge must be empty before deploying the isolated scraper');
     expect(preflight).toContain('stock bridge membership could not be inspected');
+    expect(preflight).toContain("| awk 'NF' | sort");
     expect(preflight).toContain('candidate scraper topology and authenticated runtime checks are deferred to PREFLIGHT_PHASE=postdeploy');
     expect(preflight).toMatch(/if \[\[ "\$PREFLIGHT_PHASE" == predeploy \]\]; then[\s\S]*elif \[\[ -n "\$crawl4ai_container"/);
     expect(preflight).toContain('Crawl4AI cannot resolve or directly reach private application services');

@@ -44,7 +44,7 @@ network_count() {
 }
 container_port_bindings() {
   docker inspect -f '{{range $port, $bindings := .HostConfig.PortBindings}}{{range $bindings}}{{printf "%s|%s|%s\n" $port .HostIp .HostPort}}{{end}}{{end}}' "$1" 2>/dev/null \
-    | sort
+    | awk 'NF' | sort
 }
 container_env_value() {
   local container=$1 name=$2
