@@ -52,6 +52,10 @@ COPY database/ /app/database/
 RUN chmod 755 /app/database/migrate.sh
 ENTRYPOINT ["/app/database/migrate.sh"]
 
+FROM nginxinc/nginx-unprivileged:1.30.5-alpine@sha256:56b8272e43a0525f67aed68d1e0794a712d10e3e45a563e118e9a77c817e6f86 AS crawl4ai-gateway
+COPY deploy/nginx/crawl4ai-gateway.conf /etc/nginx/nginx.conf
+EXPOSE 8080
+
 FROM nginxinc/nginx-unprivileged:1.30.5-alpine@sha256:56b8272e43a0525f67aed68d1e0794a712d10e3e45a563e118e9a77c817e6f86 AS web
 ENV API_UPSTREAM=api:3000 \
     LIVEKIT_UPSTREAM=livekit:7880 \

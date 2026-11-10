@@ -49,6 +49,7 @@ export RESTORE_ROOT
 compose() {
   TURN_SHARED_SECRET=restore-test-only TURN_EXTERNAL_IP=127.0.0.1 \
     LIVEKIT_API_KEY=restore-test-only LIVEKIT_API_SECRET=restore-test-only \
+    DOCKER_HOST_GATEWAY_IP=127.0.0.1 \
     docker compose -p "$project" --env-file "$STACK_ENV_FILE" \
       -f "$repo/docker-compose.yml" -f "$here/restore-test.override.yml" "$@"
 }

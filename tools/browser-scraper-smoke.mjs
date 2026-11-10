@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-const baseUrl = (process.env.CRAWL4AI_URL ?? 'http://crawl4ai-gateway:8080').replace(/\/$/, '');
+const baseUrl = (process.env.CRAWL4AI_URL ?? 'http://host.docker.internal:11235').replace(/\/$/, '');
 const token = process.env.CRAWL4AI_API_TOKEN?.trim()
   || readFileSync(process.env.CRAWL4AI_API_TOKEN_FILE ?? '/run/browser-scraper/api_token', 'utf8').trim();
 const target = process.env.CRAWL4AI_SMOKE_URL ?? 'https://example.com/';

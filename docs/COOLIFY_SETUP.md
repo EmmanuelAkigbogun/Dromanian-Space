@@ -60,6 +60,20 @@ Create one Coolify Docker Compose resource from the repository root and use
 editor and supply every blank secret. Generate independent random values (at
 least 32 bytes) for database, session, storage-signing and TURN secrets.
 
+Set `DOCKER_HOST_GATEWAY_IP` to this host's stock Docker bridge gateway before
+Coolify parses the Compose file:
+
+```sh
+docker network inspect bridge --format '{{(index .IPAM.Config 0).Gateway}}'
+```
+
+The private scraper binds its authenticated fixed-route gateway only to that
+internal address. Never set this variable to `0.0.0.0`, a public interface, or
+an address copied from another server. Crawl4AI must be the stock `bridge`
+network's only container endpoint; move unrelated default-bridge containers to
+their own user-defined networks before rollout. The post-deploy gate enforces
+both conditions.
+
 The required enrollment values are already the defaults:
 
 ```env
@@ -106,8 +120,9 @@ Use a short maintenance window:
    config. Local mode warns about same-host loss and ignores stale offsite
    markers; offsite mode still fails without current offsite proof. It also verifies the
    selected database's project, service label and persistent bind, so another
-   Compose stack on the host cannot satisfy the gate. On an upgrade from a
-   release that predates Crawl4AI, the scraper check is explicitly deferred.
+   Compose stack on the host cannot satisfy the gate. It requires the stock
+   Docker bridge to be empty, then explicitly defers candidate scraper topology
+   and runtime checks so the previous two-network release can be upgraded.
 3. Deploy the Compose resource. The one-shot `migrate` service runs after the
    database is healthy; PostgREST and the app wait for it.
 4. Run `PREFLIGHT_PHASE=postdeploy deploy/preflight.sh` and require it to pass.

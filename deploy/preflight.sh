@@ -27,6 +27,10 @@ section() { printf '\n== %s ==\n' "$1"; }
 container_networks() {
   docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{println $name}}{{end}}' "$1" 2>/dev/null
 }
+container_ips() {
+  docker inspect -f '{{range .NetworkSettings.Networks}}{{println .IPAddress}}{{end}}' "$1" 2>/dev/null \
+    | awk 'NF'
+}
 shared_networks() {
   local left right network
   left=$(container_networks "$1")
@@ -38,6 +42,16 @@ shared_networks() {
 network_count() {
   container_networks "$1" | awk 'NF { count += 1 } END { print count + 0 }'
 }
+container_port_bindings() {
+  docker inspect -f '{{range $port, $bindings := .HostConfig.PortBindings}}{{range $bindings}}{{printf "%s|%s|%s\n" $port .HostIp .HostPort}}{{end}}{{end}}' "$1" 2>/dev/null \
+    | sort
+}
+container_env_value() {
+  local container=$1 name=$2
+  docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$container" 2>/dev/null \
+    | sed -n "s/^${name}=//p" \
+    | tail -1
+}
 check_private_port_bindings() {
   local service=$1 container=$2 binding container_port host_ip host_port found=false
   while IFS= read -r binding; do
@@ -48,7 +62,7 @@ check_private_port_bindings() {
       127.*|::1|'[::1]') pass "$service host mapping $host_ip:$host_port -> $container_port is loopback-only" ;;
       *) fail "$service has non-loopback host mapping ${host_ip:-0.0.0.0}:$host_port -> $container_port" ;;
     esac
-  done < <(docker inspect -f '{{range $port, $bindings := .HostConfig.PortBindings}}{{range $bindings}}{{printf "%s|%s|%s\n" $port .HostIp .HostPort}}{{end}}{{end}}' "$container" 2>/dev/null)
+  done < <(container_port_bindings "$container")
   $found || pass "$service has no host port mappings"
 }
 
@@ -214,7 +228,6 @@ declare -A private_containers=()
 for service in db rest api worker agno onlyoffice web; do
   [[ -n "${app_containers[$service]:-}" ]] && private_containers[$service]=${app_containers[$service]}
 done
-[[ -n "$crawl4ai_container" ]] && private_containers[crawl4ai]=$crawl4ai_container
 [[ -n "$crawl4ai_gateway_container" ]] && private_containers[crawl4ai-gateway]=$crawl4ai_gateway_container
 for service in "${!private_containers[@]}"; do
   check_private_port_bindings "$service" "${private_containers[$service]}"
@@ -331,46 +344,152 @@ fi
 section "Private browser scraper"
 api_container=${app_containers[api]:-}
 worker_container=${app_containers[worker]:-}
-if [[ -n "$crawl4ai_container" && -n "$crawl4ai_gateway_container" \
+if [[ "$PREFLIGHT_PHASE" == predeploy ]]; then
+  predeploy_bridge_container_ids=()
+  if predeploy_bridge_inventory=$(docker network inspect bridge \
+    --format '{{range $id, $_ := .Containers}}{{println $id}}{{end}}' 2>/dev/null); then
+    mapfile -t predeploy_bridge_container_ids < <(printf '%s\n' "$predeploy_bridge_inventory" \
+      | awk 'NF' | sort)
+    if (( ${#predeploy_bridge_container_ids[@]} == 0 )); then
+      pass "stock bridge is empty for the isolated scraper rollout"
+    else
+      fail "stock bridge must be empty before deploying the isolated scraper"
+    fi
+  else
+    fail "stock bridge membership could not be inspected"
+  fi
+  warn "candidate scraper topology and authenticated runtime checks are deferred to PREFLIGHT_PHASE=postdeploy"
+elif [[ -n "$crawl4ai_container" && -n "$crawl4ai_gateway_container" \
   && -n "$api_container" && -n "$worker_container" ]]; then
-  api_crawler_shared=$(shared_networks "$api_container" "$crawl4ai_container")
-  worker_crawler_shared=$(shared_networks "$worker_container" "$crawl4ai_container")
-  gateway_api_shared=$(shared_networks "$crawl4ai_gateway_container" "$api_container")
-  gateway_worker_shared=$(shared_networks "$crawl4ai_gateway_container" "$worker_container")
-  gateway_crawler_shared=$(shared_networks "$crawl4ai_gateway_container" "$crawl4ai_container")
+  scraper_peers=(db rest api worker agno onlyoffice web)
+  topology_isolated=true
+  for peer_name in "${scraper_peers[@]}"; do
+    peer_container=${app_containers[$peer_name]:-}
+    if [[ -z "$peer_container" || -n "$(shared_networks "$peer_container" "$crawl4ai_container")" ]]; then
+      topology_isolated=false
+    fi
+  done
+  crawler_id=$(docker inspect -f '{{.Id}}' "$crawl4ai_container" 2>/dev/null)
+  crawler_network_mode=$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$crawl4ai_container" 2>/dev/null)
+  gateway_network_mode=$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$crawl4ai_gateway_container" 2>/dev/null)
   crawler_network_count=$(network_count "$crawl4ai_container")
   gateway_network_count=$(network_count "$crawl4ai_gateway_container")
-  if [[ -z "$api_crawler_shared" && -z "$worker_crawler_shared" \
-    && -n "$gateway_api_shared" && -n "$gateway_worker_shared" \
-    && -n "$gateway_crawler_shared" && "$crawler_network_count" == 1 \
-    && "$gateway_network_count" == 2 ]]; then
-    pass "Crawl4AI is isolated behind the two-network fixed-upstream gateway"
+  crawler_endpoint=$(docker inspect -f '{{with index .NetworkSettings.Networks "bridge"}}{{.EndpointID}}{{end}}' "$crawl4ai_container" 2>/dev/null)
+  bridge_crawler_endpoint=$(docker network inspect bridge \
+    --format "{{with index .Containers \"$crawler_id\"}}{{.EndpointID}}{{end}}" 2>/dev/null)
+  bridge_container_ids=()
+  mapfile -t bridge_container_ids < <(docker network inspect bridge \
+    --format '{{range $id, $_ := .Containers}}{{println $id}}{{end}}' 2>/dev/null \
+    | awk 'NF' | sort)
+  if [[ "$crawler_network_mode" == bridge && "$crawler_network_count" == 1 \
+    && "$gateway_network_mode" == "container:$crawler_id" \
+    && "$gateway_network_count" == 0 && "$topology_isolated" == true \
+    && -n "$crawler_endpoint" && "$bridge_crawler_endpoint" == "$crawler_endpoint" \
+    && ${#bridge_container_ids[@]} == 1 && "${bridge_container_ids[0]:-}" == "$crawler_id" ]]; then
+    pass "Crawl4AI is the stock bridge's sole endpoint; its gateway shares that isolated namespace"
   else
     fail "Crawl4AI network topology permits lateral access or bypasses the gateway"
   fi
 
-  api_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$api_container")
-  worker_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$worker_container")
-  if docker exec -e API_IP="$api_ip" -e WORKER_IP="$worker_ip" "$crawl4ai_container" python -c '
+  bridge_gateway=$(docker network inspect bridge \
+    --format '{{range .IPAM.Config}}{{if .Gateway}}{{println .Gateway}}{{end}}{{end}}' 2>/dev/null \
+    | awk 'NF { print; exit }')
+  crawler_bindings=$(container_port_bindings "$crawl4ai_container")
+  expected_crawler_binding="8080/tcp|$bridge_gateway|11235"
+  if [[ -n "$bridge_gateway" && "$crawler_bindings" == "$expected_crawler_binding" ]]; then
+    pass "only the authenticated gateway is published on $bridge_gateway:11235"
+  else
+    fail "Crawl4AI must publish exactly $expected_crawler_binding (found ${crawler_bindings:-none})"
+  fi
+
+  for caller_name in api worker; do
+    caller_container=${app_containers[$caller_name]}
+    caller_url=$(container_env_value "$caller_container" CRAWL4AI_URL)
+    [[ "$caller_url" == http://host.docker.internal:11235 ]] \
+      && pass "$caller_name uses the authenticated host-gateway scraper URL" \
+      || fail "$caller_name has unexpected CRAWL4AI_URL: ${caller_url:-missing}"
+    if docker exec -e EXPECTED_HOST_GATEWAY="$bridge_gateway" "$caller_container" node -e '
+const dns = require("node:dns");
+dns.lookup("host.docker.internal", (error, address) => {
+  process.exit(!error && address === process.env.EXPECTED_HOST_GATEWAY ? 0 : 1);
+});
+'; then
+      pass "$caller_name resolves host.docker.internal only to the Docker bridge gateway"
+    else
+      fail "$caller_name does not resolve host.docker.internal to the Docker bridge gateway"
+    fi
+  done
+
+  declare -A scraper_peer_ports=(
+    [db]=5432 [rest]=3000 [api]=3000 [worker]=3001 [agno]=8000 [onlyoffice]=80 [web]=8080
+  )
+  scraper_target_specs=()
+  for peer_name in "${scraper_peers[@]}"; do
+    while IFS= read -r peer_ip; do
+      [[ -n "$peer_ip" ]] && scraper_target_specs+=("$peer_ip:${scraper_peer_ports[$peer_name]}")
+    done < <(container_ips "${app_containers[$peer_name]}")
+  done
+  scraper_peer_names=$(IFS=,; echo "${scraper_peers[*]}")
+  scraper_targets=$(IFS=,; echo "${scraper_target_specs[*]}")
+  if [[ -n "$scraper_targets" ]] \
+    && docker exec -e PRIVATE_NAMES="$scraper_peer_names" -e PRIVATE_TARGETS="$scraper_targets" \
+      "$crawl4ai_container" python -c '
 import os, socket, sys
 bad = []
-for name in ("api", "worker"):
+for name in filter(None, os.environ["PRIVATE_NAMES"].split(",")):
     try:
         socket.getaddrinfo(name, None)
         bad.append("resolved:" + name)
     except socket.gaierror:
         pass
-for host, port in ((os.environ["API_IP"], 3000), (os.environ["WORKER_IP"], 3001)):
+for target in filter(None, os.environ["PRIVATE_TARGETS"].split(",")):
+    host, port = target.rsplit(":", 1)
     try:
-        with socket.create_connection((host, port), timeout=1):
-            bad.append("reached:" + host)
+        with socket.create_connection((host, int(port)), timeout=1):
+            bad.append("reached:" + target)
     except OSError:
         pass
 sys.exit(1 if bad else 0)
 '; then
-    pass "Crawl4AI cannot resolve or directly reach api/worker"
+    pass "Crawl4AI cannot resolve or directly reach private application services"
   else
-    fail "Crawl4AI can resolve or directly reach api/worker"
+    fail "Crawl4AI can resolve or directly reach a private application service"
+  fi
+
+  crawler_ip=$(docker inspect -f '{{with index .NetworkSettings.Networks "bridge"}}{{.IPAddress}}{{end}}' "$crawl4ai_container" 2>/dev/null)
+  for caller_name in api worker; do
+    caller_container=${app_containers[$caller_name]}
+    if [[ -n "$crawler_ip" ]] && docker exec -e CRAWLER_IP="$crawler_ip" "$caller_container" node -e '
+const dns = require("node:dns");
+const net = require("node:net");
+let finished = false;
+const done = (code) => {
+  if (finished) return;
+  finished = true;
+  process.exit(code);
+};
+dns.lookup("crawl4ai", (error) => {
+  if (!error) return done(1);
+  const socket = net.createConnection({ host: process.env.CRAWLER_IP, port: 11235 });
+  socket.once("connect", () => done(1));
+  socket.once("error", () => done(0));
+  socket.setTimeout(1500, () => done(0));
+});
+'; then
+      pass "$caller_name cannot resolve or directly reach the raw Crawl4AI backend"
+    else
+      fail "$caller_name can resolve or directly reach the raw Crawl4AI backend"
+    fi
+  done
+
+  if docker exec "$worker_container" node -e '
+fetch(`${process.env.CRAWL4AI_URL}/health`)
+  .then((response) => process.exit(response.status === 404 ? 0 : 1))
+  .catch(() => process.exit(1));
+'; then
+    pass "the published scraper endpoint exposes the fixed-route gateway, not raw Crawl4AI"
+  else
+    fail "the published scraper endpoint can bypass the fixed-route gateway"
   fi
 
   if docker exec "$worker_container" node -e '
@@ -390,9 +509,6 @@ fetch(`${process.env.CRAWL4AI_URL}/schema`, { headers: { authorization: `Bearer 
   else
     fail "api cannot complete authenticated Crawl4AI browser scrape through the gateway"
   fi
-elif [[ "$PREFLIGHT_PHASE" == predeploy \
-  && ( -z "$crawl4ai_container" || -z "$crawl4ai_gateway_container" ) ]]; then
-  warn "isolated authenticated scraper checks are deferred to PREFLIGHT_PHASE=postdeploy"
 else
   fail "isolated authenticated Crawl4AI checks could not run"
 fi

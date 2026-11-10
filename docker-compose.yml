@@ -50,7 +50,10 @@ x-server-env: &server-env
   AGNO_URL: http://agno:8000
   AGNO_TOOL_CALLBACK_URL: http://worker:3001/tool
   AGNO_TOOL_PORT: "3001"
-  CRAWL4AI_URL: http://crawl4ai-gateway:8080
+  # Coolify injects its base network into ordinary services. The scraper and
+  # its fixed-route gateway instead share the stock bridge namespace; app
+  # callers reach only the gateway's host-gateway binding.
+  CRAWL4AI_URL: http://host.docker.internal:11235
   CRAWL4AI_API_TOKEN_FILE: /run/browser-scraper/api_token
   # Increment together with any APP_JWT_SECRET rotation. It is also present on
   # Crawl4AI so Compose recreates every token consumer in the same rollout.
@@ -128,9 +131,10 @@ services:
     volumes:
       - browser-scraper-token:/run/browser-scraper
 
-  # Browser-rendered extraction from Crawl4AI. This service has no host port,
-  # accepts only authenticated requests, and keeps dangerous request features
-  # (arbitrary JS, cookies, proxies and deep crawling) disabled.
+  # Browser-rendered extraction from Crawl4AI. `network_mode` prevents Coolify
+  # from attaching its shared base network. Port 11235 on the Docker bridge
+  # gateway maps to the Nginx sidecar's port 8080 in this shared namespace;
+  # Crawl4AI's raw port 11235 is never published.
   crawl4ai:
     image: unclecode/crawl4ai:0.9.5@sha256:0b05666882bfb67f45d559a5b827839c54127b74aedd723f8ab338a3571b5fc9
     restart: unless-stopped
@@ -141,8 +145,9 @@ services:
     environment:
       CRAWL4AI_ALLOW_DEEP_CRAWL: "false"
       CRAWL4AI_TOKEN_EPOCH: ${CRAWL4AI_TOKEN_EPOCH:-1}
-    expose:
-      - "11235"
+    network_mode: bridge
+    ports:
+      - "${DOCKER_HOST_GATEWAY_IP:?DOCKER_HOST_GATEWAY_IP must be the Docker bridge gateway}:11235:8080"
     shm_size: "1gb"
     user: appuser
     read_only: true
@@ -159,8 +164,6 @@ services:
       - ALL
     volumes:
       - browser-scraper-token:/run/secrets:ro
-    networks:
-      - browser-egress
     deploy:
       resources:
         limits:
@@ -178,11 +181,14 @@ services:
       retries: 3
       start_period: 40s
 
-  # The app never joins Crawl4AI's network. This fixed-upstream gateway is the
-  # only bridge: it exposes only authenticated schema and Markdown requests,
-  # and cannot be turned into a caller-selected forward proxy.
+  # This sidecar shares only Crawl4AI's bridge network namespace and proxies
+  # the raw service over loopback. It exposes only authenticated schema and
+  # Markdown requests and cannot become a caller-selected forward proxy.
   crawl4ai-gateway:
-    image: ghcr.io/nginx/nginx-unprivileged:1.30.5-alpine@sha256:56b8272e43a0525f67aed68d1e0794a712d10e3e45a563e118e9a77c817e6f86
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: crawl4ai-gateway
     restart: unless-stopped
     logging: *logging
     depends_on:
@@ -191,8 +197,11 @@ services:
     entrypoint: ["/usr/sbin/nginx"]
     command: ["-g", "daemon off;"]
     user: "101:101"
-    expose:
-      - "8080"
+    network_mode: service:crawl4ai
+    # Force this namespace-sharing sidecar to be recreated with every
+    # coordinated scraper credential/consumer rollout.
+    environment:
+      CRAWL4AI_TOKEN_EPOCH: ${CRAWL4AI_TOKEN_EPOCH:-1}
     read_only: true
     tmpfs:
       - /tmp:uid=101,gid=101,mode=0700
@@ -200,14 +209,6 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    volumes:
-      - type: bind
-        source: ./deploy/nginx/crawl4ai-gateway.conf
-        target: /etc/nginx/nginx.conf
-        read_only: true
-    networks:
-      - default
-      - browser-egress
     deploy:
       resources:
         limits:
@@ -335,6 +336,8 @@ services:
       - browser-scraper-token:/run/browser-scraper:ro
     networks:
       - default
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     deploy:
       resources:
         limits:
@@ -426,6 +429,8 @@ services:
       - browser-scraper-token:/run/browser-scraper:ro
     networks:
       - default
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     stop_grace_period: 30s
     healthcheck:
       test: ["CMD", "node", "-e", "const t=+require('fs').readFileSync('/tmp/worker-alive','utf8');process.exit(Date.now()-t<120000?0:1)"]
@@ -582,7 +587,3 @@ services:
 
 volumes:
   browser-scraper-token:
-
-networks:
-  browser-egress:
-    driver: bridge
