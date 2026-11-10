@@ -74,12 +74,16 @@ case "${1:-}" in
       exit 1
     }
     restore_db_image=${restore_db_images[0]}
+    [[ "$restore_db_image" =~ ^pgvector/pgvector:[^@[:space:]]+@sha256:[[:xdigit:]]{64}$ ]] || {
+      echo "The isolated PostgreSQL image is not pinned to a SHA-256 digest." >&2
+      exit 1
+    }
     docker image inspect "$restore_db_image" >/dev/null 2>&1 || docker pull "$restore_db_image" >/dev/null
     restore_db_owner=$(docker run --rm --network none --read-only --pids-limit 32 \
       --cap-drop ALL --security-opt no-new-privileges:true --entrypoint sh "$restore_db_image" \
       -c 'printf "%s:%s" "$(id -u postgres)" "$(id -g postgres)"')
-    [[ "$restore_db_owner" =~ ^[0-9]+:[0-9]+$ ]] || {
-      echo "Could not resolve the PostgreSQL uid/gid from the pinned image." >&2
+    [[ "$restore_db_owner" =~ ^[1-9][0-9]*:[1-9][0-9]*$ ]] || {
+      echo "Could not resolve a non-root PostgreSQL uid/gid from the pinned image." >&2
       exit 1
     }
     chown "$restore_db_owner" "$RESTORE_ROOT/app/postgres" || {

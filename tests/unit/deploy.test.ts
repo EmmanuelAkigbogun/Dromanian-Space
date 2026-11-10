@@ -206,6 +206,7 @@ describe('standalone compose safety', () => {
     expect(restoreDrill).toContain('[[ "$verified_archive_sha256" != "$archive_sha256" ]]');
     expect(restoreDrill).toContain("printf '%s %s %s\\n' \"$drill_stamp\" \"$(basename \"$archive\")\" \"$archive_sha256\"");
     expect(restoreDrill).toContain("compose config --images | grep '^pgvector/pgvector:'");
+    expect(restoreDrill).toContain('^pgvector/pgvector:[^@[:space:]]+@sha256:[[:xdigit:]]{64}$');
     expect(restoreDrill).toContain('--network none --read-only --pids-limit 32');
     expect(restoreDrill).toContain('--cap-drop ALL --security-opt no-new-privileges:true');
     expect(restoreDrill).toContain('chown "$restore_db_owner" "$RESTORE_ROOT/app/postgres"');
