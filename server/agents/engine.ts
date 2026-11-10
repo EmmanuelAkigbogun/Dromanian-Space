@@ -5,6 +5,8 @@
 // database; nothing here fabricates completion.
 
 import { env } from '../env.js';
+import { isIP } from 'node:net';
+import { HttpError } from '../http.js';
 import { log } from '../log.js';
 import { rpc, serviceClient } from '../database.js';
 import { PROVIDER_KEYS, PROVIDER_LABELS, providerFor, providerNameFor } from '../ai/registry.js';
@@ -12,6 +14,7 @@ import { ProviderError, type Effort, type ModelProvider, type TurnUsage } from '
 import { CitationRegistry, resolveCitations, sourcesFooter } from './citations.js';
 import { AgnoRunError, providerAgentRunner, remoteAgentRunner, type AgentRuntimeConfig, type AgentRunner } from './agno.js';
 import { PROVIDER_TOOLS, TOOL_REGISTRY, toolSpecs } from './tools/index.js';
+import { browserScraperReadiness } from './tools/browser.js';
 import { readConversation, memberChannels } from './tools/read.js';
 import { quoteData, type AgentTool, type RunContext, type RunScope, type SourceKind, type ToolOutput } from './tools/types.js';
 
@@ -22,6 +25,8 @@ const HEARTBEAT_MS = 1000;
 const CHECKPOINT_MS = 500;
 /** Stop before the worker's own limit so partial output is kept. */
 const RUN_BUDGET_MS = Number(process.env.AGENT_RUN_BUDGET_MS ?? 600_000);
+/** Specialist calls are independent and should not turn a team request into four serial waits. */
+const MAX_PARALLEL_SPECIALISTS = 4;
 /** Tools available in a direct-message AI session (see sessionTranscript). */
 const SESSION_TOOLS = ['submit_tasks_for_approval'];
 
@@ -102,6 +107,31 @@ export function providerDetail(message: string): string {
     .slice(0, 300);
 }
 
+/** A CRM company domain is untrusted data; turn only public DNS names into a site origin. */
+export function companySiteUrl(value: string | null | undefined): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  try {
+    const parsed = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
+    const hostname = parsed.hostname.toLowerCase().replace(/\.$/, '');
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return null;
+    if (!hostname.includes('.') || isIP(hostname) || ['localhost', 'local', 'internal', 'test', 'invalid'].some((suffix) => hostname === suffix || hostname.endsWith(`.${suffix}`))) {
+      return null;
+    }
+    return `https://${hostname}${parsed.port && parsed.port !== '80' && parsed.port !== '443' ? `:${parsed.port}` : ''}`;
+  } catch {
+    return null;
+  }
+}
+
+/** A selected company never inherits another company's workspace-wide URL. */
+export function scopedSiteUrl(
+  workspaceSiteUrl: string | null,
+  selectedCompany: { domain: string | null } | null,
+): string | null {
+  return selectedCompany ? companySiteUrl(selectedCompany.domain) : workspaceSiteUrl;
+}
+
 export function errorMessage(err: unknown): { code: string; message: string } {
   const text = err instanceof Error ? err.message : '';
   if (err instanceof ProviderError) {
@@ -138,7 +168,14 @@ export function errorMessage(err: unknown): { code: string; message: string } {
 
 export async function executeRun(
   runId: string,
-  opts: { worker?: string; events?: RunEvents; provider?: ModelProvider; agentRunner?: AgentRunner; budgetMs?: number } = {},
+  opts: {
+    worker?: string;
+    events?: RunEvents;
+    provider?: ModelProvider;
+    agentRunner?: AgentRunner;
+    budgetMs?: number;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<RunOutcome> {
   const worker = opts.worker ?? env().workerId;
   const emit = (event: string, data: unknown) => {
@@ -174,7 +211,15 @@ export async function executeRun(
   };
   await setStage('loading_context', 'Loading the conversation');
 
-  const finish = async (status: string, content: string | null, usage: TurnUsage | null, model: string | null, code?: string, message?: string) => {
+  const finish = async (
+    status: string,
+    content: string | null,
+    usage: TurnUsage | null,
+    model: string | null,
+    code?: string,
+    message?: string,
+    beforeDone?: (finalStatus: string) => void,
+  ) => {
     const final = await rpc<string>('agent_finish_run', {
       p_run_id: runId,
       p_worker: worker,
@@ -184,6 +229,7 @@ export async function executeRun(
       p_error_code: code ?? null,
       p_error_message: message ?? null,
     });
+    beforeDone?.(final);
     emit('done', { status: final, error_code: code ?? null, error_message: message ?? null });
     return { status: final, error_code: code };
   };
@@ -259,10 +305,10 @@ export async function executeRun(
     `Workspace: ${workspace.data?.name ?? 'this workspace'}.`,
     `Requester: ${profile.data?.display_name ?? profile.data?.username ?? 'a member'}${profile.data?.username ? ` (@${profile.data.username})` : ''}.`,
   ];
-  let selectedCompany: { id: string; name: string; drive_folder_id: string | null } | null = null;
+  let selectedCompany: { id: string; name: string; drive_folder_id: string | null; domain: string | null } | null = null;
   if (run.scope?.company_id) {
     const company = await db.from('crm_companies')
-      .select('id, name, drive_folder_id')
+      .select('id, name, drive_folder_id, domain')
       .eq('id', run.scope.company_id)
       .eq('workspace_id', run.workspace_id)
       .eq('is_client', true)
@@ -271,17 +317,31 @@ export async function executeRun(
     if (company.error || !company.data) {
       return finish('failed', null, null, null, 'invalid_scope', 'The selected managed company is no longer available.');
     }
-    selectedCompany = company.data as { id: string; name: string; drive_folder_id: string | null };
+    selectedCompany = company.data as { id: string; name: string; drive_folder_id: string | null; domain: string | null };
+    // Keep only the explicit source selection in memory. Company membership is
+    // enforced inside each database RPC, without expanding a potentially huge
+    // Drive tree into the prompt or into query parameter arrays.
+    ctx.settings.siteUrl = scopedSiteUrl(ctx.settings.siteUrl, selectedCompany);
     contextLines.push(`Managed company context: "${selectedCompany.name}" (company_id ${selectedCompany.id}). Keep CRM, Drive, brand, campaign and reporting work inside this company unless the requester explicitly asks for a portfolio comparison.`);
     if (selectedCompany.drive_folder_id) contextLines.push(`Company Drive folder: item_id ${selectedCompany.drive_folder_id}. Prefer this folder and its contents for company-specific work.`);
+    if (ctx.settings.siteUrl) contextLines.push(`Selected company site: ${ctx.settings.siteUrl}.`);
   } else {
     contextLines.push('Managed company context: portfolio view. For company-specific CRM, Drive, campaign or content work, ask the requester to choose a managed company before proceeding. Cross-company comparison is allowed only when explicitly requested.');
   }
-  if (allowedItemIds) {
+  if (ctx.allowedItemIds) {
     const items = await rpc<Array<{ id: string; name: string; kind: string; index_status: string | null; index_message: string | null }>>(
-      'agent_scope_items_for',
-      { p_actor: run.requested_by, p_item_ids: allowedItemIds },
+      'agent_scope_items_scoped_for',
+      {
+        p_actor: run.requested_by,
+        p_workspace_id: run.workspace_id,
+        p_company_id: selectedCompany?.id ?? null,
+        p_item_ids: ctx.allowedItemIds,
+      },
     );
+    // Drop unreadable or cross-company explicit IDs once at the DB boundary;
+    // this remains only the requester's explicit selection, never the full
+    // company tree.
+    ctx.allowedItemIds = items.map((item) => item.id);
     if (items.length === 0) contextLines.push('Selected sources: none that the requester can currently open.');
     for (const i of items) {
       contextLines.push(
@@ -313,16 +373,28 @@ export async function executeRun(
   if (run.destination?.type === 'channel') {
     contextLines.push('Your answer may be posted back into that conversation, so write it for everyone in it.');
   }
-  const canFetchSite = version.tools.includes('fetch_site_page') && Boolean(ctx.settings.siteUrl);
-  if (canFetchSite) contextLines.push(`The workspace site is ${ctx.settings.siteUrl} — you may fetch pages on that site only.`);
   const webResearchEnabled = claim.settings.web_research_enabled;
+  const canFetchSite = webResearchEnabled
+    && version.tools.includes('fetch_site_page')
+    && Boolean(ctx.settings.siteUrl);
+  if (canFetchSite) contextLines.push(`You may use the site fetch only for ${ctx.settings.siteUrl}.`);
+  const isCoordinator = agent.kind === 'coordinator' && run.depth === 0;
+  const browserReadiness = webResearchEnabled && (version.tools.includes('browser_scrape') || isCoordinator)
+    ? await browserScraperReadiness()
+    : { available: false, reason: undefined };
+  const browserScrapeAllowed = webResearchEnabled && browserReadiness.available;
   const nativeToolAllowed = (name: string) =>
     name === 'web_search' ? webResearchEnabled :
       name === 'fetch_site_page' ? canFetchSite : false;
-  if (version.tools.includes('web_search') && !webResearchEnabled) {
-    contextLines.push('Public web research is disabled in this workspace. Do not claim to have searched the web.');
+  if ((version.tools.includes('web_search')
+       || version.tools.includes('fetch_site_page')
+       || version.tools.includes('browser_scrape'))
+      && !webResearchEnabled) {
+    contextLines.push('Public web research is disabled in this workspace. Do not claim to have searched or opened a public page.');
   }
-  const isCoordinator = agent.kind === 'coordinator' && run.depth === 0;
+  if (version.tools.includes('browser_scrape') && webResearchEnabled && !browserScrapeAllowed) {
+    contextLines.push(`${browserReadiness.reason ?? 'The private browser scraper is unavailable.'} Do not claim to have opened or read a public page.`);
+  }
   let specialistConfigs: AgentRuntimeConfig[] = [];
   if (isCoordinator) {
     const { data: team } = await db
@@ -335,9 +407,9 @@ export async function executeRun(
       a.handle !== agent.handle && a.current_version_id && (a.visibility === 'workspace' || a.created_by === run.requested_by),
     );
     contextLines.push(
-      'Available specialist domains (handle — name: what they do):',
+      'Available specialists (handle — name: what they do):',
       ...specialists.map((a) => `- ${a.handle} — ${a.name}: ${a.description}`),
-      'You are answering as the whole team with one coordinator and the specialists’ combined authorized tools. The names above are expertise domains, not separate completed runs. Use only the tools needed for this request and never say a specialist searched, read, or completed work unless the corresponding tool result proves it.',
+      'For a simple request, answer directly. For work that needs specialist expertise, use delegate_to_specialists once with focused tasks and then synthesize the returned evidence. Never say a specialist searched, read, or completed work unless its returned result proves it.',
     );
     if (specialists.length) {
       const { data: versions, error: versionsError } = await db
@@ -369,11 +441,15 @@ export async function executeRun(
     if (teamTools.has('read_brand_kit') && !claim.settings.brand_kit_folder_id) {
       contextLines.push('Readiness limitation: no brand kit folder is configured; identify this when brand-specific output is requested.');
     }
-    if (teamTools.has('fetch_site_page') && !claim.settings.site_url) {
-      contextLines.push('Readiness limitation: no site address is configured; do not claim an SEO site audit was performed.');
+    if (teamTools.has('fetch_site_page') && !ctx.settings.siteUrl) {
+      contextLines.push('No selected company site is available; ask for a managed company or a public URL before claiming a site audit.');
     }
-    if (teamTools.has('web_search') && !webResearchEnabled) {
+    if ((teamTools.has('web_search') || teamTools.has('fetch_site_page') || teamTools.has('browser_scrape'))
+        && !webResearchEnabled) {
       contextLines.push('Readiness limitation: public web research is disabled; do not infer that research specialists searched the public web.');
+    }
+    if (teamTools.has('browser_scrape') && webResearchEnabled && !browserScrapeAllowed) {
+      contextLines.push('Readiness limitation: the private browser scraper is unavailable; do not claim a public page was opened or read.');
     }
   }
   if (run.depth > 0) contextLines.push('You are working on a task assigned by the team coordinator; answer the task directly.');
@@ -384,8 +460,12 @@ export async function executeRun(
 
   // ---- Tools ----------------------------------------------------------------
   // A session run may read nothing beyond its transcript.
-  const allowed = (n: string) => !run.scope?.session_id || SESSION_TOOLS.includes(n);
-  const requestedTools = new Set([...version.tools, ...specialistConfigs.flatMap((specialist) => specialist.tools)]);
+  const allowed = (n: string) =>
+    (!run.scope?.session_id || SESSION_TOOLS.includes(n))
+    && (n !== 'browser_scrape' || browserScrapeAllowed);
+  // The coordinator receives only its own tools plus delegation. Specialist
+  // permissions stay inside child runs instead of being unioned into the lead.
+  const requestedTools = new Set(version.tools);
   const tools: AgentTool[] = [...requestedTools]
     .filter((n) => allowed(n) && !PROVIDER_TOOLS.includes(n) && (n !== 'delegate_to_specialists' || isCoordinator))
     .map((n) => TOOL_REGISTRY[n])
@@ -393,22 +473,50 @@ export async function executeRun(
 
   // ---- Liveness: heartbeat, cancellation, time budget ----------------------
   let steps = 0;
-  const heartbeat = setInterval(async () => {
-    try {
-      const hb = await rpc<{ alive: boolean; cancel_requested?: boolean; member?: boolean }>('agent_heartbeat', {
-        p_run_id: runId,
-        p_worker: worker,
-        p_step_count: steps,
-      });
-      if (!hb.alive) abort('lost');
-      else if (hb.member === false) abort('membership');
-      else if (hb.cancel_requested) abort('cancelled');
-    } catch {
-      /* transient; the next beat decides */
-    }
+  const refreshLiveness = async () => {
+    const hb = await rpc<{ alive: boolean; cancel_requested?: boolean; member?: boolean }>('agent_heartbeat', {
+      p_run_id: runId,
+      p_worker: worker,
+      p_step_count: steps,
+    });
+    if (!hb.alive) abort('lost');
+    else if (hb.member === false) abort('membership');
+    else if (hb.cancel_requested) abort('cancelled');
+  };
+  const heartbeat = setInterval(() => {
+    void refreshLiveness().catch(() => {
+      /* transient; the next beat or finalization barrier decides */
+    });
   }, HEARTBEAT_MS);
-  const budgetMs = opts.budgetMs ?? RUN_BUDGET_MS;
+  const relayExternalAbort = () => abort('cancelled');
+  if (opts.signal?.aborted) relayExternalAbort();
+  else opts.signal?.addEventListener('abort', relayExternalAbort, { once: true });
+  const budgetMs = Math.max(0, opts.budgetMs ?? RUN_BUDGET_MS);
+  const deadline = Date.now() + budgetMs;
   const budget = setTimeout(() => abort('timeout'), budgetMs);
+  const assertRunActive = async (message: string) => {
+    if (Date.now() >= deadline && !controller.signal.aborted) abort('timeout');
+    if (!controller.signal.aborted) await refreshLiveness();
+    if (Date.now() >= deadline && !controller.signal.aborted) abort('timeout');
+    if (controller.signal.aborted) {
+      throw new DOMException(message, 'AbortError');
+    }
+  };
+
+  if (isCoordinator) {
+    ctx.delegate = (tasks) => delegate({
+      runId,
+      workspaceId: run.workspace_id,
+      worker,
+      provider: opts.provider,
+      agentRunner: opts.agentRunner,
+      ctx,
+      tasks,
+      deadline,
+      emit,
+      signal: controller.signal,
+    });
+  }
 
   let committed = '';
   let turnText = '';
@@ -430,6 +538,7 @@ export async function executeRun(
   };
 
   const runTool = async (call: { id: string; name: string; input: unknown }): Promise<{ id: string; content: string; isError?: boolean }> => {
+    await assertRunActive('The run stopped before the tool could start.');
     const tool = tools.find((t) => t.name === call.name);
     const parsed = tool?.schema.safeParse(call.input);
     const label = tool && parsed?.success ? tool.label(parsed.data) : call.name;
@@ -454,12 +563,24 @@ export async function executeRun(
       out = { content: JSON.stringify({ INVALID_JSON: JSON.stringify(call.input) }), summary: { error: 'invalid_input' }, isError: true };
     } else {
       try {
+        // Telemetry writes above yield to the event loop. Check again at the
+        // actual invocation boundary so a Stop cannot start a mutation tool.
+        await assertRunActive('The run stopped before the tool could start.');
         out = await tool.run(ctx, parsed.data, { toolUseId: call.id });
       } catch (err) {
+        // A mutation RPC can be the first operation to observe DB cancellation.
+        // Refresh before deciding whether this is a normal, model-visible tool
+        // error, and never turn cancellation into a recoverable tool result.
+        await assertRunActive('The run stopped while the tool was running.');
+        if (err instanceof DOMException && err.name === 'AbortError') throw err;
+        if (err instanceof Error && err.name === 'AbortError') throw err;
         log.warn('tool failed', { run_id: runId, tool: call.name, error: err instanceof Error ? err : String(err) });
         out = { content: 'The tool failed. Tell the requester this step could not be completed.', summary: { error: 'tool_error' }, isError: true };
       }
     }
+    // Tools may ignore AbortSignal while awaiting an upstream service. Their
+    // result is accepted only after another authoritative heartbeat check.
+    await assertRunActive('The run stopped while the tool was running.');
     const status = out.status ?? (out.isError ? 'failed' : 'succeeded');
     await rpc('agent_record_tool', {
       p_run_id: runId,
@@ -481,11 +602,14 @@ export async function executeRun(
 
   // ---- Model execution ------------------------------------------------------
   try {
+    if (controller.signal.aborted || Date.now() >= deadline) {
+      if (!controller.signal.aborted) abort('timeout');
+      throw new DOMException('The run was aborted before model execution.', 'AbortError');
+    }
     const warnings: Array<{ code: string; message: string }> = [];
     const maxSeconds = Math.max(60, Math.floor(budgetMs / 1000) - 30);
     const coordinatorToolNames = [...requestedTools].filter((name) =>
       allowed(name)
-      && name !== 'delegate_to_specialists'
       && (Boolean(TOOL_REGISTRY[name]) || nativeToolAllowed(name)),
     );
     const agentConfig: AgentRuntimeConfig = {
@@ -497,9 +621,8 @@ export async function executeRun(
       kind: agent.kind,
       model: run.model,
       effort: run.effort,
-      // Whole-team requests use one Agno lead with the union of every
-      // specialist's authorized tools. A native Team caused a provider turn
-      // per selected member, making even simple requests take minutes.
+      // The lead starts only the specialist runs it explicitly delegates,
+      // avoiding an unconditional 19-member provider fan-out.
       tools: isCoordinator
         ? coordinatorToolNames
         : version.tools.filter((name) => allowed(name) && (Boolean(TOOL_REGISTRY[name]) || nativeToolAllowed(name)) && name !== 'delegate_to_specialists'),
@@ -517,7 +640,15 @@ export async function executeRun(
     const agentRunner = opts.agentRunner
       ?? (provider.name === 'openai' && !hasImages ? providerAgentRunner(provider) : remoteAgentRunner);
     const liveTeam = new Map<string, { task_id: string; agent: string; status: string }>();
+    let teamEventWrites = Promise.resolve();
     await setStage('starting_team', isCoordinator ? 'Starting the team' : `Starting ${agent.name}`);
+    // Stage persistence yields to I/O. Recheck immediately before invoking the
+    // provider so an abort/deadline that arrived during that await cannot start
+    // another specialist.
+    if (controller.signal.aborted || Date.now() >= deadline) {
+      if (!controller.signal.aborted) abort('timeout');
+      throw new DOMException('The run was aborted before model execution.', 'AbortError');
+    }
     const result = await agentRunner.run(
       {
         run_id: runId,
@@ -555,7 +686,11 @@ export async function executeRun(
           liveTeam.set(teamAgent, existing ? { ...existing, status } : { task_id: `agno:${teamAgent}`, agent: teamAgent, status });
           const data = { tasks: [...liveTeam.values()] };
           emit('team', data);
-          void rpc('agent_add_event', { p_run_id: runId, p_type: 'team', p_data: data }).catch(() => undefined);
+          // Preserve provider event order in durable history. Fire-and-forget
+          // writes could otherwise land after the final `completed` snapshot.
+          teamEventWrites = teamEventWrites
+            .then(() => rpc('agent_add_event', { p_run_id: runId, p_type: 'team', p_data: data }))
+            .then(() => undefined, () => undefined);
         },
         async callTool(call) {
           steps++;
@@ -564,13 +699,22 @@ export async function executeRun(
         },
       },
     );
-    committed = result.text;
-    turnText = '';
     usage = result.usage;
     servedModel = result.model;
+    // The provider can resolve in the gap between two periodic heartbeats.
+    // Re-read cancellation while the run is still locked as active, before
+    // persisting citations, publishing a reply, or completing the run.
+    await refreshLiveness();
+    if (Date.now() >= deadline && !controller.signal.aborted) abort('timeout');
+    if (controller.signal.aborted) {
+      throw new DOMException('The run stopped before finalization.', 'AbortError');
+    }
+    committed = result.text;
+    turnText = '';
     if (liveTeam.size) {
       const tasks = [...liveTeam.values()].map((task) => ({ ...task, status: 'completed' }));
       emit('team', { tasks });
+      await teamEventWrites;
       await rpc('agent_add_event', { p_run_id: runId, p_type: 'team', p_data: { tasks } });
     }
     checkpoint(true);
@@ -589,15 +733,43 @@ export async function executeRun(
       await rpc('agent_add_event', { p_run_id: runId, p_type: 'warning', p_data: w });
       emit('warning', w);
     }
+    // Citation and warning persistence can take long enough for a cancellation
+    // request to arrive after the provider-resolution barrier above. Recheck at
+    // the irreversible publication boundary as well.
+    await refreshLiveness();
+    if (Date.now() >= deadline && !controller.signal.aborted) abort('timeout');
+    if (controller.signal.aborted) {
+      throw new DOMException('The run stopped before publication.', 'AbortError');
+    }
     if (run.destination?.type === 'channel' && text) {
       const reply = await rpc<{ status: string; proposal_id?: string }>('agent_publish_reply', {
         p_run_id: runId,
         p_content: text + sourcesFooter(citations),
       });
+      // The database serializes publication with cancellation on the run row.
+      // If cancellation won that lock race, do not expose a successful reply or
+      // snapshot from this worker.
+      if (reply.status === 'cancelled' || reply.status === 'not_running') {
+        abort(reply.status === 'cancelled' ? 'cancelled' : 'lost');
+        throw new DOMException('The run stopped while publishing.', 'AbortError');
+      }
       emit('reply', reply);
     }
-    emit('snapshot', { text });
-    return await finish('completed', text, usage, servedModel);
+    // Private runs do not pass through agent_publish_reply, and a child/sibling
+    // abort can arrive while that RPC or the final telemetry writes are in
+    // flight. Make the last operation before agent_finish_run another liveness
+    // barrier; the signal/deadline check and RPC invocation are synchronous up
+    // to the RPC's first await, so no local timer/abort callback can interleave.
+    await refreshLiveness();
+    if (Date.now() >= deadline && !controller.signal.aborted) abort('timeout');
+    if (controller.signal.aborted) {
+      throw new DOMException('The run stopped before completion.', 'AbortError');
+    }
+    return await finish('completed', text, usage, servedModel, undefined, undefined, (finalStatus) => {
+      if (finalStatus === 'completed' || finalStatus === 'awaiting_approval') {
+        emit('snapshot', { text });
+      }
+    });
   } catch (err) {
     const partial = visible();
     if (controller.signal.aborted) {
@@ -616,6 +788,321 @@ export async function executeRun(
   } finally {
     clearInterval(heartbeat);
     clearTimeout(budget);
+    opts.signal?.removeEventListener('abort', relayExternalAbort);
     checkpointing = false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Team chat: bounded, durable specialist delegation
+// ---------------------------------------------------------------------------
+interface DelegateArgs {
+  runId: string;
+  workspaceId: string;
+  worker: string;
+  provider?: ModelProvider;
+  agentRunner?: AgentRunner;
+  ctx: RunContext;
+  tasks: Array<{ agent: string; instruction: string }>;
+  deadline: number;
+  emit: (event: string, data: unknown) => void;
+  signal: AbortSignal;
+}
+
+interface SpecialistResult {
+  agent: string;
+  handle: string;
+  status: string;
+  text: string;
+}
+
+const specialistHandle = (value: string) => value.trim().replace(/^@/, '').toLowerCase();
+
+/**
+ * Persist each assignment before it runs, execute independent specialists in
+ * parallel, and merge their source lineage back into the coordinator. The DB
+ * function is idempotent, so a reclaimed parent run reuses the same children.
+ */
+export async function delegate(args: DelegateArgs): Promise<ToolOutput> {
+  const db = serviceClient();
+  const seenTasks = new Set<string>();
+  const canonicalTasks = args.tasks.flatMap((task) => {
+    const handle = specialistHandle(task.agent);
+    const instruction = task.instruction.trim();
+    const key = `${handle}\u0000${instruction}`;
+    if (seenTasks.has(key)) return [];
+    seenTasks.add(key);
+    return [{ handle, instruction }];
+  });
+  const handles = [...new Set(canonicalTasks.map((task) => task.handle))];
+  const parentStopped = () => args.signal.aborted || Date.now() >= args.deadline;
+  if (parentStopped()) {
+    return {
+      content: 'The team run stopped before these specialist tasks were created.',
+      summary: { error: Date.now() >= args.deadline ? 'timeout' : 'cancelled' },
+      isError: true,
+    };
+  }
+  const { data: agents, error } = await db
+    .from('workspace_agents')
+    .select('id, handle, name')
+    .eq('workspace_id', args.workspaceId)
+    .in('handle', handles);
+  if (error) throw new Error(error.message);
+
+  type Specialist = { id: string; handle: string; name: string };
+  const specialists = (agents ?? []) as Specialist[];
+  const byHandle = new Map<string, Specialist>(specialists.map((item) => [item.handle, item]));
+  const missing = handles.filter((handle) => !byHandle.has(handle));
+  if (missing.length) {
+    return {
+      content: `Unknown specialist handle(s): ${missing.join(', ')}. Use the handles listed in your context.`,
+      summary: { error: 'unknown_agent' },
+      isError: true,
+    };
+  }
+  if (parentStopped()) {
+    return {
+      content: 'The team run stopped before these specialist tasks were created.',
+      summary: { error: Date.now() >= args.deadline ? 'timeout' : 'cancelled' },
+      isError: true,
+    };
+  }
+
+  let created: Array<{ task_id: string; child_run_id: string; agent_id: string; reused: boolean }>;
+  try {
+    created = await rpc('agent_delegate', {
+      p_parent_run_id: args.runId,
+      p_tasks: canonicalTasks.map((task) => ({
+        agent_id: byHandle.get(task.handle)!.id,
+        instruction: task.instruction,
+      })),
+    });
+  } catch (err) {
+    if (err instanceof HttpError && err.status < 500) {
+      return { content: err.message, summary: { error: err.code }, isError: true };
+    }
+    throw err;
+  }
+  const returnedChildren = new Set<string>();
+  created = created.filter((task) => {
+    if (returnedChildren.has(task.child_run_id)) return false;
+    returnedChildren.add(task.child_run_id);
+    return true;
+  });
+
+  const info = new Map<string, { name: string; handle: string }>(specialists.map((item) => [
+    item.id,
+    { name: item.name, handle: item.handle },
+  ]));
+  const teamState = created.map((task) => ({
+    task_id: task.task_id,
+    agent: info.get(task.agent_id)?.name ?? 'Specialist',
+    status: 'queued',
+  }));
+  const emitTeam = (index: number, status: string) => {
+    teamState[index] = { ...teamState[index], status };
+    args.emit('team', { tasks: teamState.map((task) => ({ ...task })) });
+  };
+  args.emit('team', { tasks: teamState.map((task) => ({ ...task })) });
+
+  const results: SpecialistResult[] = new Array(created.length);
+  const childController = new AbortController();
+  const stopChildren = () => childController.abort();
+  if (args.signal.aborted) stopChildren();
+  else args.signal.addEventListener('abort', stopChildren, { once: true });
+  let next = 0;
+  let firstFailure: unknown;
+  const recordFailure = (error: unknown) => {
+    if (firstFailure === undefined) firstFailure = error;
+    stopChildren();
+  };
+  const terminalReason = () => {
+    if (Date.now() >= args.deadline) {
+      return {
+        status: 'interrupted',
+        code: 'timeout',
+        message: 'The parent run reached its time limit before this specialist finished.',
+      };
+    }
+    if (args.signal.aborted) {
+      return {
+        status: 'cancelled',
+        code: 'cancelled',
+        message: 'The parent run stopped before this specialist finished.',
+      };
+    }
+    return {
+      status: 'cancelled',
+      code: 'delegation_failed',
+      message: 'The specialist group stopped because another specialist lane failed.',
+    };
+  };
+  const terminalize = async (task: (typeof created)[number]) => {
+    const reason = terminalReason();
+    await rpc('agent_terminalize_team_task', {
+      p_task_id: task.task_id,
+      p_status: reason.status,
+      p_error_code: reason.code,
+      p_error_message: reason.message,
+    });
+  };
+  const skipQueued = async (
+    index: number,
+    task: (typeof created)[number],
+    who: { name: string; handle: string },
+  ) => {
+    await terminalize(task);
+    results[index] = await loadSpecialistResult(args.ctx, task.child_run_id, who);
+    emitTeam(index, results[index].status);
+  };
+  const lane = async () => {
+    while (next < created.length) {
+      const index = next++;
+      const task = created[index];
+      const who = info.get(task.agent_id) ?? { name: 'Specialist', handle: 'specialist' };
+      let remainingMs = args.deadline - Date.now();
+      if (childController.signal.aborted || remainingMs <= 0) {
+        await skipQueued(index, task, who);
+        continue;
+      }
+      const beforeQuery = await db
+        .from('agent_runs')
+        .select('status')
+        .eq('id', task.child_run_id)
+        .single();
+      if (beforeQuery.error) {
+        throw new Error(`Could not load specialist run ${task.child_run_id}: ${beforeQuery.error.message}`);
+      }
+      if (!beforeQuery.data) {
+        throw new Error(`Specialist run ${task.child_run_id} no longer exists.`);
+      }
+      remainingMs = args.deadline - Date.now();
+      if (childController.signal.aborted || remainingMs <= 0) {
+        await skipQueued(index, task, who);
+        continue;
+      }
+      if (['queued', 'running'].includes(beforeQuery.data.status as string)) {
+        emitTeam(index, 'running');
+        await executeRun(task.child_run_id, {
+          worker: args.worker,
+          provider: args.provider,
+          agentRunner: args.agentRunner,
+          budgetMs: remainingMs,
+          signal: childController.signal,
+        });
+      }
+      await rpc('agent_settle_team_task', { p_task_id: task.task_id });
+      results[index] = await loadSpecialistResult(args.ctx, task.child_run_id, who);
+      emitTeam(index, results[index].status);
+    }
+  };
+  const guardedLane = async () => {
+    try {
+      await lane();
+    } catch (error) {
+      recordFailure(error);
+      throw error;
+    }
+  };
+  try {
+    const lanes = Array.from(
+      { length: Math.min(MAX_PARALLEL_SPECIALISTS, created.length) },
+      guardedLane,
+    );
+    const laneOutcomes = await Promise.allSettled(lanes);
+    for (const outcome of laneOutcomes) {
+      if (outcome.status === 'rejected') recordFailure(outcome.reason);
+    }
+
+    if (firstFailure !== undefined) {
+      // Every persisted task gets one last idempotent terminalization attempt.
+      // Promise.allSettled waits for active sibling lanes and all cleanup before
+      // the coordinator receives the tool error.
+      const cleanup = await Promise.allSettled(created.map(async (task, index) => {
+        await terminalize(task);
+        const who = info.get(task.agent_id) ?? { name: 'Specialist', handle: 'specialist' };
+        results[index] = await loadSpecialistResult(args.ctx, task.child_run_id, who);
+        emitTeam(index, results[index].status);
+      }));
+      const cleanupFailure = cleanup.find((outcome) => outcome.status === 'rejected');
+      if (cleanupFailure?.status === 'rejected') {
+        log.error('specialist cleanup failed', {
+          run_id: args.runId,
+          error: cleanupFailure.reason instanceof Error
+            ? cleanupFailure.reason
+            : String(cleanupFailure.reason),
+        });
+      }
+      throw firstFailure;
+    }
+  } finally {
+    args.signal.removeEventListener('abort', stopChildren);
+  }
+
+  return {
+    content: `${results.map(formatSpecialistResult).join('\n\n')}\n\nCombine these results for the requester. Keep valid [n] citations and identify any specialist that did not finish.`,
+    summary: { tasks: results.map((result) => ({ agent: result.agent, status: result.status })) },
+  };
+}
+
+function formatSpecialistResult(result: SpecialistResult): string {
+  const body = result.text.replace(/<\/specialist>/gi, '');
+  return `<specialist name="${result.agent}" handle="${result.handle}" status="${result.status}">\n${body || '(no output)'}\n</specialist>`;
+}
+
+async function loadSpecialistResult(
+  ctx: RunContext,
+  childRunId: string,
+  who: { name: string; handle: string },
+): Promise<SpecialistResult> {
+  const db = serviceClient();
+  const { data: run } = await db
+    .from('agent_runs')
+    .select('status, output_message_id, error_message')
+    .eq('id', childRunId)
+    .single();
+  if (!run) return { agent: who.name, handle: who.handle, status: 'failed', text: '' };
+  const { data: message } = await db.from('agent_messages').select('content').eq('id', run.output_message_id).single();
+  const status = run.status === 'awaiting_approval' ? 'completed' : (run.status as string);
+  let text = (message?.content as string | undefined) ?? '';
+  if (status !== 'completed') {
+    text = `${text}\n\n[This specialist did not finish: ${run.error_message ?? status}.]`.trim();
+  }
+
+  const { data: citations } = await db
+    .from('agent_citations')
+    .select('ordinal, chunk_id, item_id')
+    .eq('run_id', childRunId);
+  const ordinalMap = new Map<number, number>();
+  if (citations?.length) {
+    const { data: chunks } = await db
+      .from('knowledge_chunks')
+      .select('id, content, location, item_id')
+      .in('id', citations.map((citation) => citation.chunk_id));
+    const { data: items } = await db
+      .from('drive_items')
+      .select('id, name')
+      .in('id', citations.map((citation) => citation.item_id));
+    for (const citation of citations) {
+      const chunk = chunks?.find((candidate) => candidate.id === citation.chunk_id);
+      if (!chunk) continue;
+      const merged = ctx.citations.add({
+        chunkId: citation.chunk_id as string,
+        itemId: citation.item_id as string,
+        itemName: (items?.find((item) => item.id === citation.item_id)?.name as string | undefined) ?? 'Source',
+        location: (chunk.location as Record<string, unknown>) ?? {},
+        content: chunk.content as string,
+      });
+      ordinalMap.set(citation.ordinal as number, merged.n);
+    }
+  }
+  text = text.replace(/\[(\d{1,3}(?:\s*,\s*\d{1,3})*)\](?!\()/g, (_match, group: string) => {
+    const ordinals = group
+      .split(',')
+      .map((value) => ordinalMap.get(Number(value.trim())))
+      .filter((value): value is number => value !== undefined);
+    return ordinals.length ? `[${ordinals.join(', ')}]` : '';
+  });
+  return { agent: who.name, handle: who.handle, status, text };
 }

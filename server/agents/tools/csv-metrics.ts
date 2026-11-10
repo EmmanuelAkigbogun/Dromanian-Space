@@ -190,7 +190,12 @@ export const computeCsvMetrics = defineTool({
     if (ctx.allowedItemIds && !ctx.allowedItemIds.includes(input.item_id)) {
       return { content: 'This file is not among the sources this agent may use.', summary: { error: 'out_of_scope' }, isError: true };
     }
-    const [file] = await rpc<FileRow[]>('agent_file_for', { p_actor: ctx.actorId, p_item_id: input.item_id });
+    const [file] = await rpc<FileRow[]>('agent_file_scoped_for', {
+      p_actor: ctx.actorId,
+      p_workspace_id: ctx.workspaceId,
+      p_company_id: ctx.scope.company_id ?? null,
+      p_item_id: input.item_id,
+    });
     if (!file) return { content: 'File not found, or the requester cannot open it.', summary: { error: 'not_found' }, isError: true };
     const isCsv = /csv/i.test(file.mime_type) || /\.csv$/i.test(file.name);
     const isXlsx = /spreadsheetml/i.test(file.mime_type) || /\.xlsx$/i.test(file.name);

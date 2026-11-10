@@ -170,15 +170,28 @@ export const readBrandKit = defineTool({
         summary: { configured: false },
       };
     }
-    const items = await rpc<BrandItem[]>('agent_brand_kit_items_for', { p_actor: ctx.actorId, p_workspace_id: ctx.workspaceId });
+    const brandItems = await rpc<BrandItem[]>('agent_brand_kit_items_scoped_for', {
+      p_actor: ctx.actorId,
+      p_workspace_id: ctx.workspaceId,
+      p_company_id: ctx.scope.company_id ?? null,
+    });
+    const items = ctx.allowedItemIds
+      ? brandItems.filter((item) => ctx.allowedItemIds!.includes(item.id))
+      : brandItems;
     if (items.length === 0) {
-      return { content: 'The brand kit folder is empty, or the requester cannot open its files.', summary: { configured: true, files: 0 } };
+      return {
+        content: ctx.scope.company_id
+          ? 'No configured brand-kit files are inside the selected company\'s accessible Drive scope.'
+          : 'The brand kit folder is empty, or the requester cannot open its files.',
+        summary: { configured: true, files: 0, company_scoped: Boolean(ctx.scope.company_id) },
+      };
     }
     let rows: ChunkRow[];
     if (input.topic) {
-      rows = await rpc<ChunkRow[]>('knowledge_search_for', {
+      rows = await rpc<ChunkRow[]>('agent_knowledge_search_scoped_for', {
         p_actor: ctx.actorId,
         p_workspace_id: ctx.workspaceId,
+        p_company_id: ctx.scope.company_id ?? null,
         p_query: input.topic,
         p_item_ids: items.map((i) => i.id),
         p_limit: 8,
@@ -188,7 +201,14 @@ export const readBrandKit = defineTool({
     } else {
       rows = [];
       for (const item of items.slice(0, 5)) {
-        const part = await rpc<ChunkRow[]>('knowledge_read_item_for', { p_actor: ctx.actorId, p_item_id: item.id, p_from_chunk: 0, p_max_chunks: 3 });
+        const part = await rpc<ChunkRow[]>('agent_knowledge_read_item_scoped_for', {
+          p_actor: ctx.actorId,
+          p_workspace_id: ctx.workspaceId,
+          p_company_id: ctx.scope.company_id ?? null,
+          p_item_id: item.id,
+          p_from_chunk: 0,
+          p_max_chunks: 3,
+        });
         rows.push(...part.map((r) => ({ ...r, item_id: item.id })));
       }
     }

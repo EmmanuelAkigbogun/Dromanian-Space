@@ -4,6 +4,7 @@ import { toolAvailability } from '../../server/agents/tools/index.js';
 const configured = {
   webResearchEnabled: true,
   webResearchAvailable: true,
+  browserScraperAvailable: true,
   crmInstalled: true,
   siteUrl: 'https://example.com',
   brandKitFolderId: null,
@@ -28,6 +29,18 @@ describe('agent tool readiness', () => {
       reason: expect.stringContaining('site address'),
     });
     expect(toolAvailability(['fetch_site_page'], configured)[0]).toMatchObject({ available: true });
+  });
+
+  it('requires both the workspace switch and the private browser runtime', () => {
+    expect(toolAvailability(['browser_scrape'], { ...configured, browserScraperAvailable: false })[0]).toMatchObject({
+      available: false,
+      reason: expect.stringContaining('private browser scraper'),
+    });
+    expect(toolAvailability(['browser_scrape'], { ...configured, webResearchEnabled: false })[0]).toMatchObject({
+      available: false,
+      reason: expect.stringContaining('turned off'),
+    });
+    expect(toolAvailability(['browser_scrape'], configured)[0]).toMatchObject({ available: true });
   });
 
   it('marks Social draft creation as an approval-card action', () => {

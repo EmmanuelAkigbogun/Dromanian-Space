@@ -23,6 +23,13 @@ services:
           create_host_path: false
 
   api:
+    # Keep truthful readiness dependencies but do not inherit the production
+    # browser-scraper dependency tree into this isolated drill.
+    depends_on: !override
+      rest:
+        condition: service_healthy
+      agno:
+        condition: service_healthy
     volumes: !override
       - type: bind
         source: ${RESTORE_ROOT:?RESTORE_ROOT}/cloud/storage
@@ -31,6 +38,11 @@ services:
           create_host_path: false
 
   worker:
+    depends_on: !override
+      rest:
+        condition: service_healthy
+      agno:
+        condition: service_healthy
     volumes: !override
       - type: bind
         source: ${RESTORE_ROOT:?RESTORE_ROOT}/cloud/storage
@@ -38,8 +50,22 @@ services:
         bind:
           create_host_path: false
 
+  agno:
+    volumes: !override
+      - type: bind
+        source: ${RESTORE_ROOT:?RESTORE_ROOT}/cloud/storage
+        target: /data/storage
+        read_only: true
+        bind:
+          create_host_path: false
+
+  livekit:
+    profiles: ["media-restore-test"]
+    ports: !override []
+
   coturn:
-    profiles: ["turn-restore-test"]
+    profiles: ["media-restore-test"]
+    ports: !override []
     volumes: !override
       - type: bind
         source: ${RESTORE_ROOT:?RESTORE_ROOT}/app/coturn
@@ -49,5 +75,17 @@ services:
           create_host_path: false
 
   web:
+    # The normal web service waits for LiveKit. The drill intentionally does
+    # not start or require media services on the production host ports.
+    depends_on: !override
+      api:
+        condition: service_healthy
     ports: !override
       - "127.0.0.1:18000:8080"
+
+# Restored queues and credentials must never reach third-party services during
+# a drill. Published loopback web access remains available for health/manual
+# checks, while containers can communicate only inside this Compose project.
+networks:
+  default:
+    internal: true

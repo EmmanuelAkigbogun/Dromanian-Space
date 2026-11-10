@@ -12,7 +12,7 @@ umask 077
 
 archive=${1:?archive path required}
 : "${AGE_IDENTITY_FILE:?Set AGE_IDENTITY_FILE to the private key file}"
-DB_IMAGE=${DB_IMAGE:-pgvector/pgvector:0.8.1-pg17-bookworm}
+DB_IMAGE=${DB_IMAGE:-pgvector/pgvector:0.8.1-pg17-bookworm@sha256:3e8b3adfd27b5707128f60956f62a793c3c9326ea8cfaf0eab7adccb5d700b21}
 
 work=$(mktemp -d)
 name="dromanian-restore-check-$$"

@@ -48,9 +48,13 @@ export interface ChannelRow {
 }
 
 export async function memberChannels(ctx: RunContext): Promise<ChannelRow[]> {
-  const key = 'channels';
+  const key = `channels:${ctx.scope.company_id ?? 'portfolio'}`;
   if (!ctx.memo.has(key)) {
-    ctx.memo.set(key, await rpc<ChannelRow[]>('agent_channels_for', { p_actor: ctx.actorId, p_workspace_id: ctx.workspaceId }));
+    ctx.memo.set(key, await rpc<ChannelRow[]>('agent_channels_scoped_for', {
+      p_actor: ctx.actorId,
+      p_workspace_id: ctx.workspaceId,
+      p_company_id: ctx.scope.company_id ?? null,
+    }));
   }
   return ctx.memo.get(key) as ChannelRow[];
 }
@@ -68,7 +72,12 @@ export function channelLabel(c: ChannelRow): string {
 
 async function scopeItems(ctx: RunContext, ids: string[]): Promise<ScopeItem[]> {
   if (ids.length === 0) return [];
-  return rpc<ScopeItem[]>('agent_scope_items_for', { p_actor: ctx.actorId, p_item_ids: ids });
+  return rpc<ScopeItem[]>('agent_scope_items_scoped_for', {
+    p_actor: ctx.actorId,
+    p_workspace_id: ctx.workspaceId,
+    p_company_id: ctx.scope.company_id ?? null,
+    p_item_ids: ids,
+  });
 }
 
 function formatPassages(ctx: RunContext, rows: ChunkRow[], itemIdOf: (r: ChunkRow) => string): string {
@@ -101,12 +110,14 @@ export const searchWorkspace = defineTool({
   }),
   label: (i) => `Searching the workspace for “${i.query}”`,
   async run(ctx, input) {
-    const rows = await rpc<SearchRow[]>('search_workspace_for', {
+    const rows = await rpc<SearchRow[]>('agent_search_workspace_scoped_for', {
       p_actor: ctx.actorId,
       p_workspace_id: ctx.workspaceId,
       p_query: input.query,
       p_types: input.types ?? null,
       p_limit: input.limit ?? 10,
+      p_company_id: ctx.scope.company_id ?? null,
+      p_item_ids: ctx.allowedItemIds,
     });
     if (rows.length === 0) return { content: 'No results.', summary: { results: 0 } };
     const lines: string[] = [];
@@ -165,9 +176,10 @@ export const searchKnowledge = defineTool({
         embedding = null; // keyword retrieval still works
       }
     }
-    const rows = await rpc<ChunkRow[]>('knowledge_search_for', {
+    const rows = await rpc<ChunkRow[]>('agent_knowledge_search_scoped_for', {
       p_actor: ctx.actorId,
       p_workspace_id: ctx.workspaceId,
+      p_company_id: ctx.scope.company_id ?? null,
       p_query: input.query,
       p_item_ids: filter,
       p_limit: input.limit ?? 8,
@@ -215,8 +227,10 @@ export const readFile = defineTool({
       const reason = item.index_message ?? `Its index status is ${item.index_status ?? 'not indexed yet'}.`;
       return { content: `"${item.name}" cannot be read: ${reason}`, summary: { file: item.name, status: item.index_status }, isError: true };
     }
-    const rows = await rpc<ChunkRow[]>('knowledge_read_item_for', {
+    const rows = await rpc<ChunkRow[]>('agent_knowledge_read_item_scoped_for', {
       p_actor: ctx.actorId,
+      p_workspace_id: ctx.workspaceId,
+      p_company_id: ctx.scope.company_id ?? null,
       p_item_id: input.item_id,
       p_from_chunk: input.from_chunk ?? 0,
       p_max_chunks: 12,
@@ -248,12 +262,14 @@ interface ConversationRow {
 }
 
 export async function readConversation(ctx: RunContext, channel: ChannelRow, rootId: string | null, limit: number, before?: string): Promise<string> {
-  const rows = await rpc<ConversationRow[]>('agent_read_conversation_for', {
+  const rows = await rpc<ConversationRow[]>('agent_read_conversation_scoped_for', {
     p_actor: ctx.actorId,
+    p_workspace_id: ctx.workspaceId,
     p_channel_id: channel.id,
     p_root_id: rootId,
     p_limit: limit,
     p_before: before ?? null,
+    p_company_id: ctx.scope.company_id ?? null,
   });
   await ctx.recordSource('channel', channel.id, { channelId: channel.id, label: channelLabel(channel) });
   if (rows.length === 0) return 'No messages.';
@@ -318,7 +334,11 @@ export interface ProjectRow {
 }
 
 export async function resolveProject(ctx: RunContext, ref: string): Promise<ProjectRow | null> {
-  const projects = await rpc<ProjectRow[]>('agent_projects_for', { p_actor: ctx.actorId, p_workspace_id: ctx.workspaceId });
+  const projects = await rpc<ProjectRow[]>('agent_projects_scoped_for', {
+    p_actor: ctx.actorId,
+    p_workspace_id: ctx.workspaceId,
+    p_company_id: ctx.scope.company_id ?? null,
+  });
   const needle = ref.trim().toLowerCase();
   return (
     projects.find((p) => p.id === ref.trim()) ??
@@ -345,13 +365,14 @@ export const listTasks = defineTool({
       if (!project) return { content: 'No project with that name that the requester can open.', summary: { error: 'not_found' }, isError: true };
       projectId = project.id;
     }
-    const rows = await rpc<TaskRow[]>('agent_list_tasks_for', {
+    const rows = await rpc<TaskRow[]>('agent_list_tasks_scoped_for', {
       p_actor: ctx.actorId,
       p_workspace_id: ctx.workspaceId,
       p_project_id: projectId,
       p_mine: input.mine ?? false,
       p_include_completed: input.include_completed ?? false,
       p_limit: input.limit ?? 50,
+      p_company_id: ctx.scope.company_id ?? null,
     });
     for (const t of rows) await ctx.recordSource('task', t.id, { label: t.title });
     if (rows.length === 0) return { content: 'No matching tasks.', summary: { results: 0 } };

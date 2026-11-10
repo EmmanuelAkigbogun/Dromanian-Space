@@ -8,13 +8,14 @@ import styles from './DomainSettings.module.css';
 interface Zone { id: string; name: string; status: string; name_servers: string[]; original_name_servers?: string[] }
 interface RecordRow { id: string; type: string; name: string; content: string; ttl: number; proxied?: boolean }
 interface State { configured: boolean; account_id?: string; tunnel_id?: string | null; default_service?: string; zones: Zone[] }
+const DEFAULT_TUNNEL_SERVICE = 'http://web:8080';
 
 export function DomainSettings() {
   const { toast } = useToast();
   const [state, setState] = useState<State | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
-  const [credentials, setCredentials] = useState({ token: '', account: '', tunnel: '', service: 'http://web:80' });
+  const [credentials, setCredentials] = useState({ token: '', account: '', tunnel: '', service: DEFAULT_TUNNEL_SERVICE });
   const [domain, setDomain] = useState('');
   const [zoneId, setZoneId] = useState('');
   const [records, setRecords] = useState<RecordRow[]>([]);
@@ -61,7 +62,7 @@ export function DomainSettings() {
         <Input label="Cloudflare API token" type="password" autoComplete="off" value={credentials.token} onChange={(e) => setCredentials({ ...credentials, token: e.target.value })} />
         <Input label="Account ID" value={credentials.account} onChange={(e) => setCredentials({ ...credentials, account: e.target.value })} />
         <Input label="Tunnel ID (optional)" value={credentials.tunnel} onChange={(e) => setCredentials({ ...credentials, tunnel: e.target.value })} helperText="Required only for one-click tunnel hostnames." />
-        <Input label="Default tunnel service" value={credentials.service} onChange={(e) => setCredentials({ ...credentials, service: e.target.value })} helperText="For example http://web:80 or http://host.docker.internal:3008" />
+        <Input label="Default tunnel service" value={credentials.service} onChange={(e) => setCredentials({ ...credentials, service: e.target.value })} helperText={`Use ${DEFAULT_TUNNEL_SERVICE} for this production stack, or an explicit custom origin such as http://host.docker.internal:3008.`} />
       </div>
       <div><Button loading={busy === 'configure'} disabled={credentials.token.trim().length < 20 || credentials.account.trim().length !== 32} onClick={() => void act('configure', { action: 'configure', api_token: credentials.token, account_id: credentials.account, tunnel_id: credentials.tunnel, default_service: credentials.service }, 'Cloudflare connected.').then((ok) => { if (ok) setCredentials({ ...credentials, token: '' }); })}>Verify &amp; connect</Button></div>
     </div>
@@ -80,7 +81,7 @@ export function DomainSettings() {
         {!zone ? <p className={styles.muted}>No domains yet.</p> : <>
           <div className={`${styles.status} ${zone.status === 'active' ? styles.active : ''}`}><strong>{zone.status === 'active' ? 'Active' : 'Registrar action required'}</strong><span>{zone.status === 'active' ? 'Nameserver delegation is working.' : 'At your registrar, replace the current nameservers with:'}</span>{zone.status !== 'active' && <code>{zone.name_servers.join('\n')}</code>}</div>
           <h3>Publish through your Cloudflare tunnel</h3><p className={styles.muted}>This safely adds the hostname to the existing tunnel configuration and creates its proxied CNAME. Existing ingress routes are preserved.</p>
-          <div className={styles.formGrid}><Input label="Hostname" placeholder={`app.${zone.name}`} value={publish.hostname} onChange={(e) => setPublish({ ...publish, hostname: e.target.value })} /><Input label="Origin service" placeholder={state.default_service || 'http://web:80'} value={publish.service} onChange={(e) => setPublish({ ...publish, service: e.target.value })} /></div>
+          <div className={styles.formGrid}><Input label="Hostname" placeholder={`app.${zone.name}`} value={publish.hostname} onChange={(e) => setPublish({ ...publish, hostname: e.target.value })} /><Input label="Origin service" placeholder={state.default_service || DEFAULT_TUNNEL_SERVICE} value={publish.service} onChange={(e) => setPublish({ ...publish, service: e.target.value })} /></div>
           <div><Button loading={busy === 'publish'} disabled={!state.tunnel_id || !publish.hostname.trim()} onClick={() => void act('publish', { action: 'publish_hostname', zone_id: zone.id, hostname: publish.hostname, service: publish.service || undefined }, 'Tunnel hostname published.').then((ok) => { if (ok) setPublish({ ...publish, hostname: '' }); })}>Publish hostname</Button></div>
         </>}
       </section>

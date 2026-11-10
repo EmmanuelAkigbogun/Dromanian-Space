@@ -6,19 +6,17 @@
 //   POST /api/social/login/finish   save the signed-in session and close
 //   POST /api/social/login/cancel   close without saving
 //   POST /api/social/cookies        save cookies exported from a browser
-import { existsSync } from 'node:fs';
 import { z } from 'zod';
 import { authenticate } from '../server/database.js';
 import { errorResponse, HttpError, json, readJson } from '../server/http.js';
-import { browserPath, cancelLogin, finishLogin, loginFrame, loginInput, saveCookies, startLogin } from '../server/social.js';
+import { cancelLogin, finishLogin, loginFrame, loginInput, saveCookies, socialBrowserConfigured, startLogin } from '../server/social.js';
 
 const id = z.string().uuid();
 
 export async function status(request: Request): Promise<Response> {
   try {
     await authenticate(request);
-    const path = browserPath();
-    return json({ browser: path ? existsSync(path) : true });
+    return json({ browser: socialBrowserConfigured() });
   } catch (err) {
     return errorResponse(err);
   }

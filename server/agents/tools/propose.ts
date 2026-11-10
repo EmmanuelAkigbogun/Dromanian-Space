@@ -138,10 +138,19 @@ export const proposeDocument = defineTool({
   }),
   label: (i) => `Drafting “${i.title}”`,
   async run(ctx, input, call) {
+    if (ctx.scope.company_id && !input.folder_id) {
+      return {
+        content: 'Choose a folder inside the selected company before saving this document.',
+        summary: { error: 'company_folder_required' },
+        isError: true,
+      };
+    }
     let folderName: string | null = null;
     if (input.folder_id) {
-      const [folder] = await rpc<Array<{ name: string; kind: string }>>('agent_scope_items_for', {
+      const [folder] = await rpc<Array<{ name: string; kind: string }>>('agent_scope_items_scoped_for', {
         p_actor: ctx.actorId,
+        p_workspace_id: ctx.workspaceId,
+        p_company_id: ctx.scope.company_id ?? null,
         p_item_ids: [input.folder_id],
       });
       if (!folder || folder.kind !== 'folder') {
@@ -195,11 +204,19 @@ export const proposeSocialPosts = defineTool({
   label: (input) => `Preparing ${input.posts.length} Social draft${input.posts.length === 1 ? '' : 's'}`,
   async run(ctx, input, call) {
     const count = input.posts.length;
+    const companyId = ctx.scope.company_id ?? null;
     return proposeAction(
       ctx,
       call.toolUseId,
       'create_social_drafts',
-      { posts: input.posts.map((post) => ({ ...post, company_id: post.company_id ?? null, scheduled_at: post.scheduled_at ?? null, link: post.link ?? null })) },
+      {
+        posts: input.posts.map((post) => ({
+          ...post,
+          company_id: companyId ?? post.company_id ?? null,
+          scheduled_at: post.scheduled_at ?? null,
+          link: post.link ?? null,
+        })),
+      },
       `Create ${count} reviewed Social draft${count === 1 ? '' : 's'}`,
     );
   },

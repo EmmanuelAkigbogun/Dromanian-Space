@@ -70,7 +70,7 @@ describe('roster', () => {
     const [old] = await admin<{ id: string }>(
       `INSERT INTO workspace_agents (workspace_id, template_key, name, handle, is_builtin) VALUES ($1, 'writer', 'Writer', 'writer', true) RETURNING id`, [ws]);
     const [version] = await admin<{ id: string }>(
-      `INSERT INTO workspace_agent_versions (agent_id, workspace_id, version_no, instructions, tools, model) VALUES ($1, $2, 1, 'x', '{}', 'claude-opus-5-5') RETURNING id`,
+      `INSERT INTO workspace_agent_versions (agent_id, workspace_id, version_no, instructions, tools, model) VALUES ($1, $2, 1, 'x', '{}', 'gpt-6.1-sol') RETURNING id`,
       [old.id, ws]);
     await admin('UPDATE workspace_agents SET current_version_id = $1 WHERE id = $2', [version.id, old.id]);
     const run = await startRun(alice, old.id, 'Draft a brief');
@@ -78,14 +78,14 @@ describe('roster', () => {
     await svc('SELECT agent_seed_workspace($1, NULL)', [ws]);
     const dir = await q<{ template_key: string }>(alice, 'SELECT * FROM agent_directory($1)', [ws]);
     expect(dir.map((d) => d.template_key)).not.toContain('writer');
-    // Fifteen role specialists, the general Gemini assistant, Scribe and the Team Lead.
-    expect(dir).toHaveLength(18);
+    // Nineteen business specialists plus the portfolio coordinator.
+    expect(dir).toHaveLength(20);
     expect(await q(alice, 'SELECT * FROM agent_conversation_timeline($1)', [run.conversation_id])).toHaveLength(2);
 
     const msg = await postMessage(alice, team, 'Hey @writer and @team, help');
     expect(await svc('SELECT * FROM agent_mention_targets($1, $2)', [alice.id, msg])).toHaveLength(0);
-    const msg2 = await postMessage(alice, team, '@tally how many tasks are open?');
-    expect((await svc<{ handle: string }>('SELECT * FROM agent_mention_targets($1, $2)', [alice.id, msg2])).map((t) => t.handle)).toEqual(['tally']);
+    const msg2 = await postMessage(alice, team, '@cerebras-analyst how many tasks are open?');
+    expect((await svc<{ handle: string }>('SELECT * FROM agent_mention_targets($1, $2)', [alice.id, msg2])).map((t) => t.handle)).toEqual(['cerebras-analyst']);
   });
 
   it('keeps connector state server-written and member-readable', async () => {
@@ -108,12 +108,12 @@ describe('team delegation', () => {
   let parent: { run_id: string; conversation_id: string };
   let children: Array<{ task_id: string; child_run_id: string; reused: boolean }>;
   const tasks = () => [
-    { agent_id: agentIds.data_analyst, instruction: 'Count open tasks by status.' },
-    { agent_id: agentIds.copywriter, instruction: 'Draft a launch headline.' },
+    { agent_id: agentIds.cerebras_analyst, instruction: 'Count open tasks by status.' },
+    { agent_id: agentIds.cerebras_writer, instruction: 'Draft a launch headline.' },
   ];
 
   beforeAll(async () => {
-    parent = await startRun(alice, agentIds.team_coordinator, 'Plan the launch');
+    parent = await startRun(alice, agentIds.cerebras_coordinator, 'Plan the launch');
     expect((await claim(parent.run_id)).claimed).toBe(true);
     children = (await svc<{ r: typeof children }>('SELECT agent_delegate($1, $2) AS r', [parent.run_id, JSON.stringify(tasks())]))[0].r;
   });
@@ -126,7 +126,9 @@ describe('team delegation', () => {
       expect(r).toMatchObject({ requested_by: alice.id, depth: 1, trigger: 'delegation', conversation_id: parent.conversation_id, parent_run_id: parent.run_id });
     }
     const timeline = await q<{ kind: string; agent_name: string }>(alice, 'SELECT kind, agent_name FROM agent_conversation_timeline($1)', [parent.conversation_id]);
-    expect(timeline.filter((m) => m.kind === 'delegation').map((m) => m.agent_name).sort()).toEqual(['Inka', 'Inka', 'Tally', 'Tally']);
+    expect(timeline.filter((m) => m.kind === 'delegation').map((m) => m.agent_name).sort()).toEqual([
+      'Business Intelligence Analyst', 'Business Intelligence Analyst', 'Content Manager', 'Content Manager',
+    ]);
     expect(await q(bob, 'SELECT id FROM agent_team_tasks WHERE parent_run_id = $1', [parent.run_id])).toHaveLength(0);
   });
 
@@ -136,21 +138,140 @@ describe('team delegation', () => {
     expect(again.every((c) => c.reused)).toBe(true);
   });
 
+  it('returns each canonical delegation once even when one payload repeats it', async () => {
+    const run = await startRun(alice, agentIds.cerebras_coordinator, 'Deduplicate this plan');
+    await claim(run.run_id);
+    const repeated = [
+      { agent_id: agentIds.cerebras_writer, instruction: 'Draft this once.' },
+      { agent_id: agentIds.cerebras_writer, instruction: 'Draft this once.' },
+      { agent_id: agentIds.cerebras_writer, instruction: '  Draft this once.  ' },
+      { agent_id: agentIds.cerebras_analyst, instruction: 'Draft this once.' },
+    ];
+    const first = (await svc<{ r: Array<{
+      task_id: string;
+      child_run_id: string;
+      agent_id: string;
+      reused: boolean;
+    }> }>('SELECT agent_delegate($1, $2) AS r', [run.run_id, JSON.stringify(repeated)]))[0].r;
+    expect(first).toHaveLength(2);
+    expect(first.map((item) => item.agent_id)).toEqual([
+      agentIds.cerebras_writer,
+      agentIds.cerebras_analyst,
+    ]);
+    expect(new Set(first.map((item) => item.task_id))).toHaveProperty('size', 2);
+    expect(new Set(first.map((item) => item.child_run_id))).toHaveProperty('size', 2);
+    expect(first.every((item) => !item.reused)).toBe(true);
+
+    const childIds = first.map((item) => item.child_run_id);
+    expect(await admin('SELECT id FROM agent_team_tasks WHERE parent_run_id = $1', [run.run_id])).toHaveLength(2);
+    expect(await admin('SELECT id FROM agent_runs WHERE parent_run_id = $1', [run.run_id])).toHaveLength(2);
+    expect(await admin('SELECT id FROM agent_messages WHERE run_id = ANY($1::uuid[])', [childIds])).toHaveLength(4);
+    expect(await admin(
+      `SELECT id FROM ai_usage_ledger
+       WHERE run_id = ANY($1::uuid[]) AND kind = 'reservation'`,
+      [childIds],
+    )).toHaveLength(2);
+
+    const retried = (await svc<{ r: typeof first }>(
+      'SELECT agent_delegate($1, $2) AS r',
+      [run.run_id, JSON.stringify(repeated)],
+    ))[0].r;
+    expect(retried.map((item) => item.child_run_id)).toEqual(childIds);
+    expect(retried.every((item) => item.reused)).toBe(true);
+    expect(await admin('SELECT id FROM agent_team_tasks WHERE parent_run_id = $1', [run.run_id])).toHaveLength(2);
+
+    for (const item of first) {
+      await svc(
+        `SELECT agent_terminalize_team_task(
+          $1, 'cancelled', 'test_cleanup', 'Delegation dedupe test cleanup'
+        )`,
+        [item.task_id],
+      );
+    }
+    await svc(
+      `SELECT agent_finish_run(
+        $1, 'test-worker', 'completed', NULL, NULL, NULL, NULL
+      )`,
+      [run.run_id],
+    );
+  });
+
+  it('locks a child before its team task so terminalization cannot deadlock recovery', async () => {
+    const run = await startRun(alice, agentIds.cerebras_coordinator, 'Lock ordering test');
+    await claim(run.run_id);
+    const [task] = (await svc<{ r: Array<{ task_id: string; child_run_id: string }> }>(
+      'SELECT agent_delegate($1, $2) AS r',
+      [run.run_id, JSON.stringify([
+        { agent_id: agentIds.cerebras_writer, instruction: 'Wait for lock ordering.' },
+      ])],
+    ))[0].r;
+
+    const blocker = await pool.connect();
+    const terminalizer = await pool.connect();
+    try {
+      await blocker.query('BEGIN');
+      await terminalizer.query('BEGIN');
+      await blocker.query(`SET LOCAL deadlock_timeout = '50ms'`);
+      await terminalizer.query(`SET LOCAL deadlock_timeout = '50ms'`);
+      await blocker.query('SELECT id FROM agent_runs WHERE id = $1 FOR UPDATE', [task.child_run_id]);
+      const terminalizerPid = (await terminalizer.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      const terminalizing = terminalizer.query(
+        `SELECT (agent_terminalize_team_task(
+          $1, 'cancelled', 'lock_test', 'Lock ordering test cleanup'
+        )).status AS status`,
+        [task.task_id],
+      );
+
+      let waitingOnChild = false;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const [activity] = await admin<{ wait_event_type: string | null }>(
+          'SELECT wait_event_type FROM pg_stat_activity WHERE pid = $1',
+          [terminalizerPid],
+        );
+        if (activity?.wait_event_type === 'Lock') {
+          waitingOnChild = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(waitingOnChild).toBe(true);
+
+      // With child -> task ordering this update is free to complete. The old
+      // task -> child implementation forms a cycle here and PostgreSQL raises
+      // 40P01 after deadlock_timeout.
+      await blocker.query('UPDATE agent_team_tasks SET status = status WHERE id = $1', [task.task_id]);
+      await blocker.query('COMMIT');
+      expect((await terminalizing).rows[0].status).toBe('cancelled');
+      await terminalizer.query('COMMIT');
+    } finally {
+      await blocker.query('ROLLBACK').catch(() => undefined);
+      await terminalizer.query('ROLLBACK').catch(() => undefined);
+      blocker.release();
+      terminalizer.release();
+    }
+    await svc(
+      `SELECT agent_finish_run(
+        $1, 'test-worker', 'completed', NULL, NULL, NULL, NULL
+      )`,
+      [run.run_id],
+    );
+  });
+
   it('rejects recursion, coordinators, invisible agents and other tenants', async () => {
     const child = children[0].child_run_id;
     await claim(child);
-    await expectDenied(svc('SELECT agent_delegate($1, $2)', [child, JSON.stringify([{ agent_id: agentIds.copywriter, instruction: 'Write.' }])]), /cannot delegate/);
-    await expectDenied(svc('SELECT agent_delegate($1, $2)', [parent.run_id, JSON.stringify([{ agent_id: agentIds.team_coordinator, instruction: 'Recurse.' }])]), /not available/);
+    await expectDenied(svc('SELECT agent_delegate($1, $2)', [child, JSON.stringify([{ agent_id: agentIds.cerebras_writer, instruction: 'Write.' }])]), /cannot delegate/);
+    await expectDenied(svc('SELECT agent_delegate($1, $2)', [parent.run_id, JSON.stringify([{ agent_id: agentIds.cerebras_coordinator, instruction: 'Recurse.' }])]), /not available/);
     const privateAgent = (await q<{ id: string }>(carol, `SELECT id FROM agent_create($1, 'Carol helper', 'carol-helper', 'mine')`, [ws]))[0].id;
     await expectDenied(svc('SELECT agent_delegate($1, $2)', [parent.run_id, JSON.stringify([{ agent_id: privateAgent, instruction: 'Help.' }])]), /not available/);
-    const foreign = (await admin<{ id: string }>(`SELECT id FROM workspace_agents WHERE workspace_id = $1 AND template_key = 'data_analyst'`, [wsB]))[0].id;
+    const foreign = (await admin<{ id: string }>(`SELECT id FROM workspace_agents WHERE workspace_id = $1 AND template_key = 'cerebras_analyst'`, [wsB]))[0].id;
     await expectDenied(svc('SELECT agent_delegate($1, $2)', [parent.run_id, JSON.stringify([{ agent_id: foreign, instruction: 'Leak.' }])]), /not available/);
   });
 
   it('enforces the per-team delegation budget', async () => {
-    const run = await startRun(alice, agentIds.team_coordinator, 'Big plan');
+    const run = await startRun(alice, agentIds.cerebras_coordinator, 'Big plan');
     await claim(run.run_id);
-    const many = (n: number) => Array.from({ length: 4 }, (_, i) => ({ agent_id: agentIds.copywriter, instruction: `Task ${n}-${i}` }));
+    const many = (n: number) => Array.from({ length: 4 }, (_, i) => ({ agent_id: agentIds.cerebras_writer, instruction: `Task ${n}-${i}` }));
     await svc('SELECT agent_delegate($1, $2)', [run.run_id, JSON.stringify(many(1))]);
     await svc('SELECT agent_delegate($1, $2)', [run.run_id, JSON.stringify(many(2))]);
     await expectDenied(svc('SELECT agent_delegate($1, $2)', [run.run_id, JSON.stringify(many(3))]), /budget/);
@@ -174,12 +295,40 @@ describe('team delegation', () => {
     const queued = rows.find((r) => r.id === children[1].child_run_id)!;
     expect(running.cancel_requested_at).not.toBeNull();
     expect(queued.status).toBe('cancelled');
+    const [queuedTask] = await admin<{ status: string; finished_at: string | null }>(
+      'SELECT status, finished_at FROM agent_team_tasks WHERE child_run_id = $1',
+      [queued.id],
+    );
+    expect(queuedTask.status).toBe('cancelled');
+    expect(queuedTask.finished_at).not.toBeNull();
+    const [queuedBalance] = await admin<{ tokens: number }>(
+      `SELECT coalesce(sum(tokens), 0)::int AS tokens
+       FROM ai_usage_ledger
+       WHERE run_id = $1 AND kind IN ('reservation', 'release')`,
+      [queued.id],
+    );
+    expect(queuedBalance.tokens).toBe(0);
+
+    const childCount = (await admin<{ n: number }>(
+      'SELECT count(*)::int AS n FROM agent_runs WHERE parent_run_id = $1',
+      [parent.run_id],
+    ))[0].n;
+    await expectDenied(
+      svc('SELECT agent_delegate($1, $2)', [parent.run_id, JSON.stringify([
+        { agent_id: agentIds.cerebras_writer, instruction: 'This must not start after Stop.' },
+      ])]),
+      /run is not active/i,
+    );
+    expect((await admin<{ n: number }>(
+      'SELECT count(*)::int AS n FROM agent_runs WHERE parent_run_id = $1',
+      [parent.run_id],
+    ))[0].n).toBe(childCount);
   });
 });
 
 describe('durable execution', () => {
   it('restarts a reclaimed run cleanly: partial output and citations are discarded', async () => {
-    const run = await startRun(alice, agentIds.support_specialist, 'Summarize the board notes');
+    const run = await startRun(alice, agentIds.github_customer_support, 'Summarize the board notes');
     await claim(run.run_id, 'worker-a');
     await svc(`SELECT agent_checkpoint($1, 'worker-a', 'partial answer')`, [run.run_id]);
     const chunk = (await admin<{ id: string }>('SELECT id FROM knowledge_chunks WHERE item_id = $1', [privateDoc]))[0].id;
@@ -195,7 +344,7 @@ describe('durable execution', () => {
   });
 
   it('leaves stale runs with a live job to the worker and interrupts them once the job is dead', async () => {
-    const run = await startRun(alice, agentIds.support_specialist, 'Stale');
+    const run = await startRun(alice, agentIds.github_customer_support, 'Stale');
     await claim(run.run_id, 'worker-c');
     await admin(`UPDATE agent_runs SET heartbeat_at = now() - interval '5 minutes' WHERE id = $1`, [run.run_id]);
     const job = (await svc<{ id: string }>(`SELECT enqueue_job('agent.run', $1, $2, $3, $4, now(), 3) AS id`,
@@ -208,7 +357,7 @@ describe('durable execution', () => {
   });
 
   it('returns the same review card when a restarted run proposes the same action again', async () => {
-    const run = await startRun(alice, agentIds.support_specialist, 'Propose a task');
+    const run = await startRun(alice, agentIds.github_customer_support, 'Propose a task');
     await claim(run.run_id);
     const args = JSON.stringify({ title: 'Follow up', priority: 'medium', assignee_ids: [] });
     const first = (await svc<{ r: { proposal_id: string } }>(`SELECT agent_create_proposal($1, 'tool-a', 'create_task', $2, 'Create task') AS r`, [run.run_id, args]))[0].r;
@@ -219,17 +368,17 @@ describe('durable execution', () => {
 
 describe('personal notes', () => {
   it('are private to their owner, even from workspace admins', async () => {
-    const run = await startRun(alice, agentIds.personal_coach, 'Remember I protect Friday mornings');
+    const run = await startRun(alice, agentIds.github_executive_assistant, 'Remember I protect Friday mornings');
     await claim(run.run_id);
     await svc(`SELECT agent_save_personal_note($1, 'Protect Friday mornings for deep work')`, [run.run_id]);
     expect(await q(alice, 'SELECT content FROM agent_personal_notes')).toEqual([{ content: 'Protect Friday mornings for deep work' }]);
     expect(await q(bob, 'SELECT content FROM agent_personal_notes WHERE workspace_id = $1', [ws])).toHaveLength(0);
-    const bobRun = await startRun(bob, agentIds.personal_coach, 'What do you know about me?');
+    const bobRun = await startRun(bob, agentIds.github_executive_assistant, 'What do you know about me?');
     await claim(bobRun.run_id);
     expect(await svc('SELECT * FROM agent_personal_notes_for($1, 50)', [bobRun.run_id])).toHaveLength(0);
     expect(await svc('SELECT * FROM agent_personal_notes_for($1, 50)', [run.run_id])).toHaveLength(1);
     await expectDenied(q(alice, `INSERT INTO agent_personal_notes (workspace_id, user_id, agent_id, content) VALUES ($1, $2, $3, 'x')`,
-      [ws, alice.id, agentIds.personal_coach]), /permission/);
+      [ws, alice.id, agentIds.github_executive_assistant]), /permission/);
   });
 });
 
@@ -237,7 +386,7 @@ describe('metrics, calendar and reviewed events', () => {
   it('counts only tasks the requester can see and records them as sources', async () => {
     await admin(`INSERT INTO tasks (workspace_id, title, status, created_by) VALUES ($1, 'Alice private task', 'todo', $2)`, [ws, alice.id]);
     const total = async (user: TestUser) => {
-      const run = await startRun(user, agentIds.data_analyst, 'Count tasks');
+      const run = await startRun(user, agentIds.cerebras_analyst, 'Count tasks');
       await claim(run.run_id);
       const r = (await svc<{ r: { rows: Array<{ count: number }> } }>(`SELECT agent_workspace_metrics($1, 'tasks_by_status', NULL, NULL) AS r`, [run.run_id]))[0].r;
       const sources = await admin<{ n: number }>(`SELECT count(*)::int AS n FROM agent_run_sources WHERE run_id = $1 AND kind = 'task'`, [run.run_id]);
@@ -247,7 +396,7 @@ describe('metrics, calendar and reviewed events', () => {
     const forCarol = await total(carol);
     expect(forAlice.count).toBeGreaterThan(forCarol.count);
     expect(forAlice.sources).toBe(forAlice.count);
-    const run = await startRun(alice, agentIds.data_analyst, 'Bad metric');
+    const run = await startRun(alice, agentIds.cerebras_analyst, 'Bad metric');
     await claim(run.run_id);
     await expectDenied(svc(`SELECT agent_workspace_metrics($1, 'raw_sql', NULL, NULL)`, [run.run_id]), /Unsupported metric/);
   });
@@ -261,7 +410,7 @@ describe('metrics, calendar and reviewed events', () => {
   });
 
   it('blocks a workspace-visible event built from a private conversation, and creates a clean one once', async () => {
-    const leaky = await startRun(alice, agentIds.executive_assistant, 'Schedule from #launch');
+    const leaky = await startRun(alice, agentIds.github_executive_assistant, 'Schedule from #launch');
     await claim(leaky.run_id);
     await svc(`SELECT agent_record_source($1, 'channel', $2, NULL, $3, '#launch')`, [leaky.run_id, team, team]);
     const start = new Date(Date.now() + 2 * 86400000).toISOString();
@@ -270,7 +419,7 @@ describe('metrics, calendar and reviewed events', () => {
     const blocked = (await svc<{ r: { status: string } }>(`SELECT agent_create_proposal($1, 'e1', 'create_event', $2, 'Add event') AS r`, [leaky.run_id, args]))[0].r;
     expect(blocked.status).toBe('blocked_audience');
 
-    const clean = await startRun(alice, agentIds.executive_assistant, 'Schedule a sync');
+    const clean = await startRun(alice, agentIds.github_executive_assistant, 'Schedule a sync');
     await claim(clean.run_id);
     const proposed = (await svc<{ r: { proposal_id: string } }>(`SELECT agent_create_proposal($1, 'e2', 'create_event', $2, 'Add event') AS r`, [clean.run_id, args]))[0].r;
     const hash = (await admin<{ arguments_hash: string }>('SELECT arguments_hash FROM agent_action_proposals WHERE id = $1', [proposed.proposal_id]))[0].arguments_hash;

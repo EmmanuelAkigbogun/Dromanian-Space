@@ -2,6 +2,7 @@
 node_modules
 dist
 dist-server
+release/
 .local
 .env
 .env.*
@@ -14,4 +15,8 @@ supabase/.temp
 **/.env.local
 **/.venv
 **/__pycache__
+**/.pytest_cache/
 **/.runtime
+# Never send operator CRM spreadsheets to the Docker daemon/build images.
+database/*.xls
+database/*.xlsx

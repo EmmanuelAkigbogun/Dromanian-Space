@@ -4,8 +4,9 @@
 import { randomUUID } from 'node:crypto';
 import { loadEnvFile } from 'node:process';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ENV_FILE, loadOrCreateKeys, signJwt } from '../../tools/local-database/lib.ts';
+import { ENV_FILE } from '../../tools/local-database/lib.ts';
 import { admin, createChannel, createUser, createWorkspace, pool, postMessage, q, type TestUser } from '../helpers/db.ts';
+import { issueAccessToken } from '../../server/database.js';
 import { executeRun } from '../../server/agents/engine.js';
 import { startRun } from '../../server/agents/start.js';
 import { enqueueRun, tailRun } from '../../server/agents/tail.js';
@@ -23,8 +24,11 @@ let doc: string;
 const agents: Record<string, string> = {};
 
 async function token(u: TestUser): Promise<string> {
-  const keys = await loadOrCreateKeys();
-  return signJwt(keys.privateJwk, { sub: u.id, role: 'authenticated', aud: 'authenticated', email: u.email }, 600);
+  const [session] = await admin<{ id: string }>(
+    `INSERT INTO auth.sessions (user_id, expires_at) VALUES ($1, now() + interval '10 minutes') RETURNING id`,
+    [u.id],
+  );
+  return issueAccessToken(u, session.id, 600).token;
 }
 
 function collector(): SseChannel & { events: Array<[string, unknown]> } {
@@ -74,16 +78,16 @@ describe('team chat', () => {
       },
     };
     parent = await startRun(user.id, {
-      workspace_id: ws, agent_id: agents.team_coordinator, message: 'What is our hotel budget? Draft a summary.', idempotency_key: randomUUID(),
+      workspace_id: ws, agent_id: agents.cerebras_coordinator, message: 'What is our hotel budget? Draft a summary.', idempotency_key: randomUUID(),
     });
     const outcome = await executeRun(parent.run_id, { agentRunner, provider: { name: 'test-double', configured: () => true, startSession: () => { throw new Error('unused'); } } });
     expect(outcome.status).toBe('completed');
   });
 
-  it('gives one Agno lead the team toolset and keeps access under the requester', async () => {
+  it('gives the lead its direct tools and bounded delegation without an unconditional fan-out', async () => {
     expect(configuredSpecialists).toEqual([]);
     expect(configuredTools).toContain('read_file');
-    expect(configuredTools).not.toContain('delegate_to_specialists');
+    expect(configuredTools).toContain('delegate_to_specialists');
     const tasks = await q<{ status: string }>(user, 'SELECT status FROM agent_team_tasks WHERE parent_run_id = $1', [parent.run_id]);
     expect(tasks).toEqual([]);
     const children = await q<{ status: string; requested_by: string }>(user, 'SELECT status, requested_by FROM agent_runs WHERE parent_run_id = $1', [parent.run_id]);
@@ -97,11 +101,282 @@ describe('team chat', () => {
     expect(notes).toHaveLength(0);
   });
 
+  it('runs an explicitly selected specialist and persists its child run', async () => {
+    const teamEvents: unknown[] = [];
+    let specialistRuns = 0;
+    const agentRunner: AgentRunner = {
+      async run(input, callbacks) {
+        if (input.agent.kind !== 'coordinator') {
+          specialistRuns++;
+          return {
+            text: `${input.agent.name} completed the focused support task.`,
+            model: 'test-double',
+            usage: { input_tokens: 20, output_tokens: 8, cache_read_tokens: 0, cache_write_tokens: 0 },
+          };
+        }
+        const delegated = await callbacks.callTool({
+          id: 'delegate-support',
+          name: 'delegate_to_specialists',
+          input: {
+            tasks: [
+              {
+                agent: '@CUSTOMER-SUPPORT',
+                instruction: 'Draft a short evidence-aware response for this support request.',
+              },
+              {
+                agent: 'customer-support',
+                instruction: '  Draft a short evidence-aware response for this support request.  ',
+              },
+            ],
+          },
+        });
+        expect(delegated.isError).not.toBe(true);
+        expect(delegated.content).toContain('completed the focused support task');
+        return {
+          text: 'The Customer Support Manager completed the requested support draft.',
+          model: 'test-double',
+          usage: { input_tokens: 40, output_tokens: 12, cache_read_tokens: 0, cache_write_tokens: 0 },
+        };
+      },
+    };
+    const delegatedParent = await startRun(user.id, {
+      workspace_id: ws,
+      agent_id: agents.cerebras_coordinator,
+      message: 'Ask customer support for a response draft.',
+      idempotency_key: randomUUID(),
+    });
+    const outcome = await executeRun(delegatedParent.run_id, {
+      agentRunner,
+      provider: { name: 'test-double', configured: () => true, startSession: () => { throw new Error('unused'); } },
+      events: { emit: (event, data) => void (event === 'team' && teamEvents.push(data)) },
+    });
+    expect(outcome.status).toBe('completed');
+    expect(specialistRuns).toBe(1);
+    expect(teamEvents.length).toBeGreaterThanOrEqual(3);
+    expect(teamEvents.every((data) => Array.isArray((data as { tasks?: unknown[] }).tasks))).toBe(true);
+    expect(teamEvents.at(-1)).toMatchObject({
+      tasks: [{ agent: 'Customer Support Manager', status: 'completed' }],
+    });
+    const tasks = await q<{ status: string }>(user, 'SELECT status FROM agent_team_tasks WHERE parent_run_id = $1', [delegatedParent.run_id]);
+    expect(tasks).toEqual([{ status: 'completed' }]);
+    const children = await q<{ status: string; requested_by: string; depth: number }>(
+      user,
+      'SELECT status, requested_by, depth FROM agent_runs WHERE parent_run_id = $1',
+      [delegatedParent.run_id],
+    );
+    expect(children).toEqual([{ status: 'completed', requested_by: user.id, depth: 1 }]);
+  });
+
+  it('aborts active specialists and terminalizes work not started after the parent stops', async () => {
+    const controller = new AbortController();
+    const specialistStarts: string[] = [];
+    const teamEvents: Array<{ tasks?: Array<{ status: string }> }> = [];
+    const agentRunner: AgentRunner = {
+      async run(input, callbacks) {
+        if (input.agent.kind !== 'coordinator') {
+          specialistStarts.push(input.agent.description);
+          controller.abort();
+          throw new DOMException('Parent stopped', 'AbortError');
+        }
+        await callbacks.callTool({
+          id: 'delegate-aborted-team',
+          name: 'delegate_to_specialists',
+          input: {
+            tasks: [
+              { agent: 'customer-support', instruction: 'Prepare the support response for the cancellation test.' },
+              { agent: 'marketing-strategist', instruction: 'Prepare the marketing response for the cancellation test.' },
+              { agent: 'project-manager', instruction: 'Prepare the project response for the cancellation test.' },
+              { agent: 'finance-analyst', instruction: 'Prepare the finance response for the cancellation test.' },
+            ],
+          },
+        });
+        throw new DOMException('Parent stopped', 'AbortError');
+      },
+    };
+    const stoppedParent = await startRun(user.id, {
+      workspace_id: ws,
+      agent_id: agents.cerebras_coordinator,
+      message: 'Delegate several tasks, then stop.',
+      idempotency_key: randomUUID(),
+    });
+    const outcome = await executeRun(stoppedParent.run_id, {
+      agentRunner,
+      provider: { name: 'test-double', configured: () => true, startSession: () => { throw new Error('unused'); } },
+      signal: controller.signal,
+      events: {
+        emit: (event, data) => {
+          if (event === 'team') teamEvents.push(data as { tasks?: Array<{ status: string }> });
+        },
+      },
+    });
+    expect(outcome.status).toBe('cancelled');
+    expect(specialistStarts).toHaveLength(1);
+
+    const children = await q<{ id: string; status: string }>(
+      user,
+      'SELECT id, status FROM agent_runs WHERE parent_run_id = $1 ORDER BY created_at, id',
+      [stoppedParent.run_id],
+    );
+    expect(children).toHaveLength(4);
+    expect(children.every((child) => child.status === 'cancelled')).toBe(true);
+    const tasks = await q<{ status: string; finished_at: string | null }>(
+      user,
+      'SELECT status, finished_at FROM agent_team_tasks WHERE parent_run_id = $1 ORDER BY ordinal',
+      [stoppedParent.run_id],
+    );
+    expect(tasks).toHaveLength(4);
+    expect(tasks.every((task) => task.status === 'cancelled' && task.finished_at !== null)).toBe(true);
+    const balances = await admin<{ run_id: string; tokens: number }>(
+      `SELECT run_id, sum(tokens)::int AS tokens
+       FROM ai_usage_ledger
+       WHERE run_id = ANY($1::uuid[]) AND kind IN ('reservation', 'release')
+       GROUP BY run_id`,
+      [children.map((child) => child.id)],
+    );
+    expect(balances).toHaveLength(4);
+    expect(balances.every((balance) => balance.tokens === 0)).toBe(true);
+    expect(teamEvents.at(-1)?.tasks?.every((task) => task.status === 'cancelled')).toBe(true);
+  });
+
+  it('rechecks cancellation after the provider resolves and before finalization', async () => {
+    const controller = new AbortController();
+    const emitted: string[] = [];
+    const agentRunner: AgentRunner = {
+      async run() {
+        controller.abort();
+        return {
+          text: 'This late provider answer must not be committed.',
+          model: 'test-double',
+          usage: { input_tokens: 15, output_tokens: 7, cache_read_tokens: 0, cache_write_tokens: 0 },
+        };
+      },
+    };
+    const stopped = await startRun(user.id, {
+      workspace_id: ws,
+      agent_id: agents.github_customer_support,
+      message: 'Stop at the provider completion boundary.',
+      idempotency_key: randomUUID(),
+    });
+    const outcome = await executeRun(stopped.run_id, {
+      agentRunner,
+      provider: { name: 'test-double', configured: () => true, startSession: () => { throw new Error('unused'); } },
+      signal: controller.signal,
+      events: { emit: (event) => void emitted.push(event) },
+    });
+    expect(outcome.status).toBe('cancelled');
+    expect(emitted).not.toContain('snapshot');
+    expect(emitted).not.toContain('reply');
+    const [saved] = await q<{ status: string; content: string }>(
+      user,
+      `SELECT run.status, message.content
+       FROM agent_runs run
+       JOIN agent_messages message ON message.id = run.output_message_id
+       WHERE run.id = $1`,
+      [stopped.run_id],
+    );
+    expect(saved.status).toBe('cancelled');
+    expect(saved.content).not.toContain('late provider answer');
+  });
+
+  it('does not invoke a tool after an external Stop signal', async () => {
+    const controller = new AbortController();
+    let toolError: unknown;
+    const agentRunner: AgentRunner = {
+      async run(_input, callbacks) {
+        controller.abort();
+        try {
+          await callbacks.callTool({ id: 'late-read', name: 'read_file', input: { item_id: doc } });
+        } catch (error) {
+          toolError = error;
+          throw error;
+        }
+        throw new Error('The stopped tool unexpectedly ran.');
+      },
+    };
+    const stopped = await startRun(user.id, {
+      workspace_id: ws,
+      agent_id: agents.github_customer_support,
+      message: 'Stop before invoking the tool.',
+      idempotency_key: randomUUID(),
+    });
+    const outcome = await executeRun(stopped.run_id, {
+      agentRunner,
+      provider: { name: 'test-double', configured: () => true, startSession: () => { throw new Error('unused'); } },
+      signal: controller.signal,
+    });
+    expect(outcome.status).toBe('cancelled');
+    expect(toolError).toMatchObject({ name: 'AbortError' });
+    expect(await admin(
+      'SELECT id FROM agent_tool_invocations WHERE run_id = $1',
+      [stopped.run_id],
+    )).toHaveLength(0);
+  });
+
+  it('exposes configured-site fetch only when web research is enabled', async () => {
+    const captures: Array<{ tools: string[]; domains: string[] }> = [];
+    const agentRunner: AgentRunner = {
+      async run(input) {
+        captures.push({
+          tools: [...input.agent.tools],
+          domains: [...(input.web_fetch_domains ?? [])],
+        });
+        return {
+          text: 'No fetch was executed.',
+          model: 'test-double',
+          usage: { input_tokens: 10, output_tokens: 5, cache_read_tokens: 0, cache_write_tokens: 0 },
+        };
+      },
+    };
+    try {
+      await admin(
+        `UPDATE workspace_ai_settings
+         SET site_url = 'https://www.example.com', web_research_enabled = false
+         WHERE workspace_id = $1`,
+        [ws],
+      );
+      const disabled = await startRun(user.id, {
+        workspace_id: ws,
+        agent_id: agents.github_seo_specialist,
+        message: 'Inspect the configured site.',
+        idempotency_key: randomUUID(),
+      });
+      expect((await executeRun(disabled.run_id, {
+        agentRunner,
+        provider: { name: 'test-double', configured: () => true, startSession: () => { throw new Error('unused'); } },
+      })).status).toBe('completed');
+
+      await admin(
+        'UPDATE workspace_ai_settings SET web_research_enabled = true WHERE workspace_id = $1',
+        [ws],
+      );
+      const enabled = await startRun(user.id, {
+        workspace_id: ws,
+        agent_id: agents.github_seo_specialist,
+        message: 'Inspect the configured site.',
+        idempotency_key: randomUUID(),
+      });
+      expect((await executeRun(enabled.run_id, {
+        agentRunner,
+        provider: { name: 'test-double', configured: () => true, startSession: () => { throw new Error('unused'); } },
+      })).status).toBe('completed');
+    } finally {
+      await admin(
+        'UPDATE workspace_ai_settings SET site_url = NULL, web_research_enabled = false WHERE workspace_id = $1',
+        [ws],
+      );
+    }
+    expect(captures).toHaveLength(2);
+    expect(captures[0].tools).not.toContain('fetch_site_page');
+    expect(captures[0].domains).toEqual([]);
+    expect(captures[1].tools).toContain('fetch_site_page');
+    expect(captures[1].domains).toEqual(['www.example.com']);
+  });
+
   it('stores the Agno coordinator answer in the conversation timeline', async () => {
     const timeline = await q<{ kind: string; role: string; agent_name: string; content: string }>(
       user, 'SELECT kind, role, agent_name, content FROM agent_conversation_timeline($1)', [parent.conversation_id]);
     expect(timeline.filter((m) => m.kind === 'delegation')).toEqual([]);
-    expect(timeline.at(-1)).toMatchObject({ kind: 'chat', role: 'assistant', agent_name: 'Team Lead' });
+    expect(timeline.at(-1)).toMatchObject({ kind: 'chat', role: 'assistant', agent_name: 'Company Portfolio Director' });
   });
 
   it('lets the requester reattach to the run and nobody else', async () => {
@@ -121,7 +396,7 @@ describe('team chat', () => {
 
 describe('durable execution through the worker queue', () => {
   it('resumes a run whose worker died, from its persisted state', async () => {
-    const run = await startRun(user.id, { workspace_id: ws, agent_id: agents.support_specialist, message: 'Hello', idempotency_key: randomUUID() });
+    const run = await startRun(user.id, { workspace_id: ws, agent_id: agents.github_customer_support, message: 'Hello', idempotency_key: randomUUID() });
     await enqueueRun(run.run_id, ws, user.id);
     // Worker A claims the job and the run, then disappears.
     const [job] = await admin<{ id: string }>(`SELECT id FROM claim_job_by_key('worker-a', 'agent.run', $1, 120)`, [`run:${run.run_id}`]);
@@ -147,7 +422,7 @@ describe('API with signed user tokens', () => {
     `, [ws, user.id]))[0].id;
     const started = await startRun(user.id, {
       workspace_id: ws,
-      agent_id: agents.team_coordinator,
+      agent_id: agents.cerebras_coordinator,
       message: 'Summarize this company.',
       scope: { company_id: company },
       idempotency_key: randomUUID(),
@@ -159,7 +434,7 @@ describe('API with signed user tokens', () => {
   it('rejects forged agent image attachments before a run is persisted', async () => {
     await expect(startRun(user.id, {
       workspace_id: ws,
-      agent_id: agents.support_specialist,
+      agent_id: agents.github_customer_support,
       message: 'What is in this image?',
       scope: { attachments: [{
         path: `agent-images/${user.id}/missing.png`,
@@ -180,7 +455,7 @@ describe('API with signed user tokens', () => {
       provider: { configured: boolean }; connectors: Array<{ kind: string; status: string }>; tools: Array<{ name: string; available: boolean }>;
     };
     expect(body.provider.configured).toBe(false);
-    expect(body.connectors).toHaveLength(7);
+    expect(body.connectors).toHaveLength(11);
     expect(body.connectors.every((c) => c.status === 'not_connected')).toBe(true);
     expect(body.tools.find((t) => t.name === 'fetch_site_page')).toMatchObject({ available: false });
     const denied = await statusEndpoint(new Request(`http://localhost/api/ai/status?workspace_id=${ws}`, {
@@ -191,7 +466,7 @@ describe('API with signed user tokens', () => {
 
   it('queues mention runs for the worker and ignores the coordinator handle', async () => {
     const channel = await createChannel(user, ws, { name: 'general-team' });
-    const message = await postMessage(user, channel, '@tally how many tasks are open? cc @team');
+    const message = await postMessage(user, channel, '@cerebras-analyst how many tasks are open? cc @team');
     const response = await mentionEndpoint(new Request('http://localhost/api/agents/mention', {
       method: 'POST',
       headers: { authorization: `Bearer ${await token(user)}`, 'content-type': 'application/json' },
@@ -199,7 +474,7 @@ describe('API with signed user tokens', () => {
     }));
     expect(response.status).toBe(202);
     const { runs } = await response.json() as { runs: Array<{ run_id: string; handle: string }> };
-    expect(runs.map((r) => r.handle)).toEqual(['tally']);
+    expect(runs.map((r) => r.handle)).toEqual(['cerebras-analyst']);
     const jobs = await admin<{ status: string }>(`SELECT status FROM jobs WHERE kind = 'agent.run' AND idempotency_key = $1`, [`run:${runs[0].run_id}`]);
     expect(jobs).toEqual([{ status: 'queued' }]);
     await admin(`UPDATE jobs SET status = 'cancelled' WHERE idempotency_key = $1`, [`run:${runs[0].run_id}`]);

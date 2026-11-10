@@ -2,6 +2,7 @@ import { HttpError } from './http.js';
 import type { CloudflareConnection } from './cloudflare-secrets.js';
 
 const API = 'https://api.cloudflare.com/client/v4';
+export const DEFAULT_TUNNEL_SERVICE = 'http://web:8080';
 
 interface Envelope<T> { success: boolean; result: T; errors?: Array<{ code?: number; message?: string }>; result_info?: { page: number; total_pages: number } }
 export interface CloudflareZone { id: string; name: string; status: string; name_servers: string[]; original_name_servers?: string[] }
@@ -34,7 +35,7 @@ export function normalizeRecordName(value: string, zone: string): string {
 
 export function mergeTunnelIngress(existing: IngressRule[], hostname: string, service: string): IngressRule[] {
   if (!/^https?:\/\//i.test(service) && !/^(tcp|ssh|rdp|unix):\/\//i.test(service)) {
-    throw new HttpError(400, 'invalid_service', 'Tunnel service must be a supported URL such as http://web:80.');
+    throw new HttpError(400, 'invalid_service', `Tunnel service must be a supported URL such as ${DEFAULT_TUNNEL_SERVICE}.`);
   }
   const filtered = existing.filter((rule) => rule.hostname?.toLowerCase() !== hostname.toLowerCase());
   const catchAll = filtered.findIndex((rule) => !rule.hostname);
@@ -89,7 +90,7 @@ export class CloudflareClient {
     const tunnelId = this.connection.tunnelId;
     if (!tunnelId) throw new HttpError(409, 'tunnel_not_configured', 'Add a Cloudflare tunnel ID in the connection settings first.');
     const hostname = normalizeHostname(hostnameInput, zone.name);
-    const service = serviceInput?.trim() || this.connection.defaultService || 'http://web:80';
+    const service = serviceInput?.trim() || this.connection.defaultService || DEFAULT_TUNNEL_SERVICE;
     const current = await this.request<{ config?: { ingress?: IngressRule[]; 'warp-routing'?: Record<string, unknown> } }>(`/accounts/${this.connection.accountId}/cfd_tunnel/${tunnelId}/configurations`);
     const config = current.config ?? {};
     const ingress = mergeTunnelIngress(config.ingress ?? [], hostname, service);

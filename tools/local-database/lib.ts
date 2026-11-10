@@ -5,7 +5,8 @@
  * without Docker.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SignJWT, exportJWK, generateKeyPair, importJWK, type JWK } from 'jose';
@@ -143,7 +144,18 @@ export function listMigrations(): string[] {
 
 export function applySqlFile(file: string, database = 'postgres'): void {
   const sql = adaptSqlForLocal(readFileSync(file, 'utf8'));
-  psql(['--single-transaction', '-f', '-'], { input: sql, database });
+  // On Windows an early psql error can close stdin before Node finishes the
+  // synchronous write, masking PostgreSQL's useful error as `spawnSync EOF`.
+  // A private, exact temp file keeps the real database diagnostic intact.
+  const directory = mkdtempSync(path.join(tmpdir(), 'dromanian-sql-'));
+  const temporary = path.join(directory, 'migration.sql');
+  try {
+    writeFileSync(temporary, sql, { encoding: 'utf8', mode: 0o600 });
+    psql(['--single-transaction', '-f', temporary], { database });
+  } finally {
+    if (existsSync(temporary)) unlinkSync(temporary);
+    rmdirSync(directory);
+  }
 }
 
 /**

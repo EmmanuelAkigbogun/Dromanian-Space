@@ -24,14 +24,20 @@ export const listDrive = defineTool({
   }),
   label: (input) => (input.query ? `Searching Drive for “${input.query}”` : 'Listing Drive files'),
   async run(ctx, input) {
-    const rows = await rpc<DriveRow[]>('agent_list_drive_for', {
+    const rows = await rpc<DriveRow[]>(ctx.scope.company_id ? 'agent_list_company_drive_for' : 'agent_list_drive_for', {
       p_actor: ctx.actorId,
       p_workspace_id: ctx.workspaceId,
+      ...(ctx.scope.company_id ? { p_company_id: ctx.scope.company_id } : {}),
       p_query: input.query ?? null,
       p_folder_id: input.folder_id ?? null,
       p_limit: input.limit ?? 20,
+      ...(ctx.scope.company_id ? { p_item_ids: ctx.allowedItemIds } : {}),
     });
-    const visibleRows = ctx.allowedItemIds ? rows.filter((row) => ctx.allowedItemIds!.includes(row.id)) : rows;
+    // Company + explicit-source filtering happens before LIMIT in PostgreSQL.
+    // Portfolio mode keeps the legacy in-memory explicit-source filter.
+    const visibleRows = !ctx.scope.company_id && ctx.allowedItemIds
+      ? rows.filter((row) => ctx.allowedItemIds!.includes(row.id))
+      : rows;
     for (const row of visibleRows) await ctx.recordSource('drive_item', row.id, { itemId: row.id, label: row.name });
     return {
       content: visibleRows.length
@@ -59,6 +65,9 @@ export const proposeDriveAction = defineTool({
     const inScope = (id: string | null | undefined) => !id || !ctx.allowedItemIds || ctx.allowedItemIds.includes(id);
     if (input.operation === 'create_folder') {
       if (!input.name) return { content: 'A folder name is required.', summary: { error: 'missing_name' }, isError: true };
+      if (ctx.scope.company_id && !input.folder_id) {
+        return { content: 'Choose a folder inside the selected company before creating this folder.', summary: { error: 'company_folder_required' }, isError: true };
+      }
       if (!inScope(input.folder_id)) return { content: 'That folder is outside this agent\'s selected sources.', summary: { error: 'out_of_scope' }, isError: true };
       const summary = `Create Drive folder “${input.name}”`;
       return proposeAction(ctx, call.toolUseId, 'create_drive_folder', { name: input.name, folder_id: input.folder_id ?? null }, summary);
@@ -70,6 +79,9 @@ export const proposeDriveAction = defineTool({
     if (input.operation === 'rename') {
       if (!input.name) return { content: 'A new name is required.', summary: { error: 'missing_name' }, isError: true };
       return proposeAction(ctx, call.toolUseId, 'rename_drive_item', { item_id: input.item_id, name: input.name }, `Rename Drive item to “${input.name}”`);
+    }
+    if (ctx.scope.company_id && !input.folder_id) {
+      return { content: 'Choose a destination inside the selected company. Moving an item outside the company is not allowed from this run.', summary: { error: 'company_folder_required' }, isError: true };
     }
     return proposeAction(ctx, call.toolUseId, 'move_drive_item', { item_id: input.item_id, folder_id: input.folder_id ?? null }, 'Move Drive item');
   },

@@ -19,18 +19,38 @@ Run backups more often if the business requires a smaller recovery point.
 | `n8n.dump` | Optional n8n database |
 | `MANIFEST` | Image, migrations and SHA-256 checksums |
 
-The worker is paused while the database and filesystem snapshots are made. The
-database is dumped first, so every object it references must be present in the
-following file archive. Live PostgreSQL data directories are never copied.
+The exact running API and worker containers are resolved and verified by
+Compose project/service labels and command before both are paused. While writes
+are quiesced, the backup waits (for at most 30 seconds) for in-flight database
+clients to become idle, then dumps the database first and archives
+storage/config bytes, so every object the dump references must be present in
+the following file archive. Any drain timeout, tar warning or tar error fails
+the backup. Both containers are resumed immediately after that local capture
+(and by the exit trap on any
+failure), before optional n8n capture, encryption or off-site transfer. Live
+PostgreSQL data directories are never copied.
 
 Archives are retained locally for `RETENTION_DAYS` (14 by default), copied to
-`RCLONE_REMOTE`, and verified at the remote. A success updates `last-success`; a
-failure updates `last-failure`, exits non-zero and optionally pings
-`HEALTHCHECK_URL/fail`.
+the required `RCLONE_REMOTE`, and verified at the remote. An empty destination
+fails before a backup is started. A success updates `last-success`; a failure
+updates `last-failure`, exits non-zero and optionally pings
+`HEALTHCHECK_URL/fail`. A successful `rclone check` also records the archive
+name and encrypted archive SHA-256 in `last-offsite-success`. Verification
+streams the uploaded object back through `rclone` and hashes its actual bytes,
+so a provider that lacks a compatible native checksum cannot silently fall
+back to a size-only proof; a local-only backup never creates that proof.
+`last-success`, `last-offsite-success` and
+`last-restore-drill` all use `UTC-timestamp archive-name SHA-256`. The preflight
+recalculates the newest archive's digest and rejects legacy, missing or
+filename-only markers, so replacing bytes under a reused name cannot satisfy a
+recovery gate.
 
 Keep the age private identity offline in two independent encrypted locations.
 The server only needs the public recipient file. Losing the private identity
-makes every archive unrecoverable.
+makes every archive unrecoverable. Both production preflight and the backup
+job reject age private-key material under the production config directory, so
+an identity temporarily brought in for a drill cannot be captured in the next
+archive.
 
 ## Installation
 
@@ -45,7 +65,14 @@ sudo systemctl status dromanian-backup.service --no-pager
 ```
 
 Set `AGE_RECIPIENTS_FILE`, `PGPASSWORD_FILE`, the generic S3-compatible rclone
-remote and monitoring URL before enabling the timer.
+remote and monitoring URL before enabling the timer. Set
+`APP_COMPOSE_PROJECT` to the exact `com.docker.compose.project` label of the
+Darkspace stack (recommended for Coolify), or pin `DB_CONTAINER` explicitly.
+The backup refuses generic service-name discovery and verifies the selected
+container's Compose labels, PostgreSQL image and writable bind source before it
+dumps anything. It likewise requires exactly one verified API and worker in
+that same project; explicit `API_CONTAINER`/`WORKER_CONTAINER` overrides do not
+bypass those checks.
 
 ## Verification and restore drill
 
@@ -64,9 +91,39 @@ deploy/backup/restore-test.sh down
 The full drill uses an isolated Compose project, isolated files under
 `/srv/app-data/dromanian-space-restore-test`, and a loopback-only web endpoint
 on `127.0.0.1:18000`. It validates checksums, rebuilds the schema, restores rows
-and files, starts the actual API, and requires `/api/ready` to pass. Record the
-date, archive and result. Remove the offline identity from the server after the
-drill.
+and files, starts the real database/migrator/PostgREST/Agno/worker/API/web
+readiness chain, and requires `/api/ready` to pass. The drill network is
+internal, preventing restored jobs or credentials from reaching third-party
+services. LiveKit, Coturn, OnlyOffice and the browser scraper are not started;
+the override also removes all LiveKit/Coturn host port bindings. A successful
+run records the archive name and verified encrypted
+archive SHA-256 in `backup-staging/last-restore-drill`. Remove the
+offline identity from the server after the drill; production preflight rejects
+both the known identity path and age private-key material anywhere under the
+production config directory. The drill root is fixed: the script canonicalizes
+the path and `down` deletes only the exact dedicated directory, never a custom
+path containing a similar name.
+
+The script obtains the isolated database container's effective password without
+printing it, stores it as mode `0600` only under the fixed restore root, and
+removes it after restore/storage verification (also via an exit trap on
+failure). Restored production worker-heartbeat rows are cleared before startup,
+so `/api/ready` must observe the drill's real worker rather than stale liveness
+evidence from the backup.
+
+Run these steps in this order before every production deployment:
+
+1. Configure a non-empty `RCLONE_REMOTE` and run a new backup. Confirm that
+   `last-success` and `last-offsite-success` contain the same newest archive
+   name and SHA-256.
+2. Bring the age identity from offline storage only for the duration of the
+   isolated drill, run `restore-test.sh run` against that newest archive, and
+   complete any manual sign-in/file checks required by the change.
+3. Run `restore-test.sh down`, securely remove the identity from the production
+   host, then run `PREFLIGHT_PHASE=predeploy deploy/preflight.sh`. The preflight
+   requires the off-site and restore markers to match the exact newest archive;
+   old markers cannot approve a newer backup. After the release starts, require
+   `PREFLIGHT_PHASE=postdeploy deploy/preflight.sh` as the acceptance gate.
 
 ## Full recovery
 

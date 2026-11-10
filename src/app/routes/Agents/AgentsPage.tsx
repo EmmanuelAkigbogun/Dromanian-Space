@@ -7,8 +7,10 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Markdown } from '@/components/ui/Markdown';
 import { platform, result, api, errorText, type RpcRow, type Row } from '@/features/platform/client';
 import { getSignedUrl, normalizeFileType, removeStoragePath, uploadFile } from '@/lib/message';
+import { withoutSubmittedItems } from '@/lib/composerSubmission';
 import s from '@/features/platform/Platform.module.css';
 import a from './Agents.module.css';
+import { coreResearchLimitation } from './researchReadiness';
 
 type Agent = RpcRow<'agent_directory'>;
 type TimelineRow = RpcRow<'agent_conversation_timeline'>;
@@ -106,6 +108,7 @@ const TOOL_LABELS: Record<string, string> = {
   compute_csv_metrics: 'Calculate metrics from CSV or Excel files',
   workspace_metrics: 'Calculate workspace metrics',
   web_search: 'Search the web',
+  browser_scrape: 'Read browser-rendered public pages',
   fetch_site_page: 'Read pages of your site',
   read_calendar: 'Read your calendar',
   read_brand_kit: 'Read the brand kit',
@@ -166,8 +169,9 @@ function modelBlocker(model: string, status: Status): string | null {
 /** What stops an agent from working, and what only limits it. */
 function readiness(agent: Agent, status: Status | undefined) {
   const blocking: string[] = [];
+  const limitations: string[] = [];
   const notes: string[] = [];
-  if (!status) return { blocking: ['Checking configuration…'], notes };
+  if (!status) return { blocking: ['Checking configuration…'], limitations, notes };
   const providerBlock = modelBlocker(agent.model, status);
   if (providerBlock) blocking.push(providerBlock);
   if (!status.settings.enabled) blocking.push('AI is turned off for this workspace.');
@@ -179,24 +183,28 @@ function readiness(agent: Agent, status: Status | undefined) {
     if (c?.status !== 'connected') notes.push(`${c?.label ?? kind} not connected — ${CONNECTED_ACTIONS[kind] ?? 'connected actions'} unavailable.`);
   }
   if (agent.tools.includes('read_brand_kit') && !status.brand_kit.folder_id) notes.push('No brand kit folder chosen; drafts follow general guidance.');
-  if (agent.tools.includes('web_search')) {
-    if (!status.web_research.enabled_by_admin) notes.push('Web research is turned off in AI settings; only workspace sources are available.');
-    else if (!status.web_research.available) notes.push(status.web_research.reason ?? 'Web research is enabled but its runtime is unavailable.');
-  }
-  if (agent.tools.includes('fetch_site_page') && status.site.url && !status.web_research.available) {
-    notes.push(status.web_research.reason ?? 'The configured site cannot be fetched because web research is unavailable.');
-  }
-  if (agent.kind === 'coordinator') {
-    for (const connector of status.connectors.filter((item) => item.status !== 'connected')) {
-      notes.push(`${connector.label} not connected — ${connector.detail ?? 'specialist actions that need it are unavailable.'}`);
+  // The coordinator delegates research instead of owning those tools itself,
+  // so judge it against the deployment's specialist research routes.
+  const researchTools = agent.kind === 'coordinator'
+    ? status.tools.map((tool) => tool.name)
+    : agent.tools;
+  const researchLimitation = coreResearchLimitation(agent.template_key, researchTools, status.tools);
+  if (researchLimitation) {
+    limitations.push(researchLimitation);
+  } else {
+    if (agent.tools.includes('web_search')) {
+      if (!status.web_research.enabled_by_admin) notes.push('Web research is turned off in AI settings; only workspace sources are available.');
+      else if (!status.web_research.available) notes.push(status.web_research.reason ?? 'Web research is enabled but its runtime is unavailable.');
     }
-    if (!status.brand_kit.folder_id) notes.push('No brand kit folder is configured for brand-dependent specialists.');
-    if (!status.site.url) notes.push('No site address is configured for the SEO specialist.');
-    if (!status.web_research.available && !notes.some((note) => note === status.web_research.reason)) {
-      notes.push(status.web_research.reason ?? 'Public-web specialists cannot reach the web research runtime.');
+    if (agent.tools.includes('browser_scrape')) {
+      const scraper = status.tools.find((tool) => tool.name === 'browser_scrape');
+      if (scraper && !scraper.available) notes.push(scraper.reason ?? 'The browser scraper is temporarily unavailable.');
+    }
+    if (agent.tools.includes('fetch_site_page') && status.site.url && !status.web_research.available) {
+      notes.push(status.web_research.reason ?? 'The configured site cannot be fetched because web research is unavailable.');
     }
   }
-  return { blocking, notes };
+  return { blocking, limitations, notes };
 }
 
 function Avatar({ agent, small }: { agent: Pick<Agent, 'name' | 'color'>; small?: boolean }) {
@@ -208,11 +216,17 @@ function Avatar({ agent, small }: { agent: Pick<Agent, 'name' | 'color'>; small?
 }
 
 function ReadinessLine({ agent, status }: { agent: Agent; status: Status | undefined }) {
-  const { blocking, notes } = readiness(agent, status);
-  const tone = blocking.length ? a.blocked : notes.length ? a.limited : a.ready;
+  const { blocking, limitations, notes } = readiness(agent, status);
+  const tone = blocking.length ? a.blocked : limitations.length ? a.limited : a.ready;
   // Workspace-wide blockers are explained in the banner; cards stay short.
   const short = !status?.provider.configured ? 'Waiting for AI provider setup' : !status.settings.enabled ? 'AI is off in this workspace' : blocking[0];
-  const text = blocking.length ? short : notes.length ? `Partially ready · ${notes.length} limitation${notes.length === 1 ? '' : 's'}` : 'Ready';
+  const text = blocking.length
+    ? short
+    : limitations.length
+      ? 'Limited · public research unavailable'
+      : notes.length
+        ? `Ready · ${notes.length} optional setup item${notes.length === 1 ? '' : 's'}`
+        : 'Ready';
   return (
     <p className={a.state}>
       <span className={`${a.dot} ${tone}`} />
@@ -256,6 +270,7 @@ export default function AgentsPage() {
 
 function Agents({ ws, userId, admin }: { ws: string; userId: string; admin: boolean }) {
   const { agentId, conversationId } = useParams();
+  const [routeParams] = useSearchParams();
   const base = ['platform', ws, userId, 'agents'];
   const [aiSettings, setAiSettings] = useState(false);
   const directory = useQuery({
@@ -309,6 +324,7 @@ function Agents({ ws, userId, admin }: { ws: string; userId: string; admin: bool
       {chosenId || conversationId ? (
         agent || archived ? (
           <AgentView
+            key={`${agent?.id ?? conversation?.agent_id ?? 'archived'}:${conversationId ?? 'new'}:${routeParams.toString()}`}
             ws={ws}
             userId={userId}
             admin={admin}
@@ -557,17 +573,24 @@ function AgentView(props: {
   const [companyId, setCompanyId] = useState(params.get('company') ?? params.get('client') ?? '');
   const [picker, setPicker] = useState(false);
   const [images, setImages] = useState<PendingAgentImage[]>([]);
+  const [inFlightImages, setInFlightImages] = useState<PendingAgentImage[]>([]);
   const [draggingImages, setDraggingImages] = useState(false);
   const mounted = useRef(true);
   const requestKey = useRef<string | null>(null);
+  const runAccepted = useRef(false);
   const imageInput = useRef<HTMLInputElement>(null);
+  const messageInput = useRef<HTMLTextAreaElement>(null);
   const imagesRef = useRef<PendingAgentImage[]>([]);
+  const inFlightImagesRef = useRef<PendingAgentImage[]>([]);
+  const submittedImagesRef = useRef<PendingAgentImage[]>([]);
   useEffect(() => { imagesRef.current = images; }, [images]);
+  useEffect(() => { inFlightImagesRef.current = inFlightImages; }, [inFlightImages]);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
       imagesRef.current.forEach((image) => URL.revokeObjectURL(image.preview));
+      inFlightImagesRef.current.forEach((image) => URL.revokeObjectURL(image.preview));
     };
   }, []);
 
@@ -626,14 +649,39 @@ function AgentView(props: {
     const timer = window.setInterval(update, 1000);
     return () => window.clearInterval(timer);
   }, [sending, activeRunId, runStartedAt, running?.created_at]);
-  const { blocking, notes: limits } = agent ? readiness(agent, props.status) : { blocking: ['This agent was retired.'], notes: [] };
+  const { blocking, limitations, notes: readinessNotes } = agent
+    ? readiness(agent, props.status)
+    : { blocking: ['This agent was retired.'], limitations: [], notes: [] };
   const available = !blocking.length;
   const isTeam = agent?.kind === 'coordinator';
   const agentsById = new Map(props.directory.map((x) => [x.id, x]));
 
-  function clearImages() {
-    images.forEach((image) => URL.revokeObjectURL(image.preview));
-    setImages([]);
+  function changeManagedCompany(nextCompanyId: string) {
+    if (nextCompanyId === companyId || sending || activeRunId) return;
+    setCompanyId(nextCompanyId);
+    setSources([]);
+    setError('');
+    requestKey.current = null;
+    if (!agent) return;
+    const query = new URLSearchParams();
+    if (nextCompanyId) query.set('company', nextCompanyId);
+    const target = isTeam ? '/agents/team' : `/agents/${agent.id}`;
+    navigate(`${target}${query.size ? `?${query.toString()}` : ''}`);
+  }
+
+  function clearSubmittedImages() {
+    const submitted = submittedImagesRef.current;
+    submitted.forEach((image) => URL.revokeObjectURL(image.preview));
+    setInFlightImages((current) => withoutSubmittedItems(current, submitted));
+    submittedImagesRef.current = [];
+  }
+
+  function restoreSubmittedImages() {
+    const submitted = submittedImagesRef.current;
+    if (!submitted.length) return;
+    setImages((current) => [...submitted, ...withoutSubmittedItems(current, submitted)]);
+    setInFlightImages((current) => withoutSubmittedItems(current, submitted));
+    submittedImagesRef.current = [];
   }
 
   function queueImages(files: File[]) {
@@ -697,25 +745,31 @@ function AgentView(props: {
     queueImages(Array.from(e.dataTransfer.files));
   }
 
-  async function uploadImages(): Promise<AgentImageAttachment[]> {
-    return Promise.all(images.map(async (image) => {
-      if (image.path) return image;
+  async function uploadImages(submitted: PendingAgentImage[]): Promise<AgentImageAttachment[]> {
+    const results = await Promise.allSettled(submitted.map(async (image) => {
+      if (image.path) return { path: image.path, name: image.name, mime_type: image.mime_type, size: image.size };
       const path = await uploadFile(image.file, `agent-images/${userId}`, (progress) => {
-        setImages((current) => current.map((item) => item.id === image.id ? { ...item, progress } : item));
+        setInFlightImages((current) => current.map((item) => item.id === image.id ? { ...item, progress } : item));
       });
       if (!path) throw new Error(`Could not upload ${image.name}.`);
-      setImages((current) => current.map((item) => item.id === image.id ? { ...item, path, progress: 100 } : item));
+      submittedImagesRef.current = submittedImagesRef.current.map((item) => item.id === image.id ? { ...item, path, progress: 100 } : item);
+      setInFlightImages((current) => current.map((item) => item.id === image.id ? { ...item, path, progress: 100 } : item));
       return { path, name: image.name, mime_type: image.mime_type, size: image.size };
     }));
+    const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (failed) {
+      throw failed.reason instanceof Error ? failed.reason : new Error('One or more images could not be uploaded.');
+    }
+    return results.map((result) => (result as PromiseFulfilledResult<AgentImageAttachment>).value);
   }
 
   async function handle(name: string, data: Record<string, unknown>) {
     if (!mounted.current) return;
     if (name === 'run') {
+      runAccepted.current = true;
       requestKey.current = null;
       setStopping(false);
-      setMessage('');
-      clearImages();
+      clearSubmittedImages();
       setFollowing(String(data.run_id));
       setProgress('Waiting for a worker');
       setRunStartedAt(Date.now());
@@ -770,22 +824,30 @@ function AgentView(props: {
   async function send(e: React.FormEvent) {
     e.preventDefault();
     if (!agent || (!message.trim() && images.length === 0)) return;
+    const submittedMessage = message;
+    const submittedImages = [...images];
+    runAccepted.current = false;
+    submittedImagesRef.current = submittedImages;
+    setMessage('');
+    setImages((current) => withoutSubmittedItems(current, submittedImages));
+    setInFlightImages(submittedImages);
+    messageInput.current?.focus({ preventScroll: true });
     setSending(true);
     setStopping(false);
     setError('');
     setStream('');
     setLiveTeam([]);
-    setProgress(images.length ? 'Uploading your images' : 'Saving your request');
+    setProgress(submittedImages.length ? 'Uploading your images' : 'Saving your request');
     setRunStartedAt(Date.now());
     setElapsedSeconds(0);
     requestKey.current ??= crypto.randomUUID();
     try {
-      const attachments = await uploadImages();
+      const attachments = await uploadImages(submittedImages);
       const response = await api('agents/run', {
         workspace_id: ws,
         agent_id: agent.id,
         conversation_id: conversationId ?? null,
-        message: message.trim() || 'Please analyze the attached image.',
+        message: submittedMessage.trim() || 'Please analyze the attached image.',
         scope: {
           item_ids: sources,
           ...(companyId ? { company_id: companyId } : {}),
@@ -798,7 +860,13 @@ function AgentView(props: {
       });
       await consumeEvents(response, handle);
     } catch (err) {
-      if (mounted.current) setError(`${errorText(err)} Your conversation is saved; reopen it to see the run’s status before retrying.`);
+      if (mounted.current) {
+        if (!runAccepted.current) restoreSubmittedImages();
+        setMessage((current) => current || submittedMessage);
+        setError(runAccepted.current
+          ? `${errorText(err)} Your conversation is saved; reopen it to see the run’s status before retrying.`
+          : `${errorText(err)} Your message and images were restored so you can retry.`);
+      }
     } finally {
       if (mounted.current) {
         setSending(false);
@@ -807,6 +875,7 @@ function AgentView(props: {
         setStream('');
         setLiveTeam([]);
         await refresh();
+        requestAnimationFrame(() => messageInput.current?.focus({ preventScroll: true }));
       }
     }
   }
@@ -880,7 +949,13 @@ function AgentView(props: {
           <div className={s.actions}>
             <span className={s.pill}>Private · only you</span>
             <label>
-              <select aria-label="Managed company" className={s.input} value={companyId} onChange={(e) => { setCompanyId(e.target.value); requestKey.current = null; }}>
+              <select
+                aria-label="Managed company"
+                className={s.input}
+                value={companyId}
+                onChange={(e) => changeManagedCompany(e.target.value)}
+                disabled={sending || !!activeRunId}
+              >
                 <option value="">Portfolio view</option>
                 {managedCompanies.data?.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
               </select>
@@ -982,8 +1057,14 @@ function AgentView(props: {
                 multiple
                 onChange={(e) => { queueImages(Array.from(e.currentTarget.files ?? [])); e.currentTarget.value = ''; }}
               />
-              {images.length > 0 && (
+              {(inFlightImages.length > 0 || images.length > 0) && (
                 <div className={a.pendingImages} aria-label="Attached images">
+                  {inFlightImages.map((image) => (
+                    <div className={a.pendingImage} key={`sending-${image.id}`} aria-label={`${image.name} is being sent`}>
+                      <img src={image.preview} alt={image.name} />
+                      <span>{image.progress > 0 && image.progress < 100 ? `${image.progress}%` : 'Sending…'}</span>
+                    </div>
+                  ))}
                   {images.map((image) => (
                     <div className={a.pendingImage} key={image.id}>
                       <img src={image.preview} alt={image.name} />
@@ -996,6 +1077,7 @@ function AgentView(props: {
               <label>
                 {isTeam ? 'Message the team' : `Message ${agent.name}`}
                 <textarea
+                  ref={messageInput}
                   className={s.text}
                   placeholder={isTeam ? 'Describe the goal; the team lead assigns the work…' : 'Ask a question, request a draft, or plan your next step…'}
                   value={message}
@@ -1006,13 +1088,13 @@ function AgentView(props: {
                   onPaste={pasteImages}
                   onKeyDown={sendOnEnter}
                   maxLength={20000}
-                  disabled={sending}
+                  aria-busy={sending}
                 />
               </label>
               <div className={s.actions}>
-                <button type="button" className={s.button} onClick={() => imageInput.current?.click()} disabled={sending || images.length >= MAX_AGENT_IMAGES}>Attach image</button>
-                <button className={s.primary} disabled={!available || sending || !!running || (!message.trim() && images.length === 0)}>Send</button>
-                <span className={s.muted}>{blocking[0] ?? 'Actions wait for your review before anything changes.'}</span>
+                <button type="button" className={s.button} onClick={() => imageInput.current?.click()} disabled={images.length >= MAX_AGENT_IMAGES}>Attach image</button>
+                <button className={s.primary} disabled={!available || sending || !!running || images.length > MAX_AGENT_IMAGES || (!message.trim() && images.length === 0)}>Send</button>
+                <span className={s.muted}>{blocking[0] ?? limitations[0] ?? 'Actions wait for your review before anything changes.'}</span>
               </div>
             </form>
           )}
@@ -1022,15 +1104,18 @@ function AgentView(props: {
             <section>
               <h3>Readiness</h3>
               <ul>
+                {!blocking.length && !limitations.length && (
+                  <li className={a.state}><span className={`${a.dot} ${a.ready}`} />Ready for core work.</li>
+                )}
                 {blocking.map((b) => (
                   <li key={b} className={a.state}><span className={`${a.dot} ${a.blocked}`} />{b}</li>
                 ))}
-                {limits.map((n) => (
+                {limitations.map((n) => (
                   <li key={n} className={a.state}><span className={`${a.dot} ${a.limited}`} />{n}</li>
                 ))}
-                {!blocking.length && !limits.length && (
-                  <li className={a.state}><span className={`${a.dot} ${a.ready}`} />Ready, with everything it can use.</li>
-                )}
+                {readinessNotes.map((n) => (
+                  <li key={n} className={a.state}><span className={`${a.dot} ${a.limited}`} />{n}</li>
+                ))}
               </ul>
             </section>
           )}

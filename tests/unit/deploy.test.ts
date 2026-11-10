@@ -8,6 +8,40 @@ const read = (rel: string) => readFileSync(path.join(root, rel), 'utf8');
 describe('standalone compose safety', () => {
   const compose = read('docker-compose.yml');
 
+  it('pins every production image reference to an immutable digest', () => {
+    const imageRef = /:[^@\s]+@sha256:[a-f0-9]{64}$/;
+    for (const composeFile of ['docker-compose.yml', 'deploy/n8n/docker-compose.yml']) {
+      const refs = [...read(composeFile).matchAll(/^\s+image:\s+([^\s#]+)/gm)].map((match) => match[1]);
+      expect(refs.length, composeFile).toBeGreaterThan(0);
+      for (const ref of refs) expect(ref, `${composeFile}: ${ref}`).toMatch(imageRef);
+    }
+
+    const dockerfile = read('Dockerfile');
+    const syntaxRef = dockerfile.match(/^# syntax=(\S+)/m)?.[1];
+    expect(syntaxRef, 'Dockerfile frontend').toMatch(imageRef);
+    const internalStages = new Set(
+      [...dockerfile.matchAll(/^FROM\s+\S+\s+AS\s+(\S+)/gim)].map((match) => match[1]),
+    );
+    const fromRefs = [...dockerfile.matchAll(/^FROM\s+(\S+)/gim)].map((match) => match[1]);
+    const copyRefs = [...dockerfile.matchAll(/^COPY\s+--from=(\S+)/gim)].map((match) => match[1]);
+    const externalRefs = [...fromRefs, ...copyRefs].filter((ref) => !internalStages.has(ref));
+    for (const ref of externalRefs) expect(ref, `Dockerfile: ${ref}`).toMatch(imageRef);
+
+    const databaseImage = compose.match(/^\s+image:\s+(pgvector\/pgvector:[^\s#]+)/m)?.[1];
+    expect(databaseImage).toBeTruthy();
+    expect(read('deploy/backup/verify-restore.sh')).toContain(`DB_IMAGE=\${DB_IMAGE:-${databaseImage}}`);
+  });
+
+  it('keeps operator CRM spreadsheets out of source and Docker contexts', () => {
+    for (const ignoreFile of ['.gitignore', '.dockerignore']) {
+      const ignored = read(ignoreFile);
+      expect(ignored).toContain('database/*.xls');
+      expect(ignored).toContain('database/*.xlsx');
+      expect(ignored).toContain('**/.pytest_cache/');
+      if (ignoreFile === '.dockerignore') expect(ignored).toContain('release/');
+    }
+  });
+
   it('keeps PostgreSQL and storage on the dedicated server disks', () => {
     expect(compose).toContain('source: /srv/app-data/dromanian-space/postgres');
     expect(compose).toContain('source: /srv/cloud-data/dromanian-space/storage');
@@ -27,11 +61,42 @@ describe('standalone compose safety', () => {
     expect(compose).toContain('APP_JWT_SECRET: ${APP_JWT_SECRET:?APP_JWT_SECRET}');
   });
 
-  it('ships one system Chromium without downloading Puppeteer browsers', () => {
+  it('passes the optional Cloudflare Domains fallback only to the API', () => {
+    const api = compose.match(/\n  api:\n([\s\S]*?)\n  agno:/)?.[1] ?? '';
+    const worker = compose.match(/\n  worker:\n([\s\S]*?)\n  livekit:/)?.[1] ?? '';
+    for (const name of [
+      'CLOUDFLARE_API_TOKEN',
+      'CLOUDFLARE_ACCOUNT_ID',
+      'CLOUDFLARE_TUNNEL_ID',
+      'CLOUDFLARE_TUNNEL_SERVICE',
+    ]) {
+      expect(api).toContain(`${name}: \${${name}:-`);
+      expect(worker).not.toContain(`${name}:`);
+    }
+    expect(api).toContain(
+      'CLOUDFLARE_TUNNEL_SERVICE: ${CLOUDFLARE_TUNNEL_SERVICE:-http://web:8080}',
+    );
+  });
+
+  it('keeps the social browser outside secret-bearing app containers', () => {
     const dockerfile = read('Dockerfile');
+    const social = read('server/social.ts');
+    const productionEnv = read('.env.production.example');
     expect(dockerfile).toContain('PUPPETEER_SKIP_DOWNLOAD=true');
-    expect(dockerfile).toContain('PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium');
-    expect(dockerfile).toMatch(/apt-get install[^\n]*chromium/);
+    expect(dockerfile).not.toContain('PUPPETEER_EXECUTABLE_PATH');
+    expect(dockerfile).not.toMatch(/apt-get install[^\n]*chromium/);
+    expect(compose).toContain('SOCIAL_BROWSER_WS_ENDPOINT: ${SOCIAL_BROWSER_WS_ENDPOINT:-}');
+    expect(compose).toContain('SOCIAL_BROWSER_TOKEN: ${SOCIAL_BROWSER_TOKEN:-}');
+    expect(social).not.toContain('--no-sandbox');
+    expect(social).toContain("url.protocol !== 'wss:'");
+    expect(social).toContain('browser.createBrowserContext()');
+    expect(social).toContain('isolated.context.newPage()');
+    expect(social).toContain('session.browser.disconnect()');
+    expect(social).not.toMatch(/await\s+browser\.newPage\(/);
+    expect(social).not.toMatch(/await\s+browser(?:\?)?\.close\(/);
+    expect(productionEnv).toContain('CRAWL4AI_TOKEN_EPOCH=1');
+    expect(productionEnv).toContain('SOCIAL_BROWSER_WS_ENDPOINT=');
+    expect(productionEnv).toContain('SOCIAL_BROWSER_TOKEN=');
   });
 
   it('runs the agent orchestrator as an isolated, pinned Agno service', () => {
@@ -55,6 +120,167 @@ describe('standalone compose safety', () => {
     expect(lock).not.toContain('name = "google-adk"');
   });
 
+  it('runs the browser scraper as a pinned private authenticated service', () => {
+    const service = compose.match(/\n  crawl4ai:\n([\s\S]*?)\n  crawl4ai-gateway:/)?.[1] ?? '';
+    const gateway = compose.match(/\n  crawl4ai-gateway:\n([\s\S]*?)\n  db:/)?.[1] ?? '';
+    const api = compose.match(/\n  api:\n([\s\S]*?)\n  agno:/)?.[1] ?? '';
+    const worker = compose.match(/\n  worker:\n([\s\S]*?)\n  livekit:/)?.[1] ?? '';
+    const gatewayConfig = read('deploy/nginx/crawl4ai-gateway.conf');
+    expect(service).toContain('image: unclecode/crawl4ai:0.9.5');
+    expect(service).toContain('browser-scraper-token:/run/secrets:ro');
+    expect(service).toContain('read_only: true');
+    expect(service).toContain('cap_drop:');
+    expect(service).toContain('CRAWL4AI_ALLOW_DEEP_CRAWL: "false"');
+    expect(service).toContain('Authorization: Bearer $$TOKEN');
+    expect(service).toContain('networks:\n      - browser-egress');
+    expect(service).not.toContain('- default');
+    expect(service).not.toMatch(/\n\s+ports:/);
+    expect(gateway).toContain('image: ghcr.io/nginx/nginx-unprivileged:1.30.5-alpine@sha256:56b8272e43a0525f67aed68d1e0794a712d10e3e45a563e118e9a77c817e6f86');
+    expect(gateway).toContain('read_only: true');
+    expect(gateway).toContain('cap_drop:\n      - ALL');
+    expect(gateway).toContain('source: ./deploy/nginx/crawl4ai-gateway.conf');
+    expect(gateway).toContain('networks:\n      - default\n      - browser-egress');
+    expect(gateway).not.toMatch(/\n\s+ports:/);
+    expect(gateway).not.toContain('browser-scraper-token:/');
+    expect(compose).toContain('CRAWL4AI_API_TOKEN_FILE: /run/browser-scraper/api_token');
+    expect(compose).toContain('CRAWL4AI_URL: http://crawl4ai-gateway:8080');
+    expect(compose).toMatch(/browser-scraper-token:[\s\S]*?network_mode: none/);
+    expect(compose).toContain('busybox:1.37.0@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec');
+    expect(compose).toMatch(/browser-scraper-token:[\s\S]*?head -c 32 \/dev\/urandom/);
+    expect(compose).toContain('current_epoch="$$(cat /run/browser-scraper/token_epoch 2>/dev/null || true)"');
+    expect(compose).toContain('[ "$$current_epoch" != "$$epoch" ]');
+    expect(compose).toContain('mv /run/browser-scraper/.token_epoch.tmp /run/browser-scraper/token_epoch');
+    expect(compose.match(/browser-scraper-token:[\s\S]*?network_mode: none/)?.[0]).not.toContain('APP_JWT_SECRET');
+    expect(compose).toContain('CRAWL4AI_TOKEN_EPOCH: ${CRAWL4AI_TOKEN_EPOCH:-1}');
+    expect(api).toContain('networks:\n      - default');
+    expect(api).not.toContain('browser-egress');
+    expect(worker).toContain('networks:\n      - default');
+    expect(worker).not.toContain('browser-egress');
+    expect(gatewayConfig).toContain('server crawl4ai:11235 resolve;');
+    expect(gatewayConfig).toContain('location = /schema');
+    expect(gatewayConfig).toContain('limit_except GET');
+    expect(gatewayConfig).toContain('location = /md');
+    expect(gatewayConfig).toContain('limit_except POST');
+    expect(gatewayConfig).toContain('proxy_set_header Authorization $http_authorization;');
+    expect(gatewayConfig).toContain('fastcgi_temp_path /tmp/fastcgi_temp;');
+    expect(gatewayConfig).toContain('uwsgi_temp_path /tmp/uwsgi_temp;');
+    expect(gatewayConfig).toContain('scgi_temp_path /tmp/scgi_temp;');
+    expect(gatewayConfig).toMatch(/location \/ \{\s*return 404;/);
+    expect(gatewayConfig).not.toMatch(/proxy_pass\s+http:\/\/\$/);
+    expect(read('Dockerfile')).toContain('tools/browser-scraper-smoke.mjs');
+    const smoke = read('tools/browser-scraper-smoke.mjs');
+    expect(smoke).toContain("'http://crawl4ai-gateway:8080'");
+    expect(smoke).toContain("authorization: `Bearer ${token}`");
+    expect(smoke).toContain("`${baseUrl}/schema`");
+    expect(smoke).toContain("`${baseUrl}/md`");
+    expect(smoke).toContain("redirect: 'error'");
+  });
+
+  it('fails production preflight closed on unverified recovery or scraper state', () => {
+    const preflight = read('deploy/preflight.sh');
+    const backup = read('deploy/backup/backup.sh');
+    const restoreDrill = read('deploy/backup/restore-test.sh');
+
+    expect(backup).toContain('rclone check --one-way');
+    expect(backup).toContain('remote_archive_sha256=$(rclone cat');
+    expect(backup).toContain('[[ "$remote_archive_sha256" == "$archive_sha256" ]]');
+    expect(backup).toContain('last-offsite-success');
+    expect(backup).toContain('Set RCLONE_REMOTE to an off-server rclone destination.');
+    expect(backup).toContain("grep -R -q --binary-files=without-match 'AGE-SECRET-KEY-'");
+    expect(backup).toContain('remove it before backup');
+    expect(backup).not.toContain('WARNING: no RCLONE_REMOTE set');
+    expect(backup.indexOf('rclone check --one-way')).toBeLessThan(backup.indexOf('mv -f -- "$marker_tmp" "$OFFSITE_SUCCESS_MARKER"'));
+    expect(backup).toContain('archive_sha256=$(sha256sum "$archive"');
+    expect(backup).toContain('[[ "$verified_archive_sha256" == "$archive_sha256" ]]');
+    expect(backup).toContain("printf '%s %s %s\\n' \"$stamp\" \"$(basename \"$archive\")\" \"$archive_sha256\"");
+    expect(restoreDrill).toContain('last-restore-drill');
+    expect(restoreDrill.indexOf('[[ "$code" == "200" ]]')).toBeLessThan(restoreDrill.indexOf('mv -f -- "$marker_tmp" "$RESTORE_DRILL_MARKER"'));
+    expect(restoreDrill).toContain('archive_sha256=$(sha256sum "$archive"');
+    expect(restoreDrill).toContain('[[ "$verified_archive_sha256" != "$archive_sha256" ]]');
+    expect(restoreDrill).toContain("printf '%s %s %s\\n' \"$drill_stamp\" \"$(basename \"$archive\")\" \"$archive_sha256\"");
+
+    expect(preflight).toContain('RCLONE_REMOTE is empty in the protected backup environment');
+    expect(preflight).toContain('latest encrypted backup has no matching off-server verification');
+    expect(preflight).toContain('latest encrypted backup has no matching isolated restore drill');
+    expect(preflight).toContain('latest_sha256=$(sha256sum "$latest"');
+    expect(preflight).toContain('"$success_sha256" == "$latest_sha256"');
+    expect(preflight).toContain('"$offsite_sha256" == "$latest_sha256"');
+    expect(preflight).toContain('"$drill_sha256" == "$latest_sha256"');
+    expect(preflight).toContain("grep -q 'AGE-SECRET-KEY-'");
+    expect(preflight).toContain('an age private identity is stored on the production server');
+    expect(preflight).toContain('PREFLIGHT_PHASE=${PREFLIGHT_PHASE:-predeploy}');
+    expect(preflight).toContain('for service in db rest api worker agno onlyoffice web livekit coturn');
+    expect(preflight).toContain('elif [[ "$PREFLIGHT_PHASE" == postdeploy ]]');
+    expect(preflight).toContain('fail "crawl4ai is not running"');
+    expect(preflight).toContain('fail "crawl4ai-gateway is not running"');
+    expect(preflight).toContain('isolated authenticated scraper checks are deferred to PREFLIGHT_PHASE=postdeploy');
+    expect(preflight).toContain('Crawl4AI cannot resolve or directly reach api/worker');
+    expect(preflight).toContain('worker reaches authenticated Crawl4AI schema through the gateway');
+    expect(preflight).toContain('api reaches authenticated Crawl4AI browser scrape through the gateway');
+    expect(preflight).toContain('socket.getaddrinfo(name, None)');
+    expect(preflight).toContain('.HostConfig.PortBindings');
+    expect(preflight).toContain("127.*|::1|'[::1]'");
+    expect(preflight).toContain('has non-loopback host mapping');
+    expect(preflight).toContain('for service in db rest api worker agno onlyoffice web');
+    expect(preflight).toContain('private_containers[crawl4ai]=$crawl4ai_container');
+    expect(preflight).toContain('private_containers[crawl4ai-gateway]=$crawl4ai_gateway_container');
+    expect(preflight).not.toContain('private_containers[coturn]');
+    expect(preflight).not.toContain('private_containers[livekit]');
+    expect(preflight).not.toContain('ss -ltn');
+    expect(preflight).toContain('node tools/browser-scraper-smoke.mjs');
+    expect(backup).toContain('Set APP_COMPOSE_PROJECT to the exact app Compose project or set DB_CONTAINER explicitly.');
+    expect(backup).toContain('label=com.docker.compose.project=$APP_COMPOSE_PROJECT');
+    expect(backup).toContain('com.docker.compose.service');
+    expect(backup).toContain('eq .Destination "/var/lib/postgresql/data"');
+    expect(backup).toContain('actual_db_data');
+    expect(backup).toContain("label=com.docker.compose.service=api");
+    expect(backup).toContain("label=com.docker.compose.service=worker");
+    expect(backup).toContain('Expected exactly one running api container');
+    expect(backup).toContain('Expected exactly one running worker container');
+    expect(backup).toContain('api_command" == *main.mjs*');
+    expect(backup).toContain('worker_command" == *worker-main.mjs*');
+    expect(backup).toContain('docker pause "$API_CONTAINER"');
+    expect(backup).toContain('docker pause "$WORKER_CONTAINER"');
+    expect(backup).toContain('step="draining in-flight database writes"');
+    expect(backup).toContain("state IS DISTINCT FROM 'idle'");
+    expect(backup).toContain('Database clients did not become idle');
+    expect(backup).toContain('resume_app_writes');
+    expect(backup.indexOf('step="resuming application writes"')).toBeLessThan(backup.indexOf('step="encrypting"'));
+    expect(backup).toContain('tar -C "$STORAGE_DIR" -cf "$work/storage.tar" .');
+    expect(backup).not.toContain('tar -C "$STORAGE_DIR" -cf "$work/storage.tar" . ||');
+    expect(preflight).toContain('set APP_COMPOSE_PROJECT to the exact app Compose project or set DB_CONTAINER explicitly');
+    expect(preflight).toContain('database target verified: Compose project');
+    expect(preflight).toContain('expected writable database bind');
+    expect(restoreDrill).toContain('realpath -m -- "$requested_restore_root"');
+    expect(restoreDrill).toContain('[[ "$dedicated_restore_root" == "$dedicated_restore_path" ]]');
+    expect(restoreDrill).toContain('[[ "$RESTORE_ROOT" == "$dedicated_restore_root" ]]');
+    expect(restoreDrill).toContain('[[ "$delete_root" == "$dedicated_restore_root" && ! -L "$RESTORE_ROOT" ]]');
+    expect(restoreDrill).not.toContain('*restore-test*');
+    expect(restoreDrill).toContain('compose up -d --wait --no-deps rest agno');
+    expect(restoreDrill).toContain('compose up -d --wait --no-deps worker');
+    expect(restoreDrill).toContain('compose up -d --wait --no-deps api');
+    expect(restoreDrill).toContain('compose up -d --wait --no-deps web');
+    expect(restoreDrill).toContain('for _ in {1..30}');
+    expect(restoreDrill).toContain('db_password_file="$RESTORE_ROOT/.db-password"');
+    expect(restoreDrill).toContain('chmod 600 "$db_password_file"');
+    expect(restoreDrill).toContain('docker exec -e PGPASSWORD "$db_name" psql');
+    expect(restoreDrill).toContain('PGPASSWORD_FILE="$db_password_file"');
+    expect(restoreDrill).toContain('TRUNCATE public.worker_heartbeats');
+    expect(restoreDrill).toContain('trap cleanup_restore_secret EXIT');
+    expect(restoreDrill.indexOf('cleanup_restore_secret\n')).toBeLessThan(restoreDrill.indexOf('code=000'));
+    expect(restoreDrill).not.toContain('echo "$PGPASSWORD"');
+
+    const restoreOverride = read('deploy/backup/restore-test.override.yml');
+    expect(restoreOverride).toMatch(/api:[\s\S]*?depends_on: !override[\s\S]*?rest:/);
+    expect(restoreOverride).toMatch(/api:[\s\S]*?depends_on: !override[\s\S]*?agno:/);
+    expect(restoreOverride).toMatch(/worker:[\s\S]*?depends_on: !override[\s\S]*?rest:[\s\S]*?agno:/);
+    expect(restoreOverride).toMatch(/agno:[\s\S]*?source: \$\{RESTORE_ROOT:\?RESTORE_ROOT\}\/cloud\/storage/);
+    expect(restoreOverride).toMatch(/web:[\s\S]*?depends_on: !override[\s\S]*?api:/);
+    expect(restoreOverride).toMatch(/livekit:[\s\S]*?profiles: \["media-restore-test"\][\s\S]*?ports: !override \[\]/);
+    expect(restoreOverride).toMatch(/coturn:[\s\S]*?profiles: \["media-restore-test"\][\s\S]*?ports: !override \[\]/);
+    expect(restoreOverride).toMatch(/networks:[\s\S]*?default:[\s\S]*?internal: true/);
+  });
+
   it('contains no external auth or managed backend service', () => {
     expect(compose).not.toMatch(/gotrue|studio|realtime|storage-api|supabase\//i);
   });
@@ -70,6 +296,16 @@ describe('standalone compose safety', () => {
 
 describe('migrations', () => {
   const files = readdirSync(path.join(root, 'database/migrations')).filter((file) => file.endsWith('.sql')).sort();
+  it('serializes concurrent deployers and rechecks after taking the database lock', () => {
+    const runner = read('database/migrate.sh');
+    expect(runner).toContain("pg_advisory_xact_lock(hashtextextended('dromanian-space:migrations', 0))");
+    expect(runner).toContain('MIGRATION_LOCK_TIMEOUT_SECONDS=${MIGRATION_LOCK_TIMEOUT_SECONDS:-60}');
+    expect(runner).toContain("SET LOCAL statement_timeout = '%ss';");
+    expect(runner.indexOf("AS database_initialized \\\\gset")).toBeGreaterThan(runner.indexOf('emit_migration_lock'));
+    expect(runner).toContain('CREATE TABLE IF NOT EXISTS app_migrations.schema_migrations');
+    expect(runner).toContain('AS migration_applied \\\\gset');
+    expect(runner).toContain('\\if :migration_applied');
+  });
   it('have unique, ordered 14-digit versions', () => {
     const versions = files.map((file) => file.split('_')[0]);
     for (const version of versions) expect(version).toMatch(/^\d{14}$/);

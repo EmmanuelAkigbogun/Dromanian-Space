@@ -73,6 +73,7 @@ export function DmConversationView() {
   const scrollRestoreRef = useRef<{ prevScrollTop: number; prevScrollHeight: number } | null>(null);
   const didInitScrollRef = useRef<string | null>(null);
   const threadCountsCtx = useThreadCountsSafe();
+  const setReplyCount = threadCountsCtx?.setReplyCount;
 
   const participantProfiles = useMemo(() => {
     const map = new Map<string, import('@/types').Profile>();
@@ -169,7 +170,7 @@ export function DmConversationView() {
     }
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
-  }, [channelId, currentWorkspace?.id, threadCountsCtx]);
+  }, [channelId]);
 
   useLayoutEffect(() => {
     const container = scrollAreaRef.current;
@@ -187,7 +188,7 @@ export function DmConversationView() {
     if (newMsgArrived && atBottomRef.current && messages.length > 0 && !loadingOlderRef.current) {
       container.scrollTop = container.scrollHeight;
     }
-  }, [messages, threadCountsCtx]);
+  }, [messages]);
 
   useEffect(() => {
     const container = scrollAreaRef.current;
@@ -215,7 +216,7 @@ export function DmConversationView() {
           if (parentId) {
             getThreadMessageCounts([parentId]).then((counts) => {
               const count = counts.get(parentId);
-              if (count !== undefined) threadCountsCtx?.setReplyCount(parentId, count);
+              if (count !== undefined) setReplyCount?.(parentId, count);
             });
             return;
           }
@@ -271,23 +272,23 @@ export function DmConversationView() {
       });
 
     return () => { platform.removeChannel(ch); };
-  }, [channelId, currentWorkspace?.id, threadCountsCtx]);
+  }, [channelId, currentWorkspace?.id, setReplyCount]);
 
   useEffect(() => {
     messagesRef.current = messages;
-  }, [messages, threadCountsCtx]);
+  }, [messages]);
 
   useEffect(() => {
-    if (!threadCountsCtx || messages.length === 0) return;
+    if (!setReplyCount || messages.length === 0) return;
     const messageIds = messages.map((m) => m.id);
     getThreadMessageCounts(messageIds).then((counts) => {
       counts.forEach((count, parentId) => {
         if (count > 0) {
-          threadCountsCtx.setReplyCount(parentId, count);
+          setReplyCount(parentId, count);
         }
       });
     });
-  }, [messages, threadCountsCtx]);
+  }, [messages, setReplyCount]);
 
   const loadMore = useCallback(async () => {
     if (!channelId || isLoadingMore || !hasMore || messagesRef.current.length === 0) return;

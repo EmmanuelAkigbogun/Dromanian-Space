@@ -78,7 +78,7 @@ describe('clean provisioning', () => {
 describe('upgrade from a legacy database', () => {
   let db: { name: string; pool: pg.Pool };
   const ids = {
-    owner: randomUUID(), member: randomUUID(), secretMember: randomUUID(), outsider: randomUUID(),
+    owner: randomUUID(), member: randomUUID(), secretMember: randomUUID(), lateMember: randomUUID(), outsider: randomUUID(),
     ws: randomUUID(), otherWs: randomUUID(), general: randomUUID(), secret: randomUUID(), dmChannel: randomUUID(), dm: randomUUID(),
   };
   const attachments: Record<string, string> = {};
@@ -89,14 +89,16 @@ describe('upgrade from a legacy database', () => {
     const sql = (text: string, params: unknown[] = []) => db.pool.query(text, params);
 
     for (const [key, email] of [
-      ['owner', 'owner@legacy.test'], ['member', 'member@legacy.test'], ['secretMember', 'secret@legacy.test'], ['outsider', 'out@legacy.test'],
+      ['owner', 'owner@legacy.test'], ['member', 'member@legacy.test'], ['secretMember', 'secret@legacy.test'],
+      ['lateMember', 'late@legacy.test'], ['outsider', 'out@legacy.test'],
     ] as const) {
       await sql(`INSERT INTO auth.users (id, email) VALUES ($1, $2)`, [ids[key], email]);
     }
     await sql(`INSERT INTO workspaces (id, name, slug, owner_id) VALUES ($1, 'Legacy', 'legacy', $2), ($3, 'Other', 'other', $4)`,
       [ids.ws, ids.owner, ids.otherWs, ids.outsider]);
-    await sql(`INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1,$2,'owner'), ($1,$3,'member'), ($1,$4,'member'), ($5,$6,'owner')`,
-      [ids.ws, ids.owner, ids.member, ids.secretMember, ids.otherWs, ids.outsider]);
+    await sql(`INSERT INTO workspace_members (workspace_id, user_id, role) VALUES
+      ($1,$2,'owner'), ($1,$3,'member'), ($1,$4,'member'), ($1,$5,'member'), ($6,$7,'owner')`,
+      [ids.ws, ids.owner, ids.member, ids.secretMember, ids.lateMember, ids.otherWs, ids.outsider]);
     await sql(`INSERT INTO channels (id, workspace_id, name, slug, is_private, created_by) VALUES
       ($1, $4, 'general', 'general', false, $5), ($2, $4, 'secret', 'secret', true, $5), ($3, $4, 'Direct Message', 'dm-legacy', true, $5)`,
       [ids.general, ids.secret, ids.dmChannel, ids.ws, ids.owner]);
@@ -119,6 +121,7 @@ describe('upgrade from a legacy database', () => {
     await object(`${ids.secret}/b.pdf`, ids.owner);
     await object(`${ids.dmChannel}/c.pdf`, ids.member);
     await object(`${ids.general}/h.pdf`, ids.owner);
+    await object(`${ids.general}/deleted.pdf`, ids.owner);
     await attach('general', await message(ids.general, ids.owner, 'roadmap'), ids.owner, `${ids.general}/a.pdf`);
     await attach('secret', await message(ids.secret, ids.owner, 'budget'), ids.owner, `${ids.secret}/b.pdf`);
     await attach('dm', await message(ids.dmChannel, ids.member, 'private photo'), ids.member, `${ids.dmChannel}/c.pdf`);
@@ -127,6 +130,16 @@ describe('upgrade from a legacy database', () => {
     await attach('missing', await message(ids.general, ids.owner, 'lost'), ids.owner, `${ids.general}/missing.pdf`);
     await attach('local', await message(ids.general, ids.owner, 'blob'), ids.owner, 'blob:http://localhost/abc');
     await attach('prefixed', await message(ids.general, ids.owner, 'prefixed'), ids.owner, `message-attachments/${ids.general}/h.pdf`);
+    const deletedMessage = await message(ids.general, ids.owner, 'deleted before Drive backfill');
+    await attach('deleted', deletedMessage, ids.owner, `${ids.general}/deleted.pdf`);
+    await sql('UPDATE messages SET deleted_at = now() WHERE id = $1', [deletedMessage]);
+    await attach('deletedReshare', await message(ids.secret, ids.owner, 'independent live share'), ids.owner, `${ids.general}/deleted.pdf`);
+
+    // This member joins after the original attachment was posted but before
+    // Drive backfill. Current membership alone must not grant historical files.
+    await sql(`INSERT INTO channel_members (channel_id, user_id, created_at)
+      VALUES ($1, $2, (SELECT max(created_at) + interval '1 second' FROM file_attachments))`,
+      [ids.general, ids.lateMember]);
 
     // Baseline vulnerability present before the upgrade: anyone signed in can read any attachment.
     const leak = await as(db.pool, ids.outsider, `SELECT name FROM storage.objects WHERE name = $1`, [`${ids.secret}/b.pdf`]);
@@ -143,6 +156,7 @@ describe('upgrade from a legacy database', () => {
   it('keeps every attachment visible to exactly its original audience', async () => {
     expect(await readable(ids.member, `${ids.general}/a.pdf`)).toBe(true);
     expect(await readable(ids.secretMember, `${ids.general}/a.pdf`)).toBe(false);
+    expect(await readable(ids.lateMember, `${ids.general}/a.pdf`)).toBe(false);
     expect(await readable(ids.secretMember, `${ids.secret}/b.pdf`)).toBe(true);
     expect(await readable(ids.member, `${ids.secret}/b.pdf`)).toBe(false);
     expect(await readable(ids.owner, `${ids.dmChannel}/c.pdf`)).toBe(true);
@@ -150,6 +164,25 @@ describe('upgrade from a legacy database', () => {
     for (const name of [`${ids.general}/a.pdf`, `${ids.secret}/b.pdf`, `${ids.dmChannel}/c.pdf`]) {
       expect(await readable(ids.outsider, name)).toBe(false);
     }
+  });
+
+  it('freezes attachment metadata and never revives a pre-backfill deleted post', async () => {
+    expect(await as(db.pool, ids.lateMember, 'SELECT id FROM file_attachments WHERE id = $1', [attachments.general])).toHaveLength(0);
+    expect(await as(db.pool, ids.member, 'SELECT id FROM file_attachments WHERE id = $1', [attachments.general])).toHaveLength(1);
+
+    const deletedItem = (await db.pool.query(
+      'SELECT item_id FROM file_attachment_drive_links WHERE attachment_id = $1',
+      [attachments.deleted],
+    )).rows[0].item_id;
+    expect(await as(db.pool, ids.member, 'SELECT id FROM file_attachments WHERE id = $1', [attachments.deleted])).toHaveLength(0);
+    expect(await as(db.pool, ids.member, 'SELECT id FROM drive_items WHERE id = $1', [deletedItem])).toHaveLength(0);
+    expect(await readable(ids.member, `${ids.general}/deleted.pdf`)).toBe(false);
+
+    // A separate live share of the same stored object is an independent union
+    // grant and remains readable by that post's frozen, current audience.
+    expect(await as(db.pool, ids.secretMember, 'SELECT id FROM file_attachments WHERE id = $1', [attachments.deletedReshare])).toHaveLength(1);
+    expect(await as(db.pool, ids.secretMember, 'SELECT id FROM drive_items WHERE id = $1', [deletedItem])).toHaveLength(1);
+    expect(await readable(ids.secretMember, `${ids.general}/deleted.pdf`)).toBe(true);
   });
 
   it('maps attachments to Drive items without broadening access', async () => {
@@ -167,6 +200,7 @@ describe('upgrade from a legacy database', () => {
     expect(grants.map((g) => g.principal_type)).toEqual(['channel', 'channel']);
     expect(new Set(grants.map((g) => g.channel_id))).toEqual(new Set([ids.general, ids.dmChannel]));
     expect((await db.pool.query(`SELECT count(*)::int AS n FROM drive_grants WHERE principal_type = 'workspace'`)).rows[0].n).toBe(0);
+    expect(await as(db.pool, ids.lateMember, 'SELECT id FROM drive_items WHERE id = $1', [generalItem])).toHaveLength(0);
 
     // DM content stays private in Drive too.
     const dmItem = byId.get(attachments.dm).item_id;
@@ -180,10 +214,38 @@ describe('upgrade from a legacy database', () => {
     expect(rerun.processed).toBe(0);
     const after = (await db.pool.query('SELECT (SELECT count(*) FROM drive_items) AS items, (SELECT count(*) FROM drive_grants) AS grants, (SELECT count(*) FROM file_attachments) AS atts, (SELECT count(*) FROM messages) AS msgs')).rows[0];
     expect(after).toEqual(before);
-    expect(Number(after.atts)).toBe(8);
+    expect(Number(after.atts)).toBe(10);
     const report = (await db.pool.query('SELECT status, attachments FROM drive_backfill_report() ORDER BY status')).rows;
     expect(report.map((r) => [r.status, Number(r.attachments)])).toEqual([
-      ['link_attachment', 1], ['linked', 5], ['local_url', 1], ['missing_object', 1],
+      ['link_attachment', 1], ['linked', 7], ['local_url', 1], ['missing_object', 1],
     ]);
+  });
+
+  it('unions later re-shares and survives leave/rejoin without broadening the original post', async () => {
+    const laterMessage = (await db.pool.query(
+      `INSERT INTO messages (channel_id, user_id, content) VALUES ($1, $2, 'shared again') RETURNING id`,
+      [ids.general, ids.owner],
+    )).rows[0].id;
+    const laterAttachment = (await db.pool.query(
+      `INSERT INTO file_attachments (message_id, user_id, file_name, file_size, file_type, file_url)
+       VALUES ($1, $2, 'shared-again.pdf', 10, 'application/pdf', $3) RETURNING id`,
+      [laterMessage, ids.owner, `${ids.general}/a.pdf`],
+    )).rows[0].id;
+    const itemId = (await db.pool.query(
+      'SELECT item_id FROM file_attachment_drive_links WHERE attachment_id = $1',
+      [laterAttachment],
+    )).rows[0].item_id;
+
+    expect(await readable(ids.lateMember, `${ids.general}/a.pdf`)).toBe(true);
+    expect(await as(db.pool, ids.lateMember, 'SELECT id FROM drive_items WHERE id = $1', [itemId])).toHaveLength(1);
+
+    // Use the late member here: the original member also received this same
+    // object through the DM forward above, so leaving General alone correctly
+    // would not revoke their independent DM access.
+    await db.pool.query('DELETE FROM channel_members WHERE channel_id = $1 AND user_id = $2', [ids.general, ids.lateMember]);
+    expect(await readable(ids.lateMember, `${ids.general}/a.pdf`)).toBe(false);
+    await db.pool.query('INSERT INTO channel_members (channel_id, user_id) VALUES ($1, $2)', [ids.general, ids.lateMember]);
+    expect(await readable(ids.lateMember, `${ids.general}/a.pdf`)).toBe(true);
+    expect(await as(db.pool, ids.lateMember, 'SELECT id FROM drive_items WHERE id = $1', [itemId])).toHaveLength(1);
   });
 });

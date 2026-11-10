@@ -7,6 +7,7 @@ import { errorResponse, HttpError, json } from '../../server/http.js';
 import { crmInstalled } from '../../server/capabilities.js';
 import { embeddingsConfigured } from '../../server/knowledge/embed.js';
 import { KNOWN_TOOLS, toolAvailability } from '../../server/agents/tools/index.js';
+import { browserScraperHealth } from '../../server/agents/tools/browser.js';
 import { authenticate, requireMember, rpc, serviceClient } from '../../server/database.js';
 import { providerKeySource } from '../../server/provider-secrets.js';
 
@@ -107,7 +108,7 @@ export async function GET(request: Request): Promise<Response> {
     if (!/^[0-9a-f-]{36}$/i.test(workspaceId)) throw new HttpError(400, 'invalid_request', 'workspace_id is required.');
     await requireMember(workspaceId, user.id);
     const db = serviceClient();
-    const [settings, totals, crm, connectorRows, socialAccounts, catalog, membership, runtimeHealth] = await Promise.all([
+    const [settings, totals, crm, connectorRows, socialAccounts, catalog, membership, runtimeHealth, browserScraper] = await Promise.all([
       rpc<Settings>('ai_settings_for', { p_workspace_id: workspaceId }),
       rpc<Array<{ workspace_month: number; user_day: number }>>('ai_usage_totals', { p_workspace_id: workspaceId, p_user_id: user.id }),
       crmInstalled(),
@@ -116,6 +117,7 @@ export async function GET(request: Request): Promise<Response> {
       db.from('ai_models').select('id, provider, label, tier, input_per_mtok, output_per_mtok, active, sort_order').order('sort_order'),
       db.from('workspace_members').select('role').eq('workspace_id', workspaceId).eq('user_id', user.id).maybeSingle(),
       agnoHealth(),
+      browserScraperHealth(),
     ]);
     const isAdmin = ['owner', 'admin'].includes((membership.data?.role as string | undefined) ?? '');
     const canManageProviderKeys = user.appMetadata?.platform_admin === true;
@@ -204,6 +206,8 @@ export async function GET(request: Request): Promise<Response> {
       tools: toolAvailability(KNOWN_TOOLS, {
         webResearchEnabled: settings.web_research_enabled,
         webResearchAvailable: webAvailable,
+        browserScraperAvailable: browserScraper.available,
+        browserScraperReason: browserScraper.reason,
         crmInstalled: crm,
         siteUrl: settings.site_url,
         brandKitFolderId: settings.brand_kit_folder_id,

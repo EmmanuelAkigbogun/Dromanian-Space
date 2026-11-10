@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { ToolSpec } from '../../ai/provider.js';
 import { submitTasksForApproval } from './approvals.js';
+import { browserScrape } from './browser.js';
 import { readCrmRecord, proposeCrmUpdate, searchCrm, searchCrmNotes } from './crm.js';
 import { computeCsvMetrics } from './csv-metrics.js';
 import { listDrive, proposeDriveAction } from './drive.js';
@@ -16,7 +17,7 @@ export const TOOL_REGISTRY: Record<string, AgentTool> = Object.fromEntries(
   [
     searchCrm, searchCrmNotes, readCrmRecord, proposeCrmUpdate, listDrive, proposeDriveAction, searchWorkspace, searchKnowledge, readFile, readConversationTool, listTasks, computeCsvMetrics,
     proposeTask, proposeDocument, proposeChannelMessage, proposeSocialPosts, readCalendar, proposeCalendarEvent, workspaceMetrics, readBrandKit,
-    readPersonalNotes, savePersonalNote, delegateToSpecialists, submitTasksForApproval,
+    readPersonalNotes, savePersonalNote, delegateToSpecialists, submitTasksForApproval, browserScrape,
   ].map((t) => [t.name, t as unknown as AgentTool]),
 );
 
@@ -47,6 +48,8 @@ const APPROVAL: Record<string, ToolAvailability['approval']> = {
 export interface AvailabilityInputs {
   webResearchEnabled: boolean;
   webResearchAvailable: boolean;
+  browserScraperAvailable: boolean;
+  browserScraperReason?: string;
   crmInstalled: boolean;
   siteUrl: string | null;
   brandKitFolderId: string | null;
@@ -55,6 +58,16 @@ export interface AvailabilityInputs {
 export function toolAvailability(names: string[], opts: AvailabilityInputs): ToolAvailability[] {
   return names.map((name) => {
     const approval = APPROVAL[name] ?? 'none';
+    if (name === 'browser_scrape') {
+      return {
+        name,
+        available: opts.webResearchEnabled && opts.browserScraperAvailable,
+        approval,
+        reason: !opts.webResearchEnabled
+          ? 'Web research is turned off in this workspace’s AI settings.'
+          : opts.browserScraperAvailable ? undefined : opts.browserScraperReason ?? 'The private browser scraper is unavailable.',
+      };
+    }
     if (name === 'web_search') {
       return {
         name,

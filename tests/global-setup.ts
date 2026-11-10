@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
+import { loadEnvFile } from 'node:process';
 import path from 'node:path';
-import { REPO_ROOT } from '../tools/local-database/lib.ts';
+import { ENV_FILE, REPO_ROOT } from '../tools/local-database/lib.ts';
 
 /**
  * Starts (or reuses) the local PostgreSQL test stack and applies every migration.
@@ -15,4 +16,8 @@ export default function setup(): void {
   if (result.status !== 0) {
     throw new Error(`Local database failed to start:\n${result.stderr || result.stdout}`);
   }
+  // Vitest workers import server/database.ts before per-file beforeAll hooks.
+  // Load the freshly generated local endpoints and signing secret here so the
+  // server modules capture the safe local configuration, never hosted values.
+  loadEnvFile(ENV_FILE);
 }

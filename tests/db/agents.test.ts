@@ -13,6 +13,7 @@ import {
   createUser,
   createWorkspace,
   expectDenied,
+  pool,
   putObject,
   q,
   type TestUser,
@@ -73,8 +74,15 @@ describe('agent catalog', () => {
     expect(await q<{ n: number }>(alice, 'SELECT ensure_workspace_agents($1) AS n', [wsA])).toEqual([{ n: 0 }]);
     const dir = await q<{ template_key: string; kind: string }>(bob, 'SELECT * FROM agent_directory($1)', [wsA]);
     expect(dir.filter((d) => d.kind === 'specialist').map((d) => d.template_key).sort()).toEqual([
-      'cerebras_analyst', 'cerebras_engineer', 'cerebras_research', 'cerebras_writer']);
+      'agno_drive_agent', 'agno_scout', 'cerebras_analyst', 'cerebras_research', 'cerebras_writer',
+      'github_commerce_analyst', 'github_competitor_intelligence', 'github_creative_direction',
+      'github_customer_success', 'github_customer_support', 'github_email_marketing',
+      'github_executive_assistant', 'github_finance_analyst', 'github_marketing_strategy',
+      'github_project_manager', 'github_recruiting', 'github_sales_development',
+      'github_seo_specialist', 'github_social_calendar',
+    ]);
     expect(dir.filter((d) => d.kind === 'coordinator').map((d) => d.template_key)).toEqual(['cerebras_coordinator']);
+    expect(dir.map((d) => d.template_key)).not.toContain('cerebras_engineer');
     expect(await q(mallory, 'SELECT * FROM agent_directory($1)', [wsA])).toHaveLength(0);
   });
 
@@ -114,14 +122,110 @@ describe('run lifecycle', () => {
     expect((await svc<{ r: { claimed: boolean; reason: string } }>('SELECT agent_claim_run($1, $2) AS r', [run.run_id, 'w2']))[0].r).toMatchObject({ claimed: false, reason: 'running_elsewhere' });
     expect(await q<{ r: string }>(alice, 'SELECT agent_cancel_run($1) AS r', [run.run_id])).toEqual([{ r: 'cancelling' }]);
     expect((await svc<{ r: { cancel_requested: boolean } }>('SELECT agent_heartbeat($1, $2) AS r', [run.run_id, 'w1']))[0].r.cancel_requested).toBe(true);
-    await svc('SELECT agent_finish_run($1, $2, $3, $4, $5, NULL, NULL)', [run.run_id, 'w1', 'cancelled', 'partial', JSON.stringify({ input_tokens: 10, output_tokens: 5 })]);
-    expect((await admin('SELECT status FROM agent_runs WHERE id = $1', [run.run_id]))[0].status).toBe('cancelled');
+    await expectDenied(svc(
+      `SELECT agent_create_proposal(
+        $1, 'late-proposal', 'save_document',
+        '{"title":"Late","body":"must not exist"}'::jsonb, 'Late proposal'
+      )`,
+      [run.run_id],
+    ), /Run is not active/);
+    await expectDenied(svc(
+      `SELECT agent_submit_task_requests(
+        $1, 'late-tasks',
+        '[{"title":"Late task","priority":"medium","assignee_ids":[]}]'::jsonb,
+        'late cancellation test'
+      )`,
+      [run.run_id],
+    ), /Run is not active/);
+    await expectDenied(
+      svc(`SELECT agent_save_personal_note($1, 'Late note must not exist')`, [run.run_id]),
+      /Run is not active/,
+    );
+    await expectDenied(
+      q(alice, 'SELECT agent_share_output($1, $2, NULL)', [run.run_id, team]),
+      /Answer not found/,
+    );
+    expect(await admin('SELECT id FROM task_requests WHERE agent_run_id = $1', [run.run_id])).toHaveLength(0);
+    expect(await admin('SELECT id FROM agent_personal_notes WHERE run_id = $1', [run.run_id])).toHaveLength(0);
+    const publish = (await svc<{ r: { status: string } }>(
+      'SELECT agent_publish_reply($1, $2) AS r',
+      [run.run_id, 'A late reply must never be published.'],
+    ))[0].r;
+    expect(publish.status).toBe('cancelled');
+    const lateFinish = (await svc<{ r: string }>(
+      'SELECT agent_finish_run($1, $2, $3, $4, $5, NULL, NULL) AS r',
+      [run.run_id, 'w1', 'completed', 'A late answer must not replace the checkpoint.', JSON.stringify({ input_tokens: 10, output_tokens: 5 })],
+    ))[0].r;
+    expect(lateFinish).toBe('cancelled');
+    const [cancelled] = await admin<{ status: string; content: string }>(
+      `SELECT run.status, message.content
+       FROM agent_runs run
+       JOIN agent_messages message ON message.id = run.output_message_id
+       WHERE run.id = $1`,
+      [run.run_id],
+    );
+    expect(cancelled).toEqual({ status: 'cancelled', content: '' });
+    expect(await admin('SELECT id FROM agent_action_proposals WHERE run_id = $1', [run.run_id])).toHaveLength(0);
 
     const leaver = await createUser('a-leaver');
     await addMember(wsA, leaver);
     const queued = await startRun(leaver, wsA, knowledgeAgent, 'queued work');
     await q(alice, 'SELECT remove_workspace_member($1, $2, $3)', [wsA, leaver.id, alice.id]);
     expect((await svc<{ r: { claimed: boolean } }>('SELECT agent_claim_run($1, $2) AS r', [queued.run_id, 'w1']))[0].r.claimed).toBe(false);
+  });
+
+  it('serializes Stop ahead of a proposal that was waiting on the run lock', async () => {
+    const run = await startRun(alice, wsA, knowledgeAgent, 'cancel mutation race');
+    await svc('SELECT agent_claim_run($1, $2)', [run.run_id, 'race-worker']);
+    const blocker = await pool.connect();
+    const mutator = await pool.connect();
+    try {
+      await blocker.query('BEGIN');
+      await blocker.query('SELECT id FROM agent_runs WHERE id = $1 FOR UPDATE', [run.run_id]);
+      const mutatorPid = (await mutator.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+      const mutation = mutator.query(
+        `SELECT agent_create_proposal(
+          $1, 'racing-proposal', 'save_document',
+          '{"title":"Race","body":"must not exist"}'::jsonb, 'Race proposal'
+        )`,
+        [run.run_id],
+      ).then(
+        (value) => ({ value, error: null as Error | null }),
+        (error: Error) => ({ value: null, error }),
+      );
+
+      let waitingOnRun = false;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        const [activity] = await admin<{ wait_event_type: string | null }>(
+          'SELECT wait_event_type FROM pg_stat_activity WHERE pid = $1',
+          [mutatorPid],
+        );
+        if (activity?.wait_event_type === 'Lock') {
+          waitingOnRun = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(waitingOnRun).toBe(true);
+
+      await blocker.query(
+        'UPDATE agent_runs SET cancel_requested_at = now() WHERE id = $1',
+        [run.run_id],
+      );
+      await blocker.query('COMMIT');
+      const outcome = await mutation;
+      expect(outcome.value).toBeNull();
+      expect(outcome.error?.message).toMatch(/Run is not active/);
+      expect(await admin('SELECT id FROM agent_action_proposals WHERE run_id = $1', [run.run_id])).toHaveLength(0);
+    } finally {
+      await blocker.query('ROLLBACK').catch(() => undefined);
+      blocker.release();
+      mutator.release();
+    }
+    expect((await svc<{ r: string }>(
+      'SELECT agent_finish_run($1, $2, $3, NULL, NULL, $4, $5) AS r',
+      [run.run_id, 'race-worker', 'cancelled', 'cancelled', 'Stopped.'],
+    ))[0].r).toBe('cancelled');
   });
 
   it('marks runs whose worker vanished as interrupted, keeping partial output', async () => {
@@ -210,6 +314,11 @@ describe('proposals', () => {
     expect(decided.status).toBe('executed');
     const msg = (await admin('SELECT user_id, agent_id, agent_run_id FROM messages WHERE id = $1', [decided.result.message_id]))[0];
     expect(msg).toMatchObject({ user_id: alice.id, agent_id: knowledgeAgent, agent_run_id: run.run_id });
+    await expectDenied(svc('SELECT agent_execute_proposal($1)', [res.proposal_id]), /permission denied/);
+    expect(await admin(
+      'SELECT id FROM messages WHERE agent_run_id = $1 AND id = $2',
+      [run.run_id, decided.result.message_id],
+    )).toHaveLength(1);
   });
 
   it('binds approval to the reviewed arguments, executes once and expires', async () => {
@@ -249,8 +358,74 @@ describe('proposals', () => {
   it('cancels pending actions when the run is cancelled', async () => {
     const run = await runWithSources([]);
     const res = await propose(run.run_id, 'save_document', { title: 'Never', body: 'x' });
+    const submitted = (await svc<{ r: { request_ids: string[] } }>(
+      `SELECT agent_submit_task_requests(
+        $1, 'cancel-task',
+        '[{"title":"Never create this task","priority":"medium","assignee_ids":[]}]'::jsonb,
+        'cancellation test'
+      ) AS r`,
+      [run.run_id],
+    ))[0].r;
     await q(alice, 'SELECT agent_cancel_run($1)', [run.run_id]);
     expect((await admin('SELECT status FROM agent_action_proposals WHERE id = $1', [res.proposal_id]))[0].status).toBe('cancelled');
+    expect((await q<{ r: { status: string } }>(
+      alice,
+      'SELECT agent_decide_proposal($1, true, $2) AS r',
+      [res.proposal_id, await hashOf(res.proposal_id!)],
+    ))[0].r.status).toBe('cancelled');
+    await expectDenied(
+      q(alice, `SELECT agent_revise_proposal($1, '{"title":"Still never","body":"x"}')`, [res.proposal_id]),
+      /Run is not active/,
+    );
+    await expectDenied(
+      q(alice, 'SELECT agent_share_output($1, $2, NULL)', [run.run_id, team]),
+      /Answer not found/,
+    );
+    expect((await admin<{ status: string }>(
+      'SELECT status FROM task_requests WHERE id = $1',
+      [submitted.request_ids[0]],
+    ))[0].status).toBe('rejected');
+    expect((await q<{ r: { status: string } }>(
+      alice,
+      `SELECT decide_task_request($1, true, '{}'::jsonb, NULL) AS r`,
+      [submitted.request_ids[0]],
+    ))[0].r.status).toBe('rejected');
+    expect(await admin(
+      `SELECT task.id
+       FROM tasks task
+       JOIN task_requests request ON request.task_id = task.id
+       WHERE request.id = $1`,
+      [submitted.request_ids[0]],
+    )).toHaveLength(0);
+  });
+
+  it('does not grant service-role bypasses to renamed cancellation implementations', async () => {
+    const signatures = [
+      'public.agent_finish_run_pre_task_request_cancellation(uuid,text,text,text,jsonb,text,text)',
+      'public.agent_terminalize_team_task_pre_task_request_cancellation(uuid,text,text,text)',
+      'public.agent_cancel_run_pre_task_request_cancellation(uuid)',
+      'public.agent_create_proposal_pre_cancellation(uuid,text,text,jsonb,text)',
+      'public.agent_submit_task_requests_pre_cancellation(uuid,text,jsonb,text)',
+      'public.agent_save_personal_note_pre_cancellation(uuid,text)',
+      'public.agent_execute_proposal_pre_cancellation(uuid)',
+      'public.agent_decide_proposal_pre_cancellation(uuid,boolean,text)',
+      'public.agent_revise_proposal_pre_cancellation(uuid,jsonb)',
+      'public.decide_task_request_pre_cancellation(uuid,boolean,jsonb,text)',
+      'public.agent_share_output_pre_cancellation(uuid,uuid,uuid)',
+      'public.agent_execute_proposal_core(uuid)',
+      'public.agent_execute_proposal_pre_drive(uuid)',
+      'public.agent_execute_proposal_pre_social(uuid)',
+      'public.agent_execute_proposal_pre_company(uuid)',
+      'public.decide_task_request_pre_company(uuid,boolean,jsonb,text)',
+    ];
+    const privileges = await admin<{ signature: string; can_execute: boolean }>(
+      `SELECT signature,
+              has_function_privilege('service_role', signature, 'EXECUTE') AS can_execute
+       FROM unnest($1::text[]) signature`,
+      [signatures],
+    );
+    expect(privileges).toHaveLength(signatures.length);
+    expect(privileges.filter((entry) => entry.can_execute)).toEqual([]);
   });
 });
 

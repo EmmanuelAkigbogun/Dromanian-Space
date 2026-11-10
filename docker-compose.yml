@@ -50,7 +50,14 @@ x-server-env: &server-env
   AGNO_URL: http://agno:8000
   AGNO_TOOL_CALLBACK_URL: http://worker:3001/tool
   AGNO_TOOL_PORT: "3001"
+  CRAWL4AI_URL: http://crawl4ai-gateway:8080
+  CRAWL4AI_API_TOKEN_FILE: /run/browser-scraper/api_token
+  # Increment together with any APP_JWT_SECRET rotation. It is also present on
+  # Crawl4AI so Compose recreates every token consumer in the same rollout.
+  CRAWL4AI_TOKEN_EPOCH: ${CRAWL4AI_TOKEN_EPOCH:-1}
   N8N_BASE_URL: ${N8N_BASE_URL:-}
+  SOCIAL_BROWSER_WS_ENDPOINT: ${SOCIAL_BROWSER_WS_ENDPOINT:-}
+  SOCIAL_BROWSER_TOKEN: ${SOCIAL_BROWSER_TOKEN:-}
   TURN_HOST: ${TURN_HOST:-turn.purplehive.pro}
   TURN_SHARED_SECRET: ${TURN_SHARED_SECRET:-}
   LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
@@ -68,7 +75,7 @@ x-server-env: &server-env
 
 services:
   mount-guard:
-    image: busybox:1.37.0
+    image: busybox:1.37.0@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec
     restart: "no"
     logging: *logging
     command:
@@ -83,8 +90,139 @@ services:
       - /srv/app-data/dromanian-space:/check/app
       - /srv/cloud-data/dromanian-space:/check/cloud
 
+  # Generate a purpose-specific random token without sharing APP_JWT_SECRET
+  # with any helper or third-party container. App services and Crawl4AI mount
+  # only this token, read-only.
+  browser-scraper-token:
+    image: busybox:1.37.0@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec
+    restart: "no"
+    logging: *logging
+    environment:
+      CRAWL4AI_TOKEN_EPOCH: ${CRAWL4AI_TOKEN_EPOCH:-1}
+    command:
+      - sh
+      - -ec
+      - |
+        umask 033
+        epoch="$${CRAWL4AI_TOKEN_EPOCH:-1}"
+        case "$$epoch" in
+          ''|*[!A-Za-z0-9._-]*|?????????????????????????????????????????????????????????????????*)
+            echo "Invalid CRAWL4AI_TOKEN_EPOCH" >&2
+            exit 1
+            ;;
+        esac
+        current_epoch="$$(cat /run/browser-scraper/token_epoch 2>/dev/null || true)"
+        if [ ! -s /run/browser-scraper/api_token ] || [ "$$current_epoch" != "$$epoch" ]; then
+          head -c 32 /dev/urandom | sha256sum | cut -c 1-64 > /run/browser-scraper/.api_token.tmp
+          printf '%s\n' "$$epoch" > /run/browser-scraper/.token_epoch.tmp
+          chmod 0444 /run/browser-scraper/.api_token.tmp /run/browser-scraper/.token_epoch.tmp
+          mv /run/browser-scraper/.api_token.tmp /run/browser-scraper/api_token
+          mv /run/browser-scraper/.token_epoch.tmp /run/browser-scraper/token_epoch
+        fi
+    network_mode: none
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - browser-scraper-token:/run/browser-scraper
+
+  # Browser-rendered extraction from Crawl4AI. This service has no host port,
+  # accepts only authenticated requests, and keeps dangerous request features
+  # (arbitrary JS, cookies, proxies and deep crawling) disabled.
+  crawl4ai:
+    image: unclecode/crawl4ai:0.9.5@sha256:0b05666882bfb67f45d559a5b827839c54127b74aedd723f8ab338a3571b5fc9
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      browser-scraper-token:
+        condition: service_completed_successfully
+    environment:
+      CRAWL4AI_ALLOW_DEEP_CRAWL: "false"
+      CRAWL4AI_TOKEN_EPOCH: ${CRAWL4AI_TOKEN_EPOCH:-1}
+    expose:
+      - "11235"
+    shm_size: "1gb"
+    user: appuser
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/lib/redis:uid=999,gid=999,mode=0700
+      - /var/lib/crawl4ai/outputs:uid=999,gid=999,mode=0700
+      - /home/appuser/.crawl4ai:uid=999,gid=999,mode=0700
+      - /home/appuser/.cache/url_seeder:uid=999,gid=999,mode=0700
+      - /home/appuser/.gunicorn:uid=999,gid=999,mode=0700
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - browser-scraper-token:/run/secrets:ro
+    networks:
+      - browser-egress
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+          memory: 4G
+          pids: 512
+        reservations:
+          memory: 1G
+    healthcheck:
+      # `/health` is intentionally public; authenticated `/schema` verifies
+      # that the mounted token and protected API boundary agree.
+      test: ["CMD-SHELL", "TOKEN=$$(cat /run/secrets/api_token) && curl -fsS -H \"Authorization: Bearer $$TOKEN\" http://127.0.0.1:11235/schema >/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # The app never joins Crawl4AI's network. This fixed-upstream gateway is the
+  # only bridge: it exposes only authenticated schema and Markdown requests,
+  # and cannot be turned into a caller-selected forward proxy.
+  crawl4ai-gateway:
+    image: ghcr.io/nginx/nginx-unprivileged:1.30.5-alpine@sha256:56b8272e43a0525f67aed68d1e0794a712d10e3e45a563e118e9a77c817e6f86
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      crawl4ai:
+        condition: service_healthy
+    entrypoint: ["/usr/sbin/nginx"]
+    command: ["-g", "daemon off;"]
+    user: "101:101"
+    expose:
+      - "8080"
+    read_only: true
+    tmpfs:
+      - /tmp:uid=101,gid=101,mode=0700
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - type: bind
+        source: ./deploy/nginx/crawl4ai-gateway.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+    networks:
+      - default
+      - browser-egress
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+          pids: 64
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
   db:
-    image: pgvector/pgvector:0.8.1-pg17-bookworm
+    image: pgvector/pgvector:0.8.1-pg17-bookworm@sha256:3e8b3adfd27b5707128f60956f62a793c3c9326ea8cfaf0eab7adccb5d700b21
     restart: unless-stopped
     logging: *logging
     stop_grace_period: 2m
@@ -132,7 +270,7 @@ services:
       DATABASE_API_PASSWORD: ${DATABASE_API_PASSWORD:?DATABASE_API_PASSWORD}
 
   rest:
-    image: postgrest/postgrest:v14.17
+    image: postgrest/postgrest:v14.17@sha256:c9dc201e555f5d8e37e7f39cdd4df0229774996e213bfd7de8d10ac609030f2c
     restart: unless-stopped
     logging: *logging
     depends_on:
@@ -170,10 +308,20 @@ services:
       PORT: "3000"
       API_RATE_LIMIT_PER_MINUTE: ${API_RATE_LIMIT_PER_MINUTE:-600}
       API_AGENT_RATE_LIMIT_PER_MINUTE: ${API_AGENT_RATE_LIMIT_PER_MINUTE:-30}
+      # Optional Domains fallback. Keep these API-only: the worker never
+      # manages DNS and must not receive the scoped Cloudflare token.
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
+      CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:-}
+      CLOUDFLARE_TUNNEL_ID: ${CLOUDFLARE_TUNNEL_ID:-}
+      CLOUDFLARE_TUNNEL_SERVICE: ${CLOUDFLARE_TUNNEL_SERVICE:-http://web:8080}
     expose:
       - "3000"
     depends_on:
       rest:
+        condition: service_healthy
+      browser-scraper-token:
+        condition: service_completed_successfully
+      crawl4ai-gateway:
         condition: service_healthy
     read_only: true
     tmpfs:
@@ -184,6 +332,9 @@ services:
         target: /data/storage
         bind:
           create_host_path: false
+      - browser-scraper-token:/run/browser-scraper:ro
+    networks:
+      - default
     deploy:
       resources:
         limits:
@@ -257,6 +408,10 @@ services:
         condition: service_healthy
       agno:
         condition: service_healthy
+      browser-scraper-token:
+        condition: service_completed_successfully
+      crawl4ai-gateway:
+        condition: service_healthy
     expose:
       - "3001"
     read_only: true
@@ -268,6 +423,9 @@ services:
         target: /data/storage
         bind:
           create_host_path: false
+      - browser-scraper-token:/run/browser-scraper:ro
+    networks:
+      - default
     stop_grace_period: 30s
     healthcheck:
       test: ["CMD", "node", "-e", "const t=+require('fs').readFileSync('/tmp/worker-alive','utf8');process.exit(Date.now()-t<120000?0:1)"]
@@ -277,7 +435,7 @@ services:
       start_period: 30s
 
   livekit:
-    image: livekit/livekit-server:v1.13.10
+    image: livekit/livekit-server:v1.13.10@sha256:89ca9ce0791e18d6e03bf6e2c49ceb27e1c754eae8bd50c989386c1a5963791a
     restart: unless-stopped
     logging: *logging
     command: ["--disable-strict-config"]
@@ -322,7 +480,7 @@ services:
   # web container at /office/ and by the API on the private network. Every
   # request is signed with ONLYOFFICE_JWT_SECRET; it stores no files itself.
   onlyoffice:
-    image: onlyoffice/documentserver:9.2.1
+    image: onlyoffice/documentserver:9.2.1@sha256:fd38f611f1127190be306fa1eb09d5f4ff7d1d2509aef3dd14aa56377915829d
     restart: unless-stopped
     logging: *logging
     environment:
@@ -350,7 +508,7 @@ services:
       start_period: 120s
 
   coturn:
-    image: coturn/coturn:4.18.0-r0
+    image: coturn/coturn:4.18.0-r0@sha256:bbefd3e1fdfdc0d58770fe01b581fd8b00d9f3a5580d00acb77cf719a6bc78e3
     restart: unless-stopped
     logging: *logging
     security_opt:
@@ -421,3 +579,10 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+volumes:
+  browser-scraper-token:
+
+networks:
+  browser-egress:
+    driver: bridge

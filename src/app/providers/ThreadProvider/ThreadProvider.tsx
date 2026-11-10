@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useMemo, type ReactNode } from 'react';
 import type { Message } from '@/types';
+import { withReplyCount } from './threadCounts';
 
 interface ThreadStateContextValue {
   activeThread: Message | null;
@@ -34,11 +35,7 @@ export function ThreadProvider({ children }: ThreadProviderProps) {
   }, []);
 
   const setReplyCount = useCallback((parentId: string, count: number) => {
-    setReplyCountsState((prev) => {
-      const next = new Map(prev);
-      next.set(parentId, count);
-      return next;
-    });
+    setReplyCountsState((prev) => withReplyCount(prev, parentId, count));
   }, []);
 
   const incrementReplyCount = useCallback((parentId: string) => {

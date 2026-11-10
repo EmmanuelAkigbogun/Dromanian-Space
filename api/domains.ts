@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { authenticate } from '../server/database.js';
-import { CloudflareClient, normalizeRecordName } from '../server/cloudflare.js';
+import { CloudflareClient, DEFAULT_TUNNEL_SERVICE, normalizeRecordName } from '../server/cloudflare.js';
 import { removeCloudflareConnection, saveCloudflareConnection, savedCloudflareConnection } from '../server/cloudflare-secrets.js';
 import { errorResponse, HttpError, json, readJson } from '../server/http.js';
 
@@ -37,7 +37,7 @@ export async function GET(request: Request): Promise<Response> {
       if (!cfId.safeParse(zoneId).success) throw new HttpError(400, 'invalid_request', 'Invalid zone ID.');
       return json({ records: await client.records(zoneId) });
     }
-    return json({ allowed: true, configured: true, account_id: saved.accountId, tunnel_id: saved.tunnelId ?? null, default_service: saved.defaultService ?? 'http://web:80', zones: await client.zones() });
+    return json({ allowed: true, configured: true, account_id: saved.accountId, tunnel_id: saved.tunnelId ?? null, default_service: saved.defaultService ?? DEFAULT_TUNNEL_SERVICE, zones: await client.zones() });
   } catch (error) { return errorResponse(error); }
 }
 
@@ -47,7 +47,7 @@ export async function POST(request: Request): Promise<Response> {
     const raw = await readJson(request, z.object({ action: z.string().min(1) }).passthrough());
     if (raw.action === 'configure') {
       const body = z.object({ action: z.literal('configure'), api_token: z.string().trim().min(20).max(1000), account_id: cfId, tunnel_id: cfId.optional().or(z.literal('')), default_service: z.string().trim().max(500).optional() }).parse(raw);
-      const value = { apiToken: body.api_token, accountId: body.account_id, tunnelId: body.tunnel_id || undefined, defaultService: body.default_service || 'http://web:80' };
+      const value = { apiToken: body.api_token, accountId: body.account_id, tunnelId: body.tunnel_id || undefined, defaultService: body.default_service || DEFAULT_TUNNEL_SERVICE };
       await new CloudflareClient(value).verify();
       await saveCloudflareConnection(value);
       return json({ configured: true });

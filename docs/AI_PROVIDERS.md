@@ -5,7 +5,7 @@ once. Each agent version stores a model id, and the provider follows from it (`c
 Anthropic; `gpt-…`, `o…` and `chatgpt-…` are OpenAI). So specialists in one Team Chat run can use
 different providers. Model ids beginning with `gemini-` use Google Gemini; `gpt-oss-120b` and `cerebras/...` use Cerebras. No GPU and no local model server are needed.
 
-The current production roster runs on OpenAI: all 20 built-in agents use `gpt-6.1-sol`. The 2026-11-02 migration moved every agent that was on Cerebras `gpt-oss-120b` to a new version on `gpt-6.1-sol`; earlier versions, conversations and runs remain readable, and `gpt-oss-120b` stays selectable. Workspaces can also choose `gpt-6.1-terra`, `gpt-6-luna` (cheapest) or `gpt-6-astra` (most capable, five times the price of Sol) in AI settings. This needs an OpenAI API key from platform.openai.com; a ChatGPT subscription does not include API access.
+The 20-role built-in roster is OpenAI-native. The 2026-11-02 migration moved every agent that was on Cerebras `gpt-oss-120b` to an initial OpenAI version on `gpt-6.1-sol`; earlier versions, conversations and runs remain readable, and `gpt-oss-120b` stays selectable. Each workspace can switch the shared team to another available OpenAI model, so current versions are not forced back to Sol by later roster upgrades. Workspaces can also choose `gpt-6.1-terra`, `gpt-6-luna` or `gpt-6-astra` in AI settings. This needs an OpenAI API key from platform.openai.com; a ChatGPT subscription does not include API access.
 
 To change the API, a workspace admin uses the **API** and **Model** selectors at the top of the Agents page and chooses **Use for all shared agents**. That calls `ai_use_model`, which in one transaction allows the model, makes it the workspace default and gives every shared agent a new version on it (private agents are unchanged). APIs without a key on the server cannot be chosen. Everyone else sees which API the team runs on.
 
@@ -83,7 +83,7 @@ concurrency limit apply to every provider.
 
 ## How each provider is called
 
-Agent runs go through the isolated Agno service. OpenAI models use Agno's `OpenAIResponses` adapter, because GPT-6 models accept function tools only through the Responses API. Requests are stateless (`store: false`): Agno replays the encrypted reasoning items between tool turns, so OpenAI keeps no response state. Agent effort maps to `reasoning.effort` (`max` from gpt-5.6 and GPT-6 on). Cerebras uses Agno's native Cerebras adapter and the model id `gpt-oss-120b`. Keys remain server-only, tools return through the authenticated worker bridge, and persistent state continues to live in this deployment's database. Cached input tokens are recorded separately from fresh input for every provider, so they are not counted twice in budgets or cost estimates.
+OpenAI text/tool runs use the server's native streaming Responses API adapter; image runs and non-OpenAI models use the isolated Agno service. Requests are stateless (`store: false`), with encrypted reasoning items replayed between tool turns, so OpenAI keeps no response state. Agent effort maps to `reasoning.effort`. Cerebras uses Agno's native Cerebras adapter and the model id `gpt-oss-120b`. Keys remain server-only, tools return through the authenticated worker bridge, and persistent state continues to live in this deployment's database. Cached input tokens are recorded separately from fresh input for every provider, so they are not counted twice in budgets or cost estimates.
 
 Gemini uses the streaming Interactions API from `@google/genai`, sends the stateless transcript on every turn, exposes workspace actions as function tools, and uses Google's search tool when web research is enabled. Agent effort maps to Gemini's thinking level.
 
@@ -117,8 +117,11 @@ persisted input.
 - **Missing provider:** a run whose model's provider has no key fails immediately with
   `provider_not_configured` and names the variable to set. Nothing is sent anywhere.
 - **Cancellation** (Stop) aborts the provider request through the SDK's abort signal.
-- **API limits:** the application API rate-limits per client: `API_RATE_LIMIT_PER_MINUTE` (default
-  300) for all routes, and `API_AGENT_RATE_LIMIT_PER_MINUTE` (default 30) for starting runs.
+- **API limits:** the application API rate-limits per signed-in session:
+  `API_RATE_LIMIT_PER_MINUTE` (default 600) for general routes, and
+  `API_AGENT_RATE_LIMIT_PER_MINUTE` (default 30) for starting runs. This is a
+  short anti-abuse safety window, not a product quota or a lifetime/monthly cap
+  on messages. Provider-side AI limits apply independently.
 
 ## Data flow
 

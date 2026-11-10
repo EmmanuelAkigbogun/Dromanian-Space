@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AgnoRunError } from '../../server/agents/agno.js';
 import { ProviderError } from '../../server/ai/provider.js';
-import { errorMessage, providerDetail } from '../../server/agents/engine.js';
+import { companySiteUrl, errorMessage, providerDetail, scopedSiteUrl } from '../../server/agents/engine.js';
 
 describe('agent run error messages', () => {
   it('explains model access problems instead of a generic server error', () => {
@@ -39,5 +39,21 @@ describe('agent run error messages', () => {
     const detail = providerDetail('Incorrect API key provided: sk-proj-abcdefghijklmnop. Bearer abc.def');
     expect(detail).not.toContain('sk-proj-abcdefghijklmnop');
     expect(detail).not.toContain('abc.def');
+  });
+
+  it('normalizes a selected CRM company domain to a safe public site', () => {
+    expect(companySiteUrl('www.example.com/about?from=crm')).toBe('https://www.example.com');
+    expect(companySiteUrl('http://Example.COM/path')).toBe('https://example.com');
+    expect(companySiteUrl('https://user:secret@example.com')).toBeNull();
+    expect(companySiteUrl('localhost:3000')).toBeNull();
+    expect(companySiteUrl('169.254.169.254/latest')).toBeNull();
+    expect(companySiteUrl('company.internal')).toBeNull();
+  });
+
+  it('never falls back to the workspace site for a selected company', () => {
+    expect(scopedSiteUrl('https://workspace.example', null)).toBe('https://workspace.example');
+    expect(scopedSiteUrl('https://workspace.example', { domain: 'client.example/path' })).toBe('https://client.example');
+    expect(scopedSiteUrl('https://workspace.example', { domain: '' })).toBeNull();
+    expect(scopedSiteUrl('https://workspace.example', { domain: 'localhost:3000' })).toBeNull();
   });
 });

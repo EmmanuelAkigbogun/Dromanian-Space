@@ -4,6 +4,10 @@ The application owns a standalone PostgreSQL 17 database. Bootstrap SQL lives
 in `database/bootstrap.sql`; ordered migrations live in `database/migrations`.
 The migrator records version, filename and SHA-256 in
 `app_migrations.schema_migrations` and refuses changed applied files.
+The migrator takes a PostgreSQL advisory transaction lock before both initial
+bootstrap/ledger creation and every migration. Lock acquisition is bounded by
+`MIGRATION_LOCK_TIMEOUT_SECONDS` (60 seconds by default), so concurrent deploys
+serialize safely without leaving a deployment hung forever.
 
 In production, the root Compose resource runs the one-shot `migrate` service:
 

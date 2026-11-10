@@ -11,7 +11,12 @@ lerna-debug.log*
 ignore/
 supabase/ignore/
 
+# Local CRM imports belong to the operator, never to the application source.
+database/*.xls
+database/*.xlsx
+
 node_modules
+**/.pytest_cache/
 dist
 dist-ssr
 *.local

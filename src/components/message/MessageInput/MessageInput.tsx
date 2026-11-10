@@ -1,6 +1,6 @@
 import { DriveShare } from '@/features/platform/DriveShare';
 import { api } from '@/features/platform/client';
-import { useState, useRef, useCallback, useEffect, type ClipboardEvent, type FormEvent, type KeyboardEvent, type DragEvent } from 'react';
+import { useState, useRef, useCallback, useEffect, useLayoutEffect, type ClipboardEvent, type FormEvent, type KeyboardEvent, type DragEvent } from 'react';
 import { useMessageContextSafe } from '@/app/providers/MessageProvider';
 import { useChannelContextSafe } from '@/app/providers/ChannelProvider';
 import { useEditSafe } from '@/app/providers/EditProvider';
@@ -14,6 +14,15 @@ import { RecordButton } from './RecordButton/RecordButton';
 import { UploadProgress } from '@/components/message/UploadProgress';
 import { AttachmentPreview } from '@/components/message/AttachmentPreview';
 import { platform } from '@/lib/platform';
+import {
+  composerIsUnchanged,
+  composerRouteKey,
+  composerScopeIsCurrent,
+  failedAttachmentItems,
+  nextComposerScopeToken,
+  withoutSubmittedItems,
+  type ComposerScopeToken,
+} from '@/lib/composerSubmission';
 import { useInvalidateAttachments } from '@/hooks/useMessageAttachments';
 import type { LinkDisplayMode } from '@/types';
 import styles from './MessageInput.module.css';
@@ -31,6 +40,39 @@ interface UploadingFile {
   status: 'uploading' | 'complete' | 'error';
   error?: string;
 }
+
+interface MessageSubmission {
+  content: string;
+  files: PendingFile[];
+  links: string[];
+  linkMode: LinkDisplayMode;
+  revision: number;
+  providerFailureIds: string[];
+  scopeToken: ComposerScopeToken;
+}
+
+interface FileAttachmentRetry {
+  pending: PendingFile;
+  uploadedUrl?: string;
+}
+
+interface AttachmentRetryBatch {
+  messageId: string;
+  files: FileAttachmentRetry[];
+  links: string[];
+  scopeToken: ComposerScopeToken;
+}
+
+interface ScheduledSubmissionRetry {
+  submission: MessageSubmission;
+  scheduledAt: string;
+  channelId?: string | null;
+  conversationId?: string | null;
+  parentId?: string | null;
+  userId: string;
+}
+
+type RecoveryKind = 'message' | 'attachments' | 'schedule';
 
 const MAX_MESSAGE_LENGTH = 100000;
 const DRAFT_STORAGE_KEY = 'dark-space-drafts';
@@ -115,18 +157,60 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [channelMemberIds, setChannelMemberIds] = useState<string[]>([]);
+  const sendingRef = useRef(false);
+  const operationSequenceRef = useRef(0);
+  const activeOperationRef = useRef<number | null>(null);
+  const composerRevision = useRef(0);
+  const failedSubmission = useRef<MessageSubmission | null>(null);
+  const failedAttachmentBatches = useRef<AttachmentRetryBatch[]>([]);
+  const failedScheduledSubmission = useRef<ScheduledSubmissionRetry | null>(null);
+  const recoveryKindRef = useRef<RecoveryKind | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const channelId = overrideChannelId ?? channelCtx?.currentChannel?.id;
+  const routeScopeKey = composerRouteKey(channelId, conversationId, parentId);
+  const scopeTokenRef = useRef<ComposerScopeToken>(nextComposerScopeToken(null, routeScopeKey));
   const activeEdit = editingOverride ?? editCtx?.editingMessage ?? null;
   const cancelEdit = onCancelEdit ?? editCtx?.cancelEditing;
   const invalidateAttachments = useInvalidateAttachments();
+  const markComposerChanged = useCallback(() => {
+    composerRevision.current += 1;
+  }, []);
+
+  useLayoutEffect(() => {
+    const nextToken = nextComposerScopeToken(scopeTokenRef.current, routeScopeKey);
+    if (nextToken === scopeTokenRef.current) return;
+    scopeTokenRef.current = nextToken;
+    composerRevision.current += 1;
+    failedSubmission.current = null;
+    failedAttachmentBatches.current = [];
+    failedScheduledSubmission.current = null;
+    recoveryKindRef.current = null;
+    activeOperationRef.current = null;
+    sendingRef.current = false;
+    setContent('');
+    setPendingFiles([]);
+    setPendingLinkEmbeds([]);
+    setScheduleAt('');
+    setIsScheduleOpen(false);
+    setScheduleInfo(null);
+    setLinkMode('embed');
+    setLinkNeighbor('text');
+    setMentionQuery(null);
+    setIsDragging(false);
+    setIsSending(false);
+    setUploadingFiles([]);
+    setSendError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    cancelEdit?.();
+  }, [cancelEdit, routeScopeKey]);
 
   useEffect(() => {
     if (activeEdit) {
+      const editScopeToken = scopeTokenRef.current;
       setContent(activeEdit.content);
       setLinkMode(activeEdit.link_mode === 'text' ? 'text' : 'embed');
       setLinkNeighbor('text');
@@ -134,12 +218,12 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
       textareaRef.current?.focus();
       if (activeEdit.link_mode === 'grid') {
         getLinkAttachmentUrls(activeEdit.id).then((urls) => {
-          if (urls.length === 0) return;
+          if (urls.length === 0 || !composerScopeIsCurrent(editScopeToken, scopeTokenRef.current)) return;
           setContent((prev) => {
             const base = prev.trim();
             return base ? `${base}\n${urls.join('\n')}` : urls.join('\n');
           });
-        });
+        }).catch(() => undefined);
       }
     }
   }, [activeEdit]);
@@ -184,11 +268,28 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
     if (textareaRef.current) resizeTextarea(textareaRef.current);
   }, [content]);
 
+  useEffect(() => {
+    const submission = failedSubmission.current;
+    if (!submission || !messageCtx) return;
+    const knownIds = new Set(submission.providerFailureIds);
+    const useGrid = submission.linkMode === 'grid' && submission.links.length > 0;
+    const sentMode: LinkDisplayMode = useGrid ? 'grid' : submission.linkMode;
+    const sentContent = (useGrid ? removeUrlsFromText(submission.content, submission.links) : submission.content).trim() || ' ';
+    const duplicate = [...messageCtx.failedMessages].reverse().find((failed) =>
+      !knownIds.has(failed.tempId)
+      && failed.content === sentContent
+      && failed.parentId === parentId
+      && failed.linkMode === sentMode,
+    );
+    if (duplicate) messageCtx.removeFailedMessage(duplicate.tempId);
+  }, [messageCtx, parentId, sendError]);
+
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     if (value.length > MAX_MESSAGE_LENGTH && content.length <= MAX_MESSAGE_LENGTH) return;
+    markComposerChanged();
     setContent(value);
-    setSendError(null);
+    if (!hasRecoverableFailure()) setSendError(null);
     resizeTextarea(e.target);
 
     if (channelId && !parentId && !activeEdit) {
@@ -205,19 +306,24 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
       }
     }
     setMentionQuery(null);
-  }, [channelId, parentId, activeEdit, content.length, userId]);
+  }, [channelId, parentId, activeEdit, content.length, markComposerChanged, userId]);
 
   const handleMentionSelect = useCallback((username: string) => {
     const lastAtIndex = content.lastIndexOf('@');
     if (lastAtIndex >= 0) {
       const newContent = content.slice(0, lastAtIndex) + `@${username} `;
+      markComposerChanged();
       setContent(newContent);
+      if (channelId && !parentId && !activeEdit) {
+        saveDraft(`${userId}:${channelId}:${parentId ?? 'root'}`, newContent);
+      }
       setMentionQuery(null);
       textareaRef.current?.focus();
     }
-  }, [content]);
+  }, [activeEdit, channelId, content, markComposerChanged, parentId, userId]);
 
   const queueFiles = useCallback((files: File[]) => {
+    const queuedScopeToken = scopeTokenRef.current;
     files.forEach((file) => {
       if (!isFileSizeValid(file)) {
         alert(`File ${file.name} is too large (max 50MB)`);
@@ -227,19 +333,23 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
       const id = generateFileId();
       const normalizedFile = normalizeFileType(file);
       const pending: PendingFile = { id, file: normalizedFile };
+      markComposerChanged();
+      setPendingFiles((prev) => [...prev, pending]);
 
       if (normalizedFile.type.startsWith('image/')) {
         const reader = new FileReader();
         reader.onload = (ev) => {
-          pending.preview = ev.target?.result as string;
-          setPendingFiles((prev) => [...prev, pending]);
+          if (!composerScopeIsCurrent(queuedScopeToken, scopeTokenRef.current)) return;
+          const preview = ev.target?.result;
+          if (typeof preview !== 'string') return;
+          setPendingFiles((prev) => prev.map((item) => (
+            item.id === pending.id ? { ...item, preview } : item
+          )));
         };
         reader.readAsDataURL(normalizedFile);
-      } else {
-        setPendingFiles((prev) => [...prev, pending]);
       }
     });
-  }, []);
+  }, [markComposerChanged]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -262,12 +372,13 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
     if (images.length === 0) return;
     e.preventDefault();
     queueFiles(images);
-    setSendError(null);
+    if (!hasRecoverableFailure()) setSendError(null);
   }, [queueFiles]);
 
   const removePendingFile = useCallback((id: string) => {
+    markComposerChanged();
     setPendingFiles((prev) => prev.filter((f) => f.id !== id));
-  }, []);
+  }, [markComposerChanged]);
 
   const handleRecorded = useCallback((file: File) => {
     if (!isFileSizeValid(file)) {
@@ -275,8 +386,9 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
       return;
     }
     const id = generateFileId();
+    markComposerChanged();
     setPendingFiles((prev) => [...prev, { id, file }]);
-  }, []);
+  }, [markComposerChanged]);
 
   const removeUploadingFile = useCallback((id: string) => {
     setUploadingFiles((prev) => prev.filter((f) => f.id !== id));
@@ -300,10 +412,17 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
     if (files.length > 0) queueFiles(files);
   }, [queueFiles]);
 
-  const uploadFiles = useCallback(async (messageId: string): Promise<boolean> => {
-    if (pendingFiles.length === 0 || !channelId || !userId) return true;
+  const attachFilesToMessage = useCallback(async (
+    messageId: string,
+    files: FileAttachmentRetry[],
+    scopeToken: ComposerScopeToken,
+  ): Promise<FileAttachmentRetry[]> => {
+    if (files.length === 0) return [];
+    if (!channelId || !userId) return files;
+    const scopeIsCurrent = () => composerScopeIsCurrent(scopeToken, scopeTokenRef.current);
 
-    const uploadPromises = pendingFiles.map(async (pf) => {
+    const uploadPromises = files.map(async (retry) => {
+      const pf = retry.pending;
       const uploadingId = generateFileId();
       const uploadingFile: UploadingFile = {
         id: uploadingId,
@@ -312,87 +431,330 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
         status: 'uploading',
       };
 
-      setUploadingFiles((prev) => [...prev, uploadingFile]);
+      if (scopeIsCurrent()) setUploadingFiles((prev) => [...prev, uploadingFile]);
 
+      let uploadedUrl = retry.uploadedUrl;
       try {
-        const url = await uploadFile(pf.file, channelId, (p) => {
-          setUploadingFiles((prev) =>
-            prev.map((f) => (f.id === uploadingId ? { ...f, progress: p } : f)),
-          );
-        });
-        if (!url) throw new Error('Upload failed');
+        if (!uploadedUrl) {
+          const uploaded = await uploadFile(pf.file, channelId, (p) => {
+            if (!scopeIsCurrent()) return;
+            setUploadingFiles((prev) =>
+              prev.map((f) => (f.id === uploadingId ? { ...f, progress: p } : f)),
+            );
+          });
+          if (uploaded) uploadedUrl = uploaded;
+        }
+        if (!uploadedUrl) throw new Error('Upload failed');
 
-        setUploadingFiles((prev) =>
-          prev.map((f) => (f.id === uploadingId ? { ...f, progress: 100, status: 'complete' as const } : f)),
-        );
+        const attachment = await createFileAttachment(messageId, userId, pf.file, uploadedUrl);
+        if (!attachment) throw new Error('Could not create attachment');
+
+        if (scopeIsCurrent()) {
+          setUploadingFiles((prev) =>
+            prev.map((f) => (f.id === uploadingId ? { ...f, progress: 100, status: 'complete' as const } : f)),
+          );
+        }
 
         setTimeout(() => {
-          setUploadingFiles((prev) => prev.filter((f) => f.id !== uploadingId));
+          if (scopeIsCurrent()) {
+            setUploadingFiles((prev) => prev.filter((f) => f.id !== uploadingId));
+          }
         }, 2000);
 
-        if (userId) await createFileAttachment(messageId, userId, pf.file, url);
+        return {
+          item: { pending: pf, uploadedUrl },
+          succeeded: true,
+        };
       } catch {
-        setUploadingFiles((prev) =>
-          prev.map((f) =>
-            f.id === uploadingId ? { ...f, status: 'error' as const, error: 'Upload failed' } : f,
-          ),
-        );
+        if (scopeIsCurrent()) {
+          setUploadingFiles((prev) =>
+            prev.map((f) =>
+              f.id === uploadingId ? { ...f, status: 'error' as const, error: 'Upload failed' } : f,
+            ),
+          );
+        }
+        return {
+          item: { pending: pf, uploadedUrl },
+          succeeded: false,
+        };
       }
     });
 
-    await Promise.all(uploadPromises);
-    setPendingFiles([]);
-    window.dispatchEvent(new CustomEvent('attachments-updated', { detail: { messageId } }));
-    return true;
-  }, [pendingFiles, channelId, userId]);
-
-  const createLinkEmbedsFor = useCallback(async (messageId: string, urls: string[]): Promise<boolean> => {
-    if (urls.length === 0 || !userId) return true;
-    const results = await Promise.all(
-      urls.map((url) => createLinkAttachment(messageId, userId, url)),
-    );
-    if (results.some((r) => r !== null)) {
+    const attempts = await Promise.all(uploadPromises);
+    if (attempts.some((attempt) => attempt.succeeded)) {
       window.dispatchEvent(new CustomEvent('attachments-updated', { detail: { messageId } }));
     }
-    return true;
+    return failedAttachmentItems(attempts);
+  }, [channelId, userId]);
+
+  const createLinkEmbedsFor = useCallback(async (messageId: string, urls: string[]): Promise<string[]> => {
+    if (urls.length === 0) return [];
+    if (!userId) return urls;
+    const attempts = await Promise.all(
+      urls.map(async (url) => {
+        try {
+          return {
+            item: url,
+            succeeded: (await createLinkAttachment(messageId, userId, url)) !== null,
+          };
+        } catch {
+          return { item: url, succeeded: false };
+        }
+      }),
+    );
+    if (attempts.some((attempt) => attempt.succeeded)) {
+      window.dispatchEvent(new CustomEvent('attachments-updated', { detail: { messageId } }));
+    }
+    return failedAttachmentItems(attempts);
   }, [userId]);
 
-  const createLinkEmbeds = useCallback(async (messageId: string): Promise<boolean> => {
-    if (pendingLinkEmbeds.length === 0) return true;
-    const ok = await createLinkEmbedsFor(messageId, pendingLinkEmbeds);
-    setPendingLinkEmbeds([]);
-    return ok;
-  }, [pendingLinkEmbeds, createLinkEmbedsFor]);
-
   const handleEmbedLinkClick = useCallback(() => {
+    markComposerChanged();
     if (linkMode === 'grid') {
       setLinkMode('embed');
       setPendingLinkEmbeds([]);
     } else {
       setLinkNeighbor((prev) => (prev === 'text' ? 'grid' : 'text'));
     }
-  }, [linkMode]);
+  }, [linkMode, markComposerChanged]);
 
   const handleGridClick = useCallback(() => {
+    markComposerChanged();
     setLinkMode('grid');
     if (contentUrls.length > 0) setPendingLinkEmbeds(contentUrls);
-  }, [contentUrls]);
+  }, [contentUrls, markComposerChanged]);
+
+  function scopeIsCurrent(scopeToken: ComposerScopeToken): boolean {
+    return composerScopeIsCurrent(scopeToken, scopeTokenRef.current);
+  }
+
+  function hasRecoverableFailure(): boolean {
+    return failedSubmission.current !== null
+      || failedAttachmentBatches.current.length > 0
+      || failedScheduledSubmission.current !== null;
+  }
+
+  function storeAttachmentFailure(batch: AttachmentRetryBatch): AttachmentRetryBatch[] {
+    const existing = failedAttachmentBatches.current.find((item) => item.messageId === batch.messageId);
+    const merged = existing
+      ? {
+          ...batch,
+          files: [
+            ...existing.files.filter((item) => !batch.files.some((next) => next.pending.id === item.pending.id)),
+            ...batch.files,
+          ],
+          links: [...new Set([...existing.links, ...batch.links])],
+        }
+      : batch;
+    failedAttachmentBatches.current = [
+      ...failedAttachmentBatches.current.filter((item) => item.messageId !== batch.messageId),
+      merged,
+    ];
+    recoveryKindRef.current = 'attachments';
+    return failedAttachmentBatches.current;
+  }
+
+  function attachmentFailureMessage(batches: readonly AttachmentRetryBatch[]): string {
+    const count = batches.reduce((total, batch) => total + batch.files.length + batch.links.length, 0);
+    return `Message sent, but ${count === 1 ? 'an attachment' : `${count} attachments`} could not be added. Tap to retry.`;
+  }
+
+  function surfaceRemainingRecovery(): boolean {
+    if (failedScheduledSubmission.current) {
+      recoveryKindRef.current = 'schedule';
+      setSendError('Failed to schedule message. Tap to retry.');
+      return true;
+    }
+    if (failedAttachmentBatches.current.length > 0) {
+      recoveryKindRef.current = 'attachments';
+      setSendError(attachmentFailureMessage(failedAttachmentBatches.current));
+      return true;
+    }
+    if (failedSubmission.current) {
+      recoveryKindRef.current = 'message';
+      setSendError('Failed to send message. Tap to retry.');
+      return true;
+    }
+    recoveryKindRef.current = null;
+    setSendError(null);
+    return false;
+  }
+
+  function beginOperation(): number {
+    const operationId = ++operationSequenceRef.current;
+    activeOperationRef.current = operationId;
+    sendingRef.current = true;
+    setIsSending(true);
+    return operationId;
+  }
+
+  function finishOperation(
+    operationId: number,
+    scopeToken: ComposerScopeToken,
+    clearUploads = false,
+  ): void {
+    if (activeOperationRef.current !== operationId) return;
+    activeOperationRef.current = null;
+    sendingRef.current = false;
+    if (!scopeIsCurrent(scopeToken)) return;
+    if (clearUploads) setUploadingFiles([]);
+    setIsSending(false);
+    requestAnimationFrame(() => {
+      if (scopeIsCurrent(scopeToken)) textareaRef.current?.focus({ preventScroll: true });
+    });
+  }
+
+  function restoreSubmissionIfUnchanged(submission: MessageSubmission): boolean {
+    if (!scopeIsCurrent(submission.scopeToken)) return false;
+    if (!composerIsUnchanged(submission.revision, composerRevision.current)) return false;
+    setContent(submission.content);
+    setPendingFiles(submission.files);
+    setPendingLinkEmbeds(submission.links);
+    setLinkMode(submission.linkMode);
+    setLinkNeighbor(submission.linkMode === 'grid' ? 'grid' : 'text');
+    if (channelId) saveDraft(`${userId}:${channelId}:${parentId ?? 'root'}`, submission.content);
+    return true;
+  }
+
+  function clearSubmittedComposer(submission: MessageSubmission) {
+    setContent('');
+    setMentionQuery(null);
+    setPendingFiles((current) => withoutSubmittedItems(current, submission.files));
+    setPendingLinkEmbeds([]);
+    setLinkMode('embed');
+    setLinkNeighbor('text');
+    if (channelId) saveDraft(`${userId}:${channelId}:${parentId ?? 'root'}`, '');
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+  }
+
+  async function attachSubmissionArtifacts(
+    messageId: string,
+    files: FileAttachmentRetry[],
+    links: string[],
+    scopeToken: ComposerScopeToken,
+  ): Promise<AttachmentRetryBatch | null> {
+    const [failedFiles, failedLinks] = await Promise.all([
+      attachFilesToMessage(messageId, files, scopeToken),
+      createLinkEmbedsFor(messageId, links),
+    ]);
+    if (failedFiles.length === 0 && failedLinks.length === 0) return null;
+    return { messageId, files: failedFiles, links: failedLinks, scopeToken };
+  }
+
+  async function deliverSubmission(submission: MessageSubmission): Promise<boolean> {
+    const doSend = onSend ?? messageCtx?.sendMessage;
+    if (!doSend) return false;
+    const useGrid = submission.linkMode === 'grid' && submission.links.length > 0;
+    const sendLinkMode: LinkDisplayMode = useGrid ? 'grid' : submission.linkMode;
+    const sendContent = (useGrid ? removeUrlsFromText(submission.content, submission.links) : submission.content).trim();
+    const message = await doSend(sendContent || ' ', parentId, sendLinkMode) as import('@/types').Message | null;
+    if (!message) return false;
+
+    const attachmentFailure = await attachSubmissionArtifacts(
+      message.id,
+      submission.files.map((pending) => ({ pending })),
+      useGrid ? submission.links : [],
+      submission.scopeToken,
+    );
+    if (attachmentFailure && scopeIsCurrent(submission.scopeToken)) {
+      setSendError(attachmentFailureMessage(storeAttachmentFailure(attachmentFailure)));
+    }
+    if (sendContent.includes('@')) {
+      void api('agents/mention', { message_id: message.id })
+        .catch(() => {
+          if (scopeIsCurrent(submission.scopeToken) && !hasRecoverableFailure()) {
+            setSendError('Message sent. The agent could not start; check AI configuration.');
+          }
+        });
+    }
+    if (parentId) threadCountsCtx?.incrementReplyCount(parentId);
+    if (scopeIsCurrent(submission.scopeToken)) onMessageSent?.();
+    return true;
+  }
+
+  async function retryFailedSubmission() {
+    const submission = failedSubmission.current;
+    if (!submission || sendingRef.current || !scopeIsCurrent(submission.scopeToken)) return;
+    const composerStillShowsFailure = composerIsUnchanged(submission.revision, composerRevision.current);
+    const operationId = beginOperation();
+    setSendError(null);
+    if (composerStillShowsFailure) clearSubmittedComposer(submission);
+    textareaRef.current?.focus({ preventScroll: true });
+    try {
+      if (await deliverSubmission(submission)) {
+        if (scopeIsCurrent(submission.scopeToken) && failedSubmission.current === submission) {
+          failedSubmission.current = null;
+          surfaceRemainingRecovery();
+        }
+      } else if (scopeIsCurrent(submission.scopeToken)) {
+        restoreSubmissionIfUnchanged(submission);
+        recoveryKindRef.current = 'message';
+        setSendError('Failed to send message. Tap to retry.');
+      }
+    } catch {
+      if (scopeIsCurrent(submission.scopeToken)) {
+        restoreSubmissionIfUnchanged(submission);
+        recoveryKindRef.current = 'message';
+        setSendError('Something went wrong. Tap to retry.');
+      }
+    } finally {
+      finishOperation(operationId, submission.scopeToken);
+    }
+  }
+
+  async function retryFailedAttachments() {
+    const batches = failedAttachmentBatches.current.filter((batch) => scopeIsCurrent(batch.scopeToken));
+    if (batches.length === 0 || sendingRef.current) return;
+    const operationScopeToken = scopeTokenRef.current;
+    const operationId = beginOperation();
+    setSendError(null);
+    try {
+      const remaining: AttachmentRetryBatch[] = [];
+      for (const batch of batches) {
+        if (!scopeIsCurrent(operationScopeToken)) return;
+        const failed = await attachSubmissionArtifacts(
+          batch.messageId,
+          batch.files,
+          batch.links,
+          operationScopeToken,
+        );
+        if (failed) remaining.push(failed);
+      }
+      if (!scopeIsCurrent(operationScopeToken)) return;
+      failedAttachmentBatches.current = remaining;
+      if (remaining.length > 0) {
+        recoveryKindRef.current = 'attachments';
+        setSendError(attachmentFailureMessage(remaining));
+      } else {
+        surfaceRemainingRecovery();
+      }
+    } catch {
+      if (scopeIsCurrent(operationScopeToken)) {
+        recoveryKindRef.current = 'attachments';
+        setSendError(attachmentFailureMessage(batches));
+      }
+    } finally {
+      finishOperation(operationId, operationScopeToken, true);
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if ((!content.trim() && pendingFiles.length === 0 && pendingLinkEmbeds.length === 0) || isSending) return;
+    if ((!content.trim() && pendingFiles.length === 0 && pendingLinkEmbeds.length === 0) || sendingRef.current) return;
 
-    setIsSending(true);
-    setSendError(null);
+    const operationScopeToken = scopeTokenRef.current;
+    const operationId = beginOperation();
+    failedSubmission.current = null;
+    if (recoveryKindRef.current === 'message') recoveryKindRef.current = null;
+    if (!hasRecoverableFailure()) setSendError(null);
 
-    try {
-      const doSend = onSend ?? messageCtx?.sendMessage;
-      const doUpdate = messageCtx?.updateMessage;
-      const useGrid = linkMode === 'grid' && pendingLinkEmbeds.length > 0;
-      const sendLinkMode: LinkDisplayMode = useGrid ? 'grid' : linkMode;
-      const sendContent = (useGrid ? removeUrlsFromText(content, pendingLinkEmbeds) : content).trim();
+    // Keep focus during the submit gesture. Disabling this field closes a
+    // mobile keyboard, which browsers will not reliably reopen after await.
+    textareaRef.current?.focus({ preventScroll: true });
 
-      if (activeEdit) {
+    if (activeEdit) {
+      try {
+        const doUpdate = messageCtx?.updateMessage;
         const linkUrls = pendingLinkEmbeds.length > 0 ? pendingLinkEmbeds : contentUrls;
         const useGrid = linkMode === 'grid' && linkUrls.length > 0;
         const sendLinkMode: LinkDisplayMode = useGrid ? 'grid' : linkMode;
@@ -401,45 +763,66 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
           await onSaveEdit(sendContent, sendLinkMode);
         } else if (doUpdate) {
           await doUpdate(activeEdit.id, sendContent, sendLinkMode);
-          editCtx?.cancelEditing();
+          if (scopeIsCurrent(operationScopeToken)) editCtx?.cancelEditing();
         }
         await deleteLinkAttachments(activeEdit.id);
-        if (useGrid) await createLinkEmbedsFor(activeEdit.id, linkUrls);
+        const failedLinks = useGrid ? await createLinkEmbedsFor(activeEdit.id, linkUrls) : [];
         invalidateAttachments(activeEdit.id);
-        setPendingLinkEmbeds([]);
-        setContent('');
-        if (textareaRef.current) {
-          textareaRef.current.style.height = 'auto';
-        }
-        onMessageSent?.();
-      } else if (doSend) {
-        const message = await doSend(sendContent || ' ', parentId, sendLinkMode) as import('@/types').Message | null;
-        if (message) {
-          await Promise.all([
-            uploadFiles(message.id),
-            useGrid ? createLinkEmbeds(message.id) : Promise.resolve(true),
-          ]);
-          if (sendContent.includes('@')) void api('agents/mention', { message_id: message.id }).catch(() => setSendError('Message sent. The agent could not start; check AI configuration.'));
+        if (scopeIsCurrent(operationScopeToken)) {
+          if (failedLinks.length > 0) {
+            const failure: AttachmentRetryBatch = {
+              messageId: activeEdit.id,
+              files: [],
+              links: failedLinks,
+              scopeToken: operationScopeToken,
+            };
+            setSendError(attachmentFailureMessage(storeAttachmentFailure(failure)));
+          }
+          setPendingLinkEmbeds([]);
           setContent('');
-          if (channelId) {
-            saveDraft(`${userId}:${channelId}:${parentId ?? 'root'}`, '');
-          }
-          if (textareaRef.current) {
-            textareaRef.current.style.height = 'auto';
-          }
-          textareaRef.current?.focus();
-          if (parentId) {
-            threadCountsCtx?.incrementReplyCount(parentId);
-          }
+          if (textareaRef.current) textareaRef.current.style.height = 'auto';
           onMessageSent?.();
-        } else {
-          setSendError('Failed to send message. Tap to retry.');
         }
+      } catch {
+        if (scopeIsCurrent(operationScopeToken)) {
+          setSendError('Something went wrong. Please try again.');
+        }
+      } finally {
+        finishOperation(operationId, operationScopeToken);
+      }
+      return;
+    }
+
+    const submission: MessageSubmission = {
+      content,
+      files: [...pendingFiles],
+      links: [...pendingLinkEmbeds],
+      linkMode,
+      revision: composerRevision.current,
+      providerFailureIds: messageCtx?.failedMessages.map((failed) => failed.tempId) ?? [],
+      scopeToken: operationScopeToken,
+    };
+    clearSubmittedComposer(submission);
+    try {
+      if (await deliverSubmission(submission)) {
+        if (scopeIsCurrent(submission.scopeToken)) {
+          failedSubmission.current = null;
+        }
+      } else if (scopeIsCurrent(submission.scopeToken)) {
+        failedSubmission.current = submission;
+        restoreSubmissionIfUnchanged(submission);
+        recoveryKindRef.current = 'message';
+        setSendError('Failed to send message. Tap to retry.');
       }
     } catch {
-      setSendError('Something went wrong. Tap to retry.');
+      if (scopeIsCurrent(submission.scopeToken)) {
+        failedSubmission.current = submission;
+        restoreSubmissionIfUnchanged(submission);
+        recoveryKindRef.current = 'message';
+        setSendError('Something went wrong. Tap to retry.');
+      }
     } finally {
-      setIsSending(false);
+      finishOperation(operationId, submission.scopeToken);
     }
   }
 
@@ -470,12 +853,12 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
     setScheduleAt(toLocalDatetimeValue(roundUpToNext5(new Date(Date.now() + minutes * 60000))));
   }
 
-  async function handleScheduleSubmit() {
-    if (!scheduleAt || (!content.trim() && pendingFiles.length === 0 && pendingLinkEmbeds.length === 0) || isSending || !userId) return;
-    setIsSending(true);
-    setSendError(null);
-    const files = pendingFiles.map((f) => f.file);
-    if (files.length > 0) {
+  async function createScheduledFromSnapshot(
+    retry: ScheduledSubmissionRetry,
+  ): Promise<import('@/types').ScheduledMessage | null> {
+    const { submission } = retry;
+    const files = submission.files.map((item) => item.file);
+    if (scopeIsCurrent(submission.scopeToken) && files.length > 0) {
       setUploadingFiles(files.map((file) => ({
         id: generateFileId(),
         file,
@@ -483,51 +866,158 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
         status: 'uploading' as const,
       })));
     }
-    const useGrid = linkMode === 'grid' && pendingLinkEmbeds.length > 0;
-    const sendLinkMode: LinkDisplayMode = useGrid ? 'grid' : linkMode;
+    const useGrid = submission.linkMode === 'grid' && submission.links.length > 0;
+    const sendLinkMode: LinkDisplayMode = useGrid ? 'grid' : submission.linkMode;
     const linkAttachments = useGrid
-      ? pendingLinkEmbeds.map((url) => ({
+      ? submission.links.map((url) => ({
           file_url: url,
           file_name: url,
           file_size: 0,
           file_type: LINK_ATTACHMENT_TYPE,
         }))
       : [];
-    let scheduled: import('@/types').ScheduledMessage | null = null;
     try {
-      scheduled = await createScheduledMessage({
-        content: (useGrid ? removeUrlsFromText(content, pendingLinkEmbeds) : content).trim() || ' ',
+      return await createScheduledMessage({
+        content: (useGrid ? removeUrlsFromText(submission.content, submission.links) : submission.content).trim() || ' ',
         linkMode: sendLinkMode,
-        scheduledAt: scheduleAt,
-        channelId,
-        conversationId,
-        parentId: parentId ?? null,
+        scheduledAt: retry.scheduledAt,
+        channelId: retry.channelId,
+        conversationId: retry.conversationId,
+        parentId: retry.parentId ?? null,
         files,
         attachments: linkAttachments,
-        userId,
+        userId: retry.userId,
         onFileProgress: (file, percent) => {
-          setUploadingFiles((prev) =>
-            prev.map((f) => (f.file === file ? { ...f, progress: percent } : f)),
-          );
+          if (scopeIsCurrent(submission.scopeToken)) {
+            setUploadingFiles((prev) =>
+              prev.map((item) => (item.file === file ? { ...item, progress: percent } : item)),
+            );
+          }
         },
       });
-    } finally {
-      setUploadingFiles([]);
-      setIsSending(false);
+    } catch {
+      return null;
     }
-    if (scheduled) {
-      setContent('');
-      setScheduleAt('');
-      setPendingFiles([]);
-      setPendingLinkEmbeds([]);
-      setIsScheduleOpen(false);
+  }
+
+  async function handleScheduleSubmit() {
+    if (!scheduleAt || (!content.trim() && pendingFiles.length === 0 && pendingLinkEmbeds.length === 0) || sendingRef.current || !userId) return;
+    const operationScopeToken = scopeTokenRef.current;
+    const operationId = beginOperation();
+    failedSubmission.current = null;
+    if (recoveryKindRef.current === 'message') recoveryKindRef.current = null;
+    if (!hasRecoverableFailure()) setSendError(null);
+    const submission: MessageSubmission = {
+      content,
+      files: [...pendingFiles],
+      links: [...pendingLinkEmbeds],
+      linkMode,
+      revision: composerRevision.current,
+      providerFailureIds: [],
+      scopeToken: operationScopeToken,
+    };
+    const retry: ScheduledSubmissionRetry = {
+      submission,
+      scheduledAt: scheduleAt,
+      channelId,
+      conversationId,
+      parentId: parentId ?? null,
+      userId,
+    };
+    clearSubmittedComposer(submission);
+    setIsScheduleOpen(false);
+    textareaRef.current?.focus({ preventScroll: true });
+    let scheduled: import('@/types').ScheduledMessage | null = null;
+    try {
+      scheduled = await createScheduledFromSnapshot(retry);
+    } finally {
+      finishOperation(operationId, submission.scopeToken, true);
+    }
+    if (!scopeIsCurrent(submission.scopeToken)) return;
+    const composerStayedUnchanged = composerIsUnchanged(
+      submission.revision,
+      composerRevision.current,
+    );
+    if (scheduled && scheduled.status !== 'draft') {
+      failedScheduledSubmission.current = null;
+      if (recoveryKindRef.current === 'schedule') recoveryKindRef.current = null;
+      if (composerStayedUnchanged && scheduleAt === retry.scheduledAt) setScheduleAt('');
       setScheduleInfo(`Scheduled for ${new Date(scheduled.scheduled_at).toLocaleString()}`);
-      if (channelId) {
-        saveDraft(`${userId}:${channelId}:${parentId ?? 'root'}`, '');
+      surfaceRemainingRecovery();
+    } else if (scheduled) {
+      failedScheduledSubmission.current = null;
+      if (recoveryKindRef.current === 'schedule') recoveryKindRef.current = null;
+      if (composerStayedUnchanged && scheduleAt === retry.scheduledAt) setScheduleAt('');
+      if (!surfaceRemainingRecovery()) {
+        setSendError('The message was saved as a draft because an attachment could not be queued. Open Calendar to review and retry it.');
       }
     } else {
+      failedScheduledSubmission.current = retry;
+      recoveryKindRef.current = 'schedule';
+      if (restoreSubmissionIfUnchanged(submission)) {
+        setScheduleAt(retry.scheduledAt);
+        setIsScheduleOpen(true);
+      }
       setSendError('Failed to schedule message. Tap to retry.');
     }
+  }
+
+  async function retryFailedScheduledSubmission() {
+    const retry = failedScheduledSubmission.current;
+    if (!retry || sendingRef.current || !scopeIsCurrent(retry.submission.scopeToken)) return;
+    const composerShowsFailure = composerIsUnchanged(
+      retry.submission.revision,
+      composerRevision.current,
+    );
+    const operationId = beginOperation();
+    setSendError(null);
+    if (composerShowsFailure) clearSubmittedComposer(retry.submission);
+    setIsScheduleOpen(false);
+    textareaRef.current?.focus({ preventScroll: true });
+    let scheduled: import('@/types').ScheduledMessage | null = null;
+    try {
+      scheduled = await createScheduledFromSnapshot(retry);
+    } finally {
+      finishOperation(operationId, retry.submission.scopeToken, true);
+    }
+    if (!scopeIsCurrent(retry.submission.scopeToken)) return;
+    if (scheduled && scheduled.status !== 'draft') {
+      failedScheduledSubmission.current = null;
+      if (recoveryKindRef.current === 'schedule') recoveryKindRef.current = null;
+      if (composerShowsFailure && scheduleAt === retry.scheduledAt) setScheduleAt('');
+      setScheduleInfo(`Scheduled for ${new Date(scheduled.scheduled_at).toLocaleString()}`);
+      surfaceRemainingRecovery();
+    } else if (scheduled) {
+      failedScheduledSubmission.current = null;
+      if (recoveryKindRef.current === 'schedule') recoveryKindRef.current = null;
+      if (!surfaceRemainingRecovery()) {
+        setSendError('The message was saved as a draft because an attachment could not be queued. Open Calendar to review and retry it.');
+      }
+    } else {
+      recoveryKindRef.current = 'schedule';
+      if (restoreSubmissionIfUnchanged(retry.submission)) {
+        setScheduleAt(retry.scheduledAt);
+        setIsScheduleOpen(true);
+      }
+      setSendError('Failed to schedule message. Tap to retry.');
+    }
+  }
+
+  function retryRecoverableFailure(): void {
+    if (recoveryKindRef.current === 'schedule' && failedScheduledSubmission.current) {
+      void retryFailedScheduledSubmission();
+      return;
+    }
+    if (recoveryKindRef.current === 'attachments' && failedAttachmentBatches.current.length > 0) {
+      void retryFailedAttachments();
+      return;
+    }
+    if (failedSubmission.current) {
+      void retryFailedSubmission();
+      return;
+    }
+    if (failedScheduledSubmission.current) void retryFailedScheduledSubmission();
+    else if (failedAttachmentBatches.current.length > 0) void retryFailedAttachments();
   }
 
   function handleKeyDown(e: KeyboardEvent) {
@@ -603,12 +1093,20 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
       )}
 
       {sendError && (
-        <div className={styles.errorBanner}>
+        <div className={styles.errorBanner} role="alert">
           <span>{sendError}</span>
-          <button type="button" className={styles.retryButton} onClick={() => { setSendError(null); handleSubmit(new Event('submit') as unknown as FormEvent); }}>
-            Retry
-          </button>
-          <button type="button" className={styles.cancelEdit} onClick={() => setSendError(null)}>
+          {hasRecoverableFailure() && (
+            <button type="button" className={styles.retryButton} onClick={retryRecoverableFailure} disabled={isSending}>
+              Retry
+            </button>
+          )}
+          <button type="button" className={styles.cancelEdit} onClick={() => {
+            failedSubmission.current = null;
+            failedAttachmentBatches.current = [];
+            failedScheduledSubmission.current = null;
+            recoveryKindRef.current = null;
+            setSendError(null);
+          }}>
             ✕
           </button>
         </div>
@@ -623,7 +1121,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
               <button
                 type="button"
                 className={`${styles.embedToggle} ${styles.embedToggleActive}`}
-                onClick={() => setLinkMode('embed')}
+                onClick={() => { markComposerChanged(); setLinkMode('embed'); }}
                 disabled={isSending}
                 title="Show links as plain text"
               >
@@ -653,7 +1151,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
                   <button
                     type="button"
                     className={`${styles.embedToggle} ${styles.embedToggleActive}`}
-                    onClick={() => setLinkMode('embed')}
+                    onClick={() => { markComposerChanged(); setLinkMode('embed'); }}
                     disabled={isSending}
                     title="Show links as attached files instead"
                   >
@@ -663,7 +1161,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
                   <button
                     type="button"
                     className={styles.embedToggle}
-                    onClick={() => setLinkMode('text')}
+                    onClick={() => { markComposerChanged(); setLinkMode('text'); }}
                     disabled={isSending}
                     title="Show links as plain text"
                   >
@@ -690,7 +1188,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
                     <button
                       type="button"
                       className={styles.embedChipRemove}
-                      onClick={() => setPendingLinkEmbeds((prev) => prev.filter((u) => u !== url))}
+                      onClick={() => { markComposerChanged(); setPendingLinkEmbeds((prev) => prev.filter((u) => u !== url)); }}
                       aria-label={`Remove embed for ${url}`}
                       title="Remove embed"
                     >
@@ -731,7 +1229,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
               onPaste={handlePaste}
               placeholder={placeholder}
               rows={1}
-              disabled={isSending}
+              aria-busy={isSending}
               maxLength={MAX_MESSAGE_LENGTH}
             />
             {mentionQuery !== null && (

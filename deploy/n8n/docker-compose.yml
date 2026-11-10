@@ -25,7 +25,7 @@ x-logging: &logging
 
 services:
   mount-guard:
-    image: busybox:1.37.0
+    image: busybox:1.37.0@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec
     restart: "no"
     logging: *logging
     command: ["sh", "-c", "test -f /check/.dromanian-space-mount || { echo 'Data mount missing: /srv/app-data/dromanian-space'; exit 1; }"]
@@ -38,7 +38,7 @@ services:
           create_host_path: false
 
   n8n-db:
-    image: postgres:17.8-alpine
+    image: postgres:17.8-alpine@sha256:3430fe182f5065a6ea505c3d432d2c7fff18fbab954df8f277c1dbf4c70124af
     restart: unless-stopped
     logging: *logging
     stop_grace_period: 1m
@@ -67,7 +67,7 @@ services:
           memory: 512M
 
   n8n:
-    image: docker.n8n.io/n8nio/n8n:2.43.8
+    image: docker.n8n.io/n8nio/n8n:2.43.8@sha256:a18edcf018198b33b5488fb47ededafe11e0b10d28f65b9535b7c447c9ce3b2c
     restart: unless-stopped
     logging: *logging
     depends_on:

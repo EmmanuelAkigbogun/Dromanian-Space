@@ -33,6 +33,16 @@ token needs `Zone:Read`, `DNS:Edit`, and (for tunnel publishing)
 nameservers; changing nameservers at the registrar is intentionally still a
 registrar-side action unless that registrar is separately integrated.
 
+The production Compose network routes tunnel hostnames to `http://web:8080` by
+default, matching the web container's internal listening port. Keep
+`CLOUDFLARE_TUNNEL_SERVICE=http://web:8080` unless the tunnel connector runs
+outside that network; explicit custom origins such as
+`http://host.docker.internal:3008` remain supported.
+The four `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
+`CLOUDFLARE_TUNNEL_ID`, and `CLOUDFLARE_TUNNEL_SERVICE` fallback variables are
+passed only to the API container. The agent worker does not receive the DNS
+management credential.
+
 Point `darkspace.purplehive.pro` and `turn.purplehive.pro` at the server. Permit:
 
 - HTTPS for the application through the existing reverse proxy;
@@ -78,14 +88,27 @@ An existing installation without a valid backup is a deployment blocker.
 
 Use a short maintenance window:
 
-1. Confirm the newest encrypted archive exists remotely and its restore drill
-   passed.
-2. Deploy the Compose resource. The one-shot `migrate` service runs after the
+1. Confirm `RCLONE_REMOTE` is configured, run a new backup, and run the isolated
+   restore drill against that exact newest archive. Confirm the success,
+   off-site and drill markers all contain its current SHA-256, then remove the
+   age private identity from the host. The drill starts no LiveKit or Coturn
+   containers and binds only its web gateway to `127.0.0.1:18000`.
+2. Export `APP_COMPOSE_PROJECT` with the stack's exact
+   `com.docker.compose.project` label (or pin `DB_CONTAINER`), then run
+   `PREFLIGHT_PHASE=predeploy deploy/preflight.sh` and require it to pass.
+   It rejects stale/local-only backup evidence, a missing restore proof and
+   private identity material left in production config. It also verifies the
+   selected database's project, service label and persistent bind, so another
+   Compose stack on the host cannot satisfy the gate. On an upgrade from a
+   release that predates Crawl4AI, the scraper check is explicitly deferred.
+3. Deploy the Compose resource. The one-shot `migrate` service runs after the
    database is healthy; PostgREST and the app wait for it.
-3. Confirm `https://darkspace.purplehive.pro/api/ready` returns 200.
-4. Confirm every long-running service is healthy and the migration container
+4. Run `PREFLIGHT_PHASE=postdeploy deploy/preflight.sh` and require it to pass.
+   This phase requires the private Crawl4AI service and its authenticated real
+   browser scrape as well as the public readiness check.
+5. Confirm every long-running service is healthy and the migration container
    exited successfully.
-5. Enable the backup timer and monitoring.
+6. Enable the backup timer and monitoring.
 
 The product-repair migration is additive and idempotent. It backfills General
 membership, marks General as the default, locks call writes behind the API, and

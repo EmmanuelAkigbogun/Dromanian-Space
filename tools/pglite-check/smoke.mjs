@@ -55,7 +55,57 @@ export async function pre(db) {
   return { owner, ws };
 }
 
-export default async function smoke(db, legacy) {
+/** Existing-workspace customizations immediately before the browser migration. */
+export async function preBrowser(db, legacy) {
+  const h = helpers(db);
+  const workspace = legacy.ws;
+  const owner = legacy.owner;
+  const agents = await h.admin(`SELECT id, template_key, current_version_id
+    FROM workspace_agents
+    WHERE workspace_id = $1 AND template_key IN (
+      'agno_scout', 'github_competitor_intelligence',
+      'github_sales_development', 'github_marketing_strategy'
+    )`, [workspace]);
+  const byKey = Object.fromEntries(agents.map((agent) => [agent.template_key, agent]));
+
+  const [scoutBefore] = await h.admin(`SELECT version_no, tools
+    FROM workspace_agent_versions WHERE id = $1`, [byKey.agno_scout.current_version_id]);
+  await h.user(owner, 'SELECT agent_save_config($1, $2)', [byKey.agno_scout.id, JSON.stringify({
+    instructions: 'Our custom prospecting playbook.',
+    tools: scoutBefore.tools,
+    source_scope: { mode: 'requester_access', migration_test: 'keep-scout-scope' },
+    model: 'gpt-6.1-terra',
+    effort: 'high',
+    max_tool_steps: 13,
+    description: 'Our customized Scout description.',
+  })]);
+
+  const [restrictedBefore] = await h.admin(`SELECT tools
+    FROM workspace_agent_versions WHERE id = $1`, [byKey.github_competitor_intelligence.current_version_id]);
+  const restrictedVersion = (await h.user(owner, 'SELECT (agent_save_config($1, $2)).id AS id', [
+    byKey.github_competitor_intelligence.id,
+    JSON.stringify({
+      instructions: 'Internal evidence only.',
+      tools: restrictedBefore.tools.filter((tool) => !['web_search', 'fetch_site_page', 'browser_scrape'].includes(tool)),
+      description: 'No public web access.',
+    }),
+  ]))[0].id;
+
+  await h.admin(`UPDATE workspace_agents SET status = 'disabled' WHERE id = $1`, [byKey.github_sales_development.id]);
+  await h.admin(`UPDATE workspace_agents SET status = 'disabled', archived_at = now() WHERE id = $1`, [byKey.github_marketing_strategy.id]);
+  return {
+    scoutId: byKey.agno_scout.id,
+    scoutVersionNo: scoutBefore.version_no,
+    restrictedId: byKey.github_competitor_intelligence.id,
+    restrictedVersion,
+    disabledId: byKey.github_sales_development.id,
+    disabledVersion: byKey.github_sales_development.current_version_id,
+    archivedId: byKey.github_marketing_strategy.id,
+    archivedVersion: byKey.github_marketing_strategy.current_version_id,
+  };
+}
+
+export default async function smoke(db, legacy, browserUpgrade) {
   const h = helpers(db);
 
   if (legacy) {
@@ -68,13 +118,57 @@ export default async function smoke(db, legacy) {
     check(by.sales_rep?.instructions === 'Our own sales playbook.', 'upgrade: customized Rio left unchanged');
     check(Boolean(by.business_researcher), 'upgrade: new specialists added to the existing workspace');
     const legacyModels = await h.admin(`SELECT DISTINCT v.model FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1 AND a.archived_at IS NULL`, [legacy.ws]);
-    check(legacyModels.length === 1 && legacyModels[0].model === 'gpt-6.1-sol', `upgrade: every active agent moved to ChatGPT gpt-6.1-sol (${legacyModels.map((r) => r.model).join(', ')})`);
+    check(legacyModels.some((row) => row.model === 'gpt-6.1-sol')
+      && legacyModels.some((row) => row.model === 'gpt-6.1-terra'),
+    `upgrade: the browser migration preserves an administrator-selected OpenAI model (${legacyModels.map((r) => r.model).join(', ')})`);
     const kept = await h.admin(`SELECT count(*)::int AS n FROM workspace_agent_versions WHERE workspace_id = $1 AND model = 'gpt-oss-120b'`, [legacy.ws]);
     check(kept[0].n > 0, 'upgrade: earlier Cerebras versions are kept for history');
     const legacySettings = (await h.svc('SELECT (ai_settings_for($1)).*', [legacy.ws]))[0];
     check(legacySettings.default_model === 'gpt-6.1-sol' && ['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6.1-terra', 'gpt-6-luna', 'gpt-oss-120b'].every((m) => legacySettings.allowed_models.includes(m)), `upgrade: workspace defaults to gpt-6.1-sol and can still choose Cerebras (${legacySettings.allowed_models.join(', ')})`);
     const cost = await h.admin(`SELECT provider, cost_usd FROM ai_usage_ledger WHERE workspace_id = $1 AND kind = 'usage'`, [legacy.ws]);
     check(cost[0]?.provider === 'anthropic' && Number(cost[0]?.cost_usd) === 2, 'upgrade: existing usage backfilled with cost ($2.00 for 1M Sonnet input)');
+  }
+
+  if (browserUpgrade) {
+    const [scout] = await h.admin(`SELECT a.description, v.version_no, v.instructions, v.tools,
+        v.source_scope, v.model, v.effort, v.max_tool_steps, v.created_by
+      FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id
+      WHERE a.id = $1`, [browserUpgrade.scoutId]);
+    check(scout.description === 'Our customized Scout description.'
+      && scout.version_no === browserUpgrade.scoutVersionNo + 2
+      && scout.instructions.startsWith('Our custom prospecting playbook.')
+      && scout.instructions.includes('Browser research safety:')
+      && scout.tools.includes('browser_scrape')
+      && scout.source_scope.migration_test === 'keep-scout-scope'
+      && scout.model === 'gpt-6.1-terra'
+      && scout.effort === 'high'
+      && scout.max_tool_steps === 13
+      && scout.created_by === null,
+    'browser upgrade preserves active agent customizations and attributes its new version to the system');
+
+    const [restricted] = await h.admin(`SELECT a.description, a.current_version_id, v.instructions, v.tools
+      FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id
+      WHERE a.id = $1`, [browserUpgrade.restrictedId]);
+    check(restricted.description === 'No public web access.'
+      && restricted.current_version_id === browserUpgrade.restrictedVersion
+      && restricted.instructions === 'Internal evidence only.'
+      && !restricted.tools.includes('browser_scrape'),
+    'browser upgrade respects an administrator who removed public web tools');
+
+    const [disabled] = await h.admin(`SELECT a.status, a.current_version_id, v.tools
+      FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id
+      WHERE a.id = $1`, [browserUpgrade.disabledId]);
+    check(disabled.status === 'disabled'
+      && disabled.current_version_id === browserUpgrade.disabledVersion
+      && !disabled.tools.includes('browser_scrape'),
+    'browser upgrade leaves a disabled built-in unchanged');
+
+    const [archived] = await h.admin(`SELECT archived_at, status, current_version_id
+      FROM workspace_agents WHERE id = $1`, [browserUpgrade.archivedId]);
+    check(Boolean(archived.archived_at)
+      && archived.status === 'disabled'
+      && archived.current_version_id === browserUpgrade.archivedVersion,
+    'browser upgrade leaves archived built-ins unchanged');
   }
 
   const [owner, member, other] = [await h.createUser('owner'), await h.createUser('member'), await h.createUser('other')];
@@ -152,6 +246,20 @@ export default async function smoke(db, legacy) {
     'seo-specialist', 'social-calendar',
   ];
   check(JSON.stringify(handles) === JSON.stringify(expectedHandles), `roster: 20 GitHub-sourced agents without the deleted coding agent (${handles.join(', ')})`);
+  const browserRoster = await h.admin(`SELECT a.handle, v.tools, t.requires,
+      ('web_search' = ANY(t.default_tools) OR 'fetch_site_page' = ANY(t.default_tools)) AS web_capable
+    FROM workspace_agents a
+    JOIN agent_templates t ON t.key = a.template_key
+    JOIN workspace_agent_versions v ON v.id = a.current_version_id
+    WHERE a.workspace_id = $1 AND a.is_builtin AND a.archived_at IS NULL`, [wsB]);
+  check(browserRoster.filter((r) => r.web_capable).length === 7
+    && browserRoster.filter((r) => r.web_capable).every((r) => r.tools.includes('browser_scrape'))
+    && browserRoster.filter((r) => !r.web_capable).every((r) => !r.tools.includes('browser_scrape')),
+  'browser scraper is limited to the existing web-research roles');
+  const seo = browserRoster.find((r) => r.handle === 'seo-specialist');
+  check(seo?.tools.includes('browser_scrape') && !seo.requires.includes('site_url'), 'SEO accepts a requester-provided public URL without a saved site setting');
+  const knownTools = (await h.admin('SELECT agent_known_tools() AS tools'))[0].tools;
+  check(knownTools.includes('browser_scrape'), 'browser scraper is an allowed agent tool');
   const archivedHandleCollisions = await h.admin(`SELECT a.handle FROM workspace_agents a JOIN agent_templates t ON t.handle = a.handle AND NOT t.retired WHERE a.workspace_id = $1 AND a.is_builtin AND a.archived_at IS NOT NULL AND a.template_key IS DISTINCT FROM t.key`, [wsB]);
   check(archivedHandleCollisions.length === 0, 'archived built-ins cannot reserve handles needed by the active roster');
   const [socialCalendar] = await h.admin(`SELECT v.instructions, v.tools, v.model FROM workspace_agents a JOIN workspace_agent_versions v ON v.id = a.current_version_id WHERE a.workspace_id = $1 AND a.handle = 'social-calendar'`, [wsB]);

@@ -19,6 +19,7 @@
     "build:server": "esbuild server/main.ts server/worker-main.ts --bundle --platform=node --target=node24 --format=esm --packages=external --sourcemap --outdir=dist-server --out-extension:.js=.mjs",
     "start:api": "node --enable-source-maps dist-server/main.mjs",
     "start:worker": "node --enable-source-maps dist-server/worker-main.mjs",
+    "browser-scraper:smoke": "node tools/browser-scraper-smoke.mjs",
     "test:unit": "vitest run --config vitest.unit.config.ts",
     "db:check": "node tools/pglite-check/run.mjs",
     "desktop:icons": "node scripts/build-desktop-icons.mjs",
@@ -30,7 +31,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
     "@google/genai": "^2.30.0",
-    "@profullstack/social-poster": "1.1.0",
+    "@profullstack/social-poster": "1.2.0",
     "@tanstack/react-query": "^5.101.2",
     "@tanstack/react-virtual": "^3.14.6",
     "fflate": "^0.8.3",
@@ -39,12 +40,13 @@
     "mammoth": "^1.13.0",
     "openai": "^6.49.0",
     "pg": "^8.23.1",
+    "puppeteer": "25.16.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.4",
     "unpdf": "^1.8.1",
     "web-push": "^3.6.7",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.10",
@@ -57,7 +59,7 @@
     "@types/web-push": "^3.6.4",
     "@vitejs/plugin-react": "^6.0.3",
     "electron": "^44.9.1",
-    "electron-builder": "^26.15.3",
+    "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
     "jose": "^6.2.12",
     "oxlint": "^1.71.0",
@@ -71,6 +73,10 @@
     "node": ">=24"
   },
   "overrides": {
+    "@profullstack/social-poster": {
+      "openai": "$openai",
+      "puppeteer": "$puppeteer"
+    },
     "mammoth": {
       "argparse": "3.0.0"
     }

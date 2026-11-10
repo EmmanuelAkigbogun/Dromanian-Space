@@ -5,6 +5,10 @@ mount guard, PostgreSQL, a one-shot migrator, private PostgREST, API, worker,
 Coturn and Nginx web service. Only the loopback web port and TURN ports are
 published.
 
+Production Dockerfile stages and Compose services use versioned image tags
+plus immutable manifest digests. Upgrade both together after reviewing the
+upstream release; release tests reject mutable production image references.
+
 Deployment order is intentionally enforced by health/dependency checks:
 
 ```text
@@ -12,9 +16,24 @@ mount guard → PostgreSQL → migrations → PostgREST → API/worker → web
                                       └──────────→ Coturn (independent media relay)
 ```
 
-Before a production deploy, require an encrypted backup and a successful
-isolated restore drill. Configure from `.env.production.example`; never commit
-real credentials. The authoritative runbook is
+Before a production deploy, require the newest encrypted backup to have both a
+verified off-server copy and a successful isolated restore drill. The age
+private identity must then be removed from the server. Run
+`PREFLIGHT_PHASE=predeploy deploy/preflight.sh` before changing the stack and
+`PREFLIGHT_PHASE=postdeploy deploy/preflight.sh` after it is healthy. Both
+enforce the recovery conditions against archive-name-and-SHA-256 proof markers;
+filename-only or stale markers fail closed. The
+post-deploy phase additionally requires the private browser scraper's
+authenticated end-to-end smoke test. This two-phase gate permits the first
+rollout from a release that does not yet contain Crawl4AI without weakening the
+post-deploy acceptance check. Set `APP_COMPOSE_PROJECT` to the exact app
+Compose label for both gates, or supply an explicit `DB_CONTAINER`; broad
+service-name discovery is intentionally rejected on multi-project hosts.
+The preflight reads Docker port bindings from each selected private container
+instead of scanning fixed host ports: arbitrary or IPv4/IPv6 wildcard mappings
+fail, loopback-only mappings are allowed, and listeners owned by unrelated
+Compose projects are ignored.
+Configure from `.env.production.example`; never commit real credentials. The authoritative runbook is
 [COOLIFY_SETUP.md](COOLIFY_SETUP.md).
 
 ## Push notifications
@@ -47,3 +66,20 @@ npm run build:server
 
 The complete database and browser suites additionally require PostgreSQL 17 and
 the browser dependencies documented in [TESTING.md](TESTING.md).
+
+# Social browser isolation
+
+Social login and publishing fail closed unless `SOCIAL_BROWSER_WS_ENDPOINT`
+and `SOCIAL_BROWSER_TOKEN` point to a dedicated, token-protected Puppeteer CDP
+service over `wss://`. Plaintext `ws://` is rejected because CDP carries typed
+credentials and session cookies. The service must support
+`Target.createBrowserContext`; Darkspace creates a fresh isolated context for
+every login, cookie check and publish operation, never uses the remote
+browser's default context, closes that context, then disconnects. The API and
+worker images intentionally contain no Chromium and never
+launch a browser with `--no-sandbox`; they hold database, signing and provider
+credentials and are not a safe browser sandbox. Run the browser service in a
+separate container/host with no application secrets and no route to private
+application networks. Cookie-based social actions remain unavailable until
+that service is configured; calendar drafting and approval workflows continue
+to work without it.
