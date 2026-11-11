@@ -31,7 +31,11 @@ filename-only or stale markers fail closed. The
 post-deploy phase additionally requires the private browser scraper's
 authenticated end-to-end smoke test. This two-phase gate permits the first
 rollout from a release that does not yet contain Crawl4AI without weakening the
-post-deploy acceptance check. Set `APP_COMPOSE_PROJECT` to the exact app
+post-deploy acceptance check. Repeat deployments may retain the running
+scraper only when preflight proves it is the stock bridge's sole endpoint, its
+gateway shares that isolated namespace, and its gateway-only host binding is
+exact. Unrelated stock-bridge endpoints and ambiguous or bypassable topologies
+still fail closed. Set `APP_COMPOSE_PROJECT` to the exact app
 Compose label for both gates, or supply an explicit `DB_CONTAINER`; broad
 service-name discovery is intentionally rejected on multi-project hosts.
 The preflight reads Docker port bindings from each selected private container

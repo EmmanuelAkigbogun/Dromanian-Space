@@ -352,8 +352,40 @@ if [[ "$PREFLIGHT_PHASE" == predeploy ]]; then
       | awk 'NF' | sort)
     if (( ${#predeploy_bridge_container_ids[@]} == 0 )); then
       pass "stock bridge is empty for the isolated scraper rollout"
+    elif (( ${#predeploy_bridge_container_ids[@]} == 1 )) \
+      && [[ -n "$crawl4ai_container" && -n "$crawl4ai_gateway_container" ]]; then
+      existing_crawler_id=$(docker inspect -f '{{.Id}}' "$crawl4ai_container" 2>/dev/null)
+      existing_crawler_network_mode=$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$crawl4ai_container" 2>/dev/null)
+      existing_gateway_network_mode=$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$crawl4ai_gateway_container" 2>/dev/null)
+      existing_crawler_network_count=$(network_count "$crawl4ai_container")
+      existing_gateway_network_count=$(network_count "$crawl4ai_gateway_container")
+      existing_crawler_endpoint=$(docker inspect \
+        -f '{{with index .NetworkSettings.Networks "bridge"}}{{.EndpointID}}{{end}}' \
+        "$crawl4ai_container" 2>/dev/null)
+      existing_bridge_crawler_endpoint=$(docker network inspect bridge \
+        --format "{{with index .Containers \"$existing_crawler_id\"}}{{.EndpointID}}{{end}}" 2>/dev/null)
+      existing_bridge_gateway=$(docker network inspect bridge \
+        --format '{{range .IPAM.Config}}{{if .Gateway}}{{println .Gateway}}{{end}}{{end}}' 2>/dev/null \
+        | awk 'NF { print; exit }')
+      existing_crawler_bindings=$(container_port_bindings "$crawl4ai_container")
+      expected_existing_crawler_binding="8080/tcp|$existing_bridge_gateway|11235"
+
+      if [[ -n "$existing_crawler_id" \
+        && "${predeploy_bridge_container_ids[0]}" == "$existing_crawler_id" \
+        && "$existing_crawler_network_mode" == bridge \
+        && "$existing_crawler_network_count" == 1 \
+        && "$existing_gateway_network_mode" == "container:$existing_crawler_id" \
+        && "$existing_gateway_network_count" == 0 \
+        && -n "$existing_crawler_endpoint" \
+        && "$existing_bridge_crawler_endpoint" == "$existing_crawler_endpoint" \
+        && -n "$existing_bridge_gateway" \
+        && "$existing_crawler_bindings" == "$expected_existing_crawler_binding" ]]; then
+        pass "stock bridge contains only the selected project's isolated Crawl4AI namespace"
+      else
+        fail "stock bridge does not match the selected project's isolated Crawl4AI and gateway topology"
+      fi
     else
-      fail "stock bridge must be empty before deploying the isolated scraper"
+      fail "stock bridge contains unrelated or ambiguous endpoints; only the selected project's isolated Crawl4AI endpoint is allowed"
     fi
   else
     fail "stock bridge membership could not be inspected"

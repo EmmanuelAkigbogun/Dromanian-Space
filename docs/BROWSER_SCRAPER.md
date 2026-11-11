@@ -63,10 +63,15 @@ proves the live namespace and host-port topology, verifies both directions
 cannot reach each other's raw services, confirms `/health` is hidden by the
 fixed-route gateway, and probes the authenticated gateway from the worker. A
 public health endpoint alone is not accepted as scraper readiness.
-The pre-deploy phase requires the stock bridge to be empty, but defers the
-candidate topology and runtime probes so an older two-network release can be
-upgraded. Post-deploy then requires Crawl4AI to be that bridge's sole endpoint
-and runs every authenticated and isolation probe.
+The pre-deploy phase accepts either an empty stock bridge for the first rollout
+or the current selected Compose project's exact isolated scraper topology:
+Crawl4AI must be the bridge's sole endpoint, its gateway must share that
+namespace without another network, and the only host binding must remain
+`bridge-gateway:11235 -> 8080/tcp`. This permits safe repeat deployments while
+still rejecting unrelated default-bridge endpoints, a raw crawler binding, or
+an ambiguous namespace. Candidate runtime probes remain deferred so an older
+release can be upgraded. Post-deploy then revalidates the new topology and runs
+every authenticated and isolation probe.
 
 ### Token rotation
 
