@@ -1,6 +1,9 @@
 import { platform } from '@/lib/platform';
 import type { FileAttachment } from '@/types';
 import type { ForwardedAttachmentPolicy } from '@/types/profile';
+import { isPdfFile } from './attachmentType';
+
+export { isPdfFile } from './attachmentType';
 
 const BUCKET_NAME = 'message-attachments';
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
@@ -102,6 +105,9 @@ export function normalizeFileType(file: File): File {
   if (isSvgFile(file.name) && file.type !== 'image/svg+xml') {
     return new File([file], file.name, { type: 'image/svg+xml', lastModified: file.lastModified });
   }
+  if (isPdfFile(file.type, file.name) && file.type !== 'application/pdf') {
+    return new File([file], file.name, { type: 'application/pdf', lastModified: file.lastModified });
+  }
   const extension = ({
     'image/png': 'png',
     'image/jpeg': 'jpg',
@@ -112,10 +118,6 @@ export function normalizeFileType(file: File): File {
     return new File([file], `clipboard-${Date.now()}.${extension}`, { type: file.type, lastModified: file.lastModified });
   }
   return file;
-}
-
-export function isPdfFile(fileType: string): boolean {
-  return fileType === 'application/pdf';
 }
 
 function uploadWithProgress(

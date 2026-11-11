@@ -153,18 +153,41 @@ export function MediaViewer({ src, alt, type, open, openUrl, onClose, items, cur
 
   return (
     <Portal>
-    <div ref={containerRef} className={styles.overlay} onClick={onClose} role="dialog" aria-modal="true" aria-label="Media preview" tabIndex={-1}>
+    <div
+      ref={containerRef}
+      className={styles.overlay}
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={displayType === 'embed' ? `${displayAlt || 'Document'} preview` : 'Media preview'}
+      tabIndex={-1}
+    >
       <div className={styles.content} onClick={(e) => e.stopPropagation()}>
         {hasError || !displaySrc ? (
           <div className={styles.error}>
             <span>{displaySrc ? 'Failed to load media' : 'Preview not available'}</span>
           </div>
         ) : displayType === 'embed' ? (
-          <iframe
-            src={displaySrc}
-            className={styles.embed}
-            title={displayAlt || 'Document preview'}
-          />
+          <div className={styles.documentWrap}>
+            <div className={styles.documentHeader}>
+              <span className={styles.documentName} title={displayAlt || 'Document'}>
+                {displayAlt || 'Document'}
+              </span>
+              <a
+                href={displaySrc}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={styles.documentOpenButton}
+              >
+                Open in new tab
+              </a>
+            </div>
+            <iframe
+              src={displaySrc}
+              className={styles.embed}
+              title={displayAlt || 'Document preview'}
+            />
+          </div>
         ) : displayType === 'link' ? (
           <div className={styles.linkWrap}>
             <iframe

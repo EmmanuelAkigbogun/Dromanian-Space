@@ -5,7 +5,6 @@ import { platform } from '@/lib/platform';
 import { useSignedUrls } from '@/hooks/useSignedUrls';
 import { uploadFile, createFileAttachment, deleteFileAttachment, reorderAttachments, removeStoragePath } from '@/lib/message/attachment';
 import { MediaViewer } from '@/components/ui/MediaViewer';
-import { Portal } from '@/lib/overlay/Portal';
 import type { FileAttachment } from '@/types';
 import styles from './AttachmentGrid.module.css';
 
@@ -193,7 +192,7 @@ const FILE_ICONS: Record<string, React.ReactElement> = {
 
 function getMediaType(attachment: FileAttachment): 'image' | 'video' | 'embed' | 'text' | 'link' {
   if (isVideoFile(attachment.file_type)) return 'video';
-  if (isPdfFile(attachment.file_type)) return 'embed';
+  if (isPdfFile(attachment.file_type, attachment.file_name)) return 'embed';
   if (isTextFile(attachment.file_type)) return 'text';
   if (isLinkFile(attachment.file_type)) return 'link';
   return 'image';
@@ -702,9 +701,15 @@ export const AttachmentGrid = memo(function AttachmentGrid({ attachments, messag
       if (failed.has(item.id)) return renderFileCard(item, true);
       return <div className={styles.placeholder} />;
     }
-    if (isPdfFile(item.file_type)) {
+    if (isPdfFile(item.file_type, item.file_name)) {
       if (isLoaded && url) {
-        return <iframe src={url} className={styles.embedPreview} title={item.file_name} loading="lazy" />;
+        return (
+          <div className={styles.pdfPreview}>
+            <div className={styles.pdfPreviewIcon}>{FILE_ICONS.pdf}</div>
+            <span className={styles.pdfPreviewName}>{item.file_name}</span>
+            <span className={styles.pdfPreviewAction}>Open PDF</span>
+          </div>
+        );
       }
       if (failed.has(item.id)) return renderFileCard(item, true);
       return <div className={styles.placeholder} />;
@@ -1306,19 +1311,17 @@ export const AttachmentGrid = memo(function AttachmentGrid({ attachments, messag
         </div>
       )}
 
-      <Portal>
-        <MediaViewer
-          src={activeIndex !== null ? (urls.get(media[activeIndex]?.id) ?? null) : null}
-          alt={activeIndex !== null ? media[activeIndex]?.file_name : ''}
-          type={activeIndex !== null ? getMediaType(media[activeIndex]) : 'image'}
-          openUrl={activeIndex !== null && getMediaType(media[activeIndex]) === 'link' ? media[activeIndex]?.file_url : undefined}
-          open={activeIndex !== null}
-          onClose={() => setActiveIndex(null)}
-          items={viewerItems}
-          currentIndex={activeIndex ?? 0}
-          onNavigate={setActiveIndex}
-        />
-      </Portal>
+      <MediaViewer
+        src={activeIndex !== null ? (urls.get(media[activeIndex]?.id) ?? null) : null}
+        alt={activeIndex !== null ? media[activeIndex]?.file_name : ''}
+        type={activeIndex !== null ? getMediaType(media[activeIndex]) : 'image'}
+        openUrl={activeIndex !== null && getMediaType(media[activeIndex]) === 'link' ? media[activeIndex]?.file_url : undefined}
+        open={activeIndex !== null}
+        onClose={() => setActiveIndex(null)}
+        items={viewerItems}
+        currentIndex={activeIndex ?? 0}
+        onNavigate={setActiveIndex}
+      />
     </div>
   );
 });
