@@ -1,0 +1,41 @@
+.picker {
+  position: fixed;
+  z-index: var(--z-popover);
+  display: grid;
+  grid-template-columns: repeat(6, 40px);
+  gap: var(--space-1);
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  padding: var(--space-2);
+  overflow-x: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.reaction {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  font-size: 21px;
+  line-height: 1;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.reaction:hover {
+  background: var(--color-surface-secondary);
+  transform: translateY(-1px);
+}
+
+.reaction:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+  background: var(--color-surface-secondary);
+}

@@ -8,7 +8,7 @@ import { authenticate, databasePool, type AuthUser } from '../server/database.js
 import { extensionOf, fileForUser, mimeFor, readStoredFile, roleForUser, saveFile } from '../server/drive-files.js';
 import { errorResponse, HttpError, json, readJson } from '../server/http.js';
 import { log } from '../server/log.js';
-import { linkToken, officeSettings, officeType, readLinkToken, requireOffice, signJwt, verifyJwt } from '../server/office.js';
+import { linkToken, officeCapability, officeSettings, officeType, readLinkToken, requireOffice, signJwt, verifyJwt } from '../server/office.js';
 
 export async function status(request: Request): Promise<Response> {
   try {
@@ -30,31 +30,55 @@ export async function config(request: Request): Promise<Response> {
     const type = officeType(extension);
     if (!type) throw new HttpError(400, 'unsupported', 'This file type cannot be opened in the editor.');
     const role = await roleForUser(user, item_id);
-    const canEdit = type.editable && (role === 'owner' || role === 'editor');
+    const capability = officeCapability(extension, role);
+    const canEdit = capability === 'edit';
+    const canFill = capability === 'fill';
+    const canChange = canEdit || canFill;
     const profile = (await databasePool().query('SELECT display_name, username FROM public.profiles WHERE id = $1::uuid', [user.id])).rows[0];
     const claims = { item: file.id, version: file.version_id, user: user.id };
     const editorConfig = {
       document: {
         fileType: extension,
-        // A new version gets a new key, so every save starts a fresh editing session.
+        // Drive edits are collaborative and versioned, including PDF form
+        // completion, so this session stays bound to the exact source version.
+        // A saved version receives a new key the next time it is opened.
         key: file.version_id,
         title: file.name,
         url: `${settings.appUrl}/api/office/file?t=${linkToken({ ...claims, purpose: 'file' }, settings.secret)}`,
-        permissions: { edit: canEdit, download: true, print: true, comment: canEdit || role === 'commenter', review: canEdit },
+        permissions: {
+          edit: canEdit,
+          fillForms: canFill,
+          download: true,
+          print: true,
+          // ONLYOFFICE treats comment-only and form-filling-only as mutually
+          // exclusive when edit/review are false. A PDF filler must therefore
+          // have comment=false or fillForms can be ignored.
+          comment: canEdit || role === 'commenter',
+          review: canEdit,
+        },
       },
       documentType: type.type,
       editorConfig: {
-        mode: canEdit ? 'edit' : 'view',
+        mode: canChange ? 'edit' : 'view',
         callbackUrl: `${settings.appUrl}/api/office/callback?t=${linkToken({ ...claims, purpose: 'callback' }, settings.secret)}`,
         user: { id: user.id, name: profile?.display_name || profile?.username || 'Workspace member' },
         lang: request.headers.get('accept-language')?.slice(0, 2) || 'en',
-        customization: { autosave: true, forcesave: true, compactHeader: true, uiTheme: 'theme-system' },
+        customization: {
+          autosave: true,
+          forcesave: true,
+          compactHeader: true,
+          uiTheme: 'theme-system',
+          ...(canFill ? { submitForm: { visible: true, resultMessage: 'Completed PDF saved to Drive.' } } : {}),
+        },
       },
     };
     return json({
       config: { ...editorConfig, token: signJwt(editorConfig, settings.secret) },
       editor_url: `${settings.publicPath}/web-apps/apps/api/documents/api.js`,
-      can_edit: canEdit,
+      // Kept for older clients; "edit" here means the session may save a new
+      // Drive version, including a filled PDF form.
+      can_edit: canChange,
+      capability,
     });
   } catch (err) {
     return errorResponse(err);
@@ -102,6 +126,7 @@ export async function callback(request: Request): Promise<Response> {
     const body = signed;
     // 2: everyone closed the document; 6: forced save. Other statuses need no action.
     if ((body.status !== 2 && body.status !== 6) || !body.url) return json({ error: 0 });
+    if (body.key !== claims.version) throw new HttpError(403, 'forbidden', 'The saved document does not match this Drive version.');
 
     const owner = (await databasePool().query('SELECT id, email FROM auth.users WHERE id = $1::uuid AND deleted_at IS NULL', [claims.user])).rows[0];
     if (!owner) return json({ error: 1 });

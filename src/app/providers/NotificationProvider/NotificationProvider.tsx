@@ -11,6 +11,7 @@ import {
   deleteNotification,
 } from '@/features/notifications/service';
 import type { TypedNotification } from '@/features/notifications/service';
+import { getNotificationPresentation } from '@/features/notifications/presentation';
 
 interface NotificationContextValue {
   notifications: TypedNotification[];
@@ -96,11 +97,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!userId) return;
     const unsubscribe = subscribeToNotifications(userId, (notification) => {
-      if (isWithinQuietHours(quietHours.start, quietHours.end)) return;
       if (seenNotificationIdsRef.current.has(notification.id)) return;
       seenNotificationIdsRef.current.add(notification.id);
       setNotifications((prev) => [notification, ...prev]);
       setUnreadCount((prev) => prev + 1);
+      // Quiet hours suppress disruptive desktop toasts, not the in-app inbox.
+      // Keeping the persisted item visible prevents important work from being
+      // silently missed until the next full refresh.
+      if (isWithinQuietHours(quietHours.start, quietHours.end)) return;
+      const presentation = getNotificationPresentation(notification);
+      const shouldRaiseDesktopAlert = presentation.priority !== 'normal'
+        || notification.type === 'message';
+      if (!shouldRaiseDesktopAlert) return;
       // CallProvider raises the actionable incoming-call notification. Avoid a
       // second Windows toast from the accompanying persisted notification.
       if (!/^Incoming (voice|video) call$/i.test(notification.title)) {

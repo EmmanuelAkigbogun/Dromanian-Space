@@ -11,6 +11,9 @@ import { withoutSubmittedItems } from '@/lib/composerSubmission';
 import s from '@/features/platform/Platform.module.css';
 import a from './Agents.module.css';
 import { coreResearchLimitation } from './researchReadiness';
+import { prefilledAgentBrief } from './agentDeepLink';
+import { TokenUsagePanel } from './TokenUsagePanel';
+import { parseTokenLimit } from './tokenUsage';
 
 type Agent = RpcRow<'agent_directory'>;
 type TimelineRow = RpcRow<'agent_conversation_timeline'>;
@@ -45,6 +48,8 @@ interface Status {
     enabled: boolean;
     default_model: string;
     allowed_models: string[];
+    monthly_token_budget: number | null;
+    per_user_daily_token_budget: number | null;
     mention_reply_policy: string;
     web_research_enabled: boolean;
   };
@@ -298,7 +303,7 @@ function Agents({ ws, userId, admin }: { ws: string; userId: string; admin: bool
   const agent = directory.data?.find((d) => d.id === chosenId) ?? directory.data?.find((d) => d.handle === chosenId);
   const archived = !!conversationId && !!conversation && !agent;
 
-  const notice = status.isPending ? (
+  const configurationNotice = status.isPending ? (
     <div className={s.notice}>Checking AI configuration…</div>
   ) : status.error ? (
     <div className={s.notice}>
@@ -314,9 +319,22 @@ function Agents({ ws, userId, admin }: { ws: string; userId: string; admin: bool
     <div className={s.notice}>AI is turned off for this workspace.</div>
   ) : (
     <div className={s.notice}>
-      AI connected · {status.data.embeddings.configured ? 'semantic and full-text retrieval' : 'full-text retrieval (semantic search not configured)'} ·{' '}
-      {status.data.usage.user_day_tokens.toLocaleString()} tokens used today
+      AI connected · {status.data.embeddings.configured ? 'semantic and full-text retrieval' : 'full-text retrieval (semantic search not configured)'}
     </div>
+  );
+  const notice = (
+    <>
+      {configurationNotice}
+      {status.data ? (
+        <TokenUsagePanel
+          userDayTokens={status.data.usage.user_day_tokens}
+          userDayLimit={status.data.settings.per_user_daily_token_budget}
+          workspaceMonthTokens={status.data.usage.workspace_month_tokens}
+          workspaceMonthLimit={status.data.settings.monthly_token_budget}
+          onConfigure={admin ? () => setAiSettings(true) : undefined}
+        />
+      ) : null}
+    </>
   );
 
   return (
@@ -555,9 +573,9 @@ function AgentView(props: {
   const navigate = useNavigate();
   const cache = useQueryClient();
   const base = ['platform', ws, userId, 'agents'];
-  const initial = params.get('crm')
+  const initial = prefilledAgentBrief(params.get('brief')) || (params.get('crm')
     ? `Summarize the CRM ${params.get('crm_kind') ?? 'record'} ${params.get('crm')} and suggest a next step.`
-    : (PRESET_PROMPTS[params.get('prompt') ?? ''] ?? '');
+    : (PRESET_PROMPTS[params.get('prompt') ?? ''] ?? ''));
   const [message, setMessage] = useState(initial);
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
@@ -1363,6 +1381,8 @@ function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Stat
     allowed_models: status.settings.allowed_models,
     web_research_enabled: status.settings.web_research_enabled,
     mention_reply_policy: status.settings.mention_reply_policy,
+    monthly_token_budget: status.settings.monthly_token_budget?.toString() ?? '',
+    per_user_daily_token_budget: status.settings.per_user_daily_token_budget?.toString() ?? '',
     site_url: status.site.url ?? '',
     brand_kit_folder_id: status.brand_kit.folder_id ?? '',
   });
@@ -1412,11 +1432,26 @@ function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Stat
       setError('Allow at least one model.');
       return;
     }
+    let monthlyTokenBudget: number | null;
+    let dailyTokenBudget: number | null;
+    try {
+      monthlyTokenBudget = parseTokenLimit(form.monthly_token_budget);
+      dailyTokenBudget = parseTokenLimit(form.per_user_daily_token_budget);
+    } catch (err) {
+      setError(errorText(err));
+      return;
+    }
     setBusy(true);
     setError('');
     void result(platform.rpc('ai_update_settings', {
       p_workspace_id: ws,
-      p_patch: { ...form, site_url: form.site_url.trim(), brand_kit_folder_id: form.brand_kit_folder_id || null },
+      p_patch: {
+        ...form,
+        monthly_token_budget: monthlyTokenBudget,
+        per_user_daily_token_budget: dailyTokenBudget,
+        site_url: form.site_url.trim(),
+        brand_kit_folder_id: form.brand_kit_folder_id || null,
+      },
     }))
       .then(async () => {
         if (applyToAgents) await result(platform.rpc('ai_apply_model_to_agents', { p_workspace_id: ws, p_model: form.default_model }));
@@ -1518,6 +1553,38 @@ function AiSettings({ ws, status, onClose, onSaved }: { ws: string; status: Stat
           <input type="checkbox" checked={applyToAgents} onChange={(e) => setApplyToAgents(e.target.checked)} />
           Also switch every shared agent to this model (creates new versions; private agents are unchanged)
         </label>
+        <fieldset className={a.budgetSettings}>
+          <legend className={s.eyebrow}>Token limits</legend>
+          <p className={s.muted}>Optional safety limits. Leave a field empty for no limit; the usage bar will not invent a cap.</p>
+          <div className={a.budgetGrid}>
+            <label>
+              Daily tokens per person
+              <input
+                className={s.input}
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step={1000}
+                placeholder="No limit"
+                value={form.per_user_daily_token_budget}
+                onChange={(e) => setForm({ ...form, per_user_daily_token_budget: e.target.value })}
+              />
+            </label>
+            <label>
+              Monthly workspace tokens
+              <input
+                className={s.input}
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step={1000}
+                placeholder="No limit"
+                value={form.monthly_token_budget}
+                onChange={(e) => setForm({ ...form, monthly_token_budget: e.target.value })}
+              />
+            </label>
+          </div>
+        </fieldset>
         <label>
           Brand kit folder (voice, tone and visual rules for writing agents)
           <select className={s.input} value={form.brand_kit_folder_id} onChange={(e) => setForm({ ...form, brand_kit_folder_id: e.target.value })}>

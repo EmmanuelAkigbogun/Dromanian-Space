@@ -4,7 +4,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useThreadSafe } from '@/app/providers/ThreadProvider';
 import { useMessageSelectionSafe } from '@/app/providers/MessageSelectionProvider';
 import { useToast } from '@/components/ui/Toast';
-import { EmojiPicker } from '@/components/ui/EmojiPicker';
+import { ReactionPicker } from '@/components/message/ReactionPicker';
 import { useShareHandler } from '@/hooks/useShareHandler';
 import { ShareMessageDialog } from '@/components/message/ShareMessageDialog';
 import { addReaction, getMessagePermalink, isTempId } from '@/lib/message';
@@ -47,6 +47,7 @@ export const MessageActions = memo(function MessageActions({
   const [loaded, setLoaded] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [pickerPosition, setPickerPosition] = useState<{ x: number; y: number } | undefined>();
+  const reactionButtonRef = useRef<HTMLButtonElement>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareMenuOpen, setShareMenuOpen] = useState(false);
   const [shareMenuPosition, setShareMenuPosition] = useState<{ x: number; y: number } | undefined>();
@@ -219,10 +220,14 @@ export const MessageActions = memo(function MessageActions({
       onClick={(e) => e.stopPropagation()}
     >
       <button
+        ref={reactionButtonRef}
         type="button"
         className={styles.actionButton}
         onClick={handleReact}
         title="Add reaction"
+        aria-label="Add reaction"
+        aria-haspopup="dialog"
+        aria-expanded={showEmojiPicker}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="12" cy="12" r="10" />
@@ -348,9 +353,10 @@ export const MessageActions = memo(function MessageActions({
       )}
     </div>
     {showEmojiPicker && (
-      <EmojiPicker
+      <ReactionPicker
         onSelect={handleEmojiSelect}
         onClose={() => setShowEmojiPicker(false)}
+        anchorRef={reactionButtonRef}
         position={pickerPosition}
       />
     )}

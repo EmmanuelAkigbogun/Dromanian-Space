@@ -57,19 +57,19 @@ export function RecordTable({ kind, records, columns, view, onView, canEdit, onS
                 key={c.key}
                 className={i === 0 ? s.stickyCol : undefined}
                 style={i === 0 ? { left: 36 } : undefined}
-                onClick={() => sortBy(c)}
                 aria-sort={view.sort === c.field ? (view.sortDesc ? 'descending' : 'ascending') : undefined}
-                title={`Sort by ${c.label}`}
               >
-                {c.label}
-                {view.sort === c.field && (view.sortDesc ? ' ↓' : ' ↑')}
+                <button className={s.sortButton} type="button" onClick={() => sortBy(c)} title={`Sort by ${c.label}`}>
+                  {c.label}
+                  {view.sort === c.field && <span aria-hidden="true">{view.sortDesc ? ' ↓' : ' ↑'}</span>}
+                </button>
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
           {records.map((r) => (
-            <tr key={r.id}>
+            <tr key={r.id} className={selected.has(r.id) ? s.rowSelected : undefined}>
               <td className={`${s.check} ${s.stickyCol}`}>
                 <input
                   type="checkbox"
@@ -163,7 +163,7 @@ function CellView({ record, column, editable, onToggle }: { record: CrmRecord; c
     );
   }
   const text = displayValue(record, column);
-  if (!text) return null;
+  if (!text) return <span className={s.emptyCell}>—</span>;
   if (column.type === 'url') {
     const first = text.split(/\s*;\s*|\s+/)[0];
     return (

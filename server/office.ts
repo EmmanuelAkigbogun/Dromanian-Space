@@ -4,9 +4,10 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { HttpError } from './http.js';
 
-export type DocumentType = 'word' | 'cell' | 'slide';
+export type DocumentType = 'word' | 'cell' | 'slide' | 'pdf';
+export type OfficeCapability = 'edit' | 'fill' | 'view';
 
-const TYPES: Record<string, { type: DocumentType; editable: boolean }> = {
+const TYPES: Record<string, { type: DocumentType; editable: boolean; fillable?: boolean }> = {
   docx: { type: 'word', editable: true },
   docm: { type: 'word', editable: true },
   dotx: { type: 'word', editable: true },
@@ -26,10 +27,23 @@ const TYPES: Record<string, { type: DocumentType; editable: boolean }> = {
   odp: { type: 'slide', editable: true },
   ppsx: { type: 'slide', editable: true },
   ppt: { type: 'slide', editable: false },
+  // PDFs deliberately open in form-filling mode for Drive editors. This lets
+  // people complete existing form fields without granting broad PDF content
+  // editing. Viewers keep a read-only editor with download and print access.
+  pdf: { type: 'pdf', editable: false, fillable: true },
 };
 
 export function officeType(extension: string) {
   return TYPES[extension] ?? null;
+}
+
+export function officeCapability(extension: string, role: string | null): OfficeCapability {
+  const type = officeType(extension);
+  const canWrite = role === 'owner' || role === 'editor';
+  if (!type || !canWrite) return 'view';
+  if (type.editable) return 'edit';
+  if (type.fillable) return 'fill';
+  return 'view';
 }
 
 export function officeSettings() {

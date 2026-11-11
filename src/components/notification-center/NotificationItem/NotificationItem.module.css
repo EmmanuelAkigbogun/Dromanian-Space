@@ -1,0 +1,227 @@
+.item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-height: 92px;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  transition: border-color var(--transition-fast), background-color var(--transition-fast), box-shadow var(--transition-fast);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 92px;
+}
+
+.item:hover,
+.item:focus-visible {
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
+  outline: none;
+}
+
+.openButton {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.openButton:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-md);
+}
+
+.item.unread {
+  border-left: 4px solid var(--color-primary);
+  background: var(--color-primary-subtle);
+}
+
+.item.action.unread {
+  border-left-color: var(--color-error);
+  background: var(--color-error-subtle);
+}
+
+.glyph {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-secondary);
+}
+
+.action .glyph {
+  color: var(--color-error);
+  background: var(--color-error-subtle);
+}
+
+.important .glyph {
+  color: var(--color-warning);
+  background: var(--color-warning-subtle);
+}
+
+.content {
+  min-width: 0;
+  flex: 1;
+}
+
+.titleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.title {
+  min-width: 0;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+}
+
+.repeatCount {
+  flex-shrink: 0;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  background: var(--color-surface-secondary);
+  font-size: 0.6875rem;
+  font-weight: var(--font-weight-semibold);
+}
+
+.message {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: var(--space-1) 0 0;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: 0.6875rem;
+}
+
+.category,
+.priorityLabel {
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
+  font-weight: var(--font-weight-medium);
+}
+
+.action .priorityLabel {
+  background: var(--color-error-subtle);
+  color: var(--color-error);
+}
+
+.important .priorityLabel {
+  background: var(--color-warning-subtle);
+  color: var(--color-warning);
+}
+
+.actionLabel {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--color-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.dismissButton {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition-fast), color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.item:hover .dismissButton,
+.item:focus-within .dismissButton,
+.dismissButton:focus-visible {
+  opacity: 1;
+}
+
+.dismissButton:hover,
+.dismissButton:focus-visible {
+  color: var(--color-error);
+  background: var(--color-error-subtle);
+  outline: none;
+}
+
+.compact {
+  min-height: 88px;
+  border-width: 0 0 1px;
+  border-radius: 0;
+  padding: var(--space-4) var(--space-5);
+  box-shadow: none;
+}
+
+.compact:hover,
+.compact:focus-visible {
+  box-shadow: none;
+}
+
+.compact.unread {
+  border-left-width: 4px;
+}
+
+@media (max-width: 639px) {
+  .item,
+  .compact {
+    min-height: 96px;
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .glyph {
+    width: 32px;
+    height: 32px;
+  }
+
+  .dismissButton {
+    width: var(--touch-target-min);
+    height: var(--touch-target-min);
+    margin: calc((var(--touch-target-min) - 32px) / -2);
+    opacity: 1;
+  }
+
+  .actionLabel {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .item,
+  .dismissButton {
+    transition: none;
+  }
+}

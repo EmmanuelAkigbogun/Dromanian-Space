@@ -48,6 +48,37 @@
 .note { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
 .linkButton { background: none; border: 0; padding: 0; color: var(--color-text-secondary); cursor: pointer; font-size: 12px; text-decoration: underline; }
 
+.usagePanel { margin: -2px 0 18px; padding: 16px; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-surface); box-shadow: var(--shadow-xs); }
+.usageHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.usageHeader h2 { margin: -5px 0 0; font-size: 16px; }
+.usageGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; }
+.usageMetric { min-width: 0; }
+.usageMetricHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 9px; }
+.usageMetricHeader > div:first-child { display: grid; gap: 2px; }
+.usageMetricHeader strong { font-size: 13px; }
+.usageMetricHeader span, .usageCaption, .usageFootnote { color: var(--color-text-secondary); font-size: 11px; line-height: 1.45; }
+.usageValue { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
+.usageValue strong { font-size: 17px; font-variant-numeric: tabular-nums; }
+.usageTrack { height: 8px; overflow: hidden; border-radius: 999px; background: var(--color-surface-tertiary); }
+.usageTrackNeutral { background: color-mix(in srgb, var(--color-text-secondary) 18%, var(--color-surface-secondary)); }
+.usageFill { display: block; height: 100%; border-radius: inherit; background: var(--color-primary); transition: width 180ms ease; }
+.usageWarning { background: var(--color-warning); }
+.usageExceeded { background: var(--color-error); }
+.usageCaption { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.usageFootnote { margin: 12px 0 0; }
+.budgetSettings { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
+.budgetGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+
+@media (max-width: 640px) {
+  .usageGrid, .budgetGrid { grid-template-columns: 1fr; }
+  .usagePanel { padding: 14px; }
+  .usageMetricHeader { align-items: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .usageFill { transition: none; }
+}
+
 .hiddenFileInput { display: none; }
 .imageDropActive { outline: 2px dashed var(--color-primary); outline-offset: 8px; border-radius: 8px; }
 .pendingImages, .messageImages { display: flex; flex-wrap: wrap; gap: 10px; }

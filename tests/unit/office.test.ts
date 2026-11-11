@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { linkToken, officeType, readLinkToken, signJwt, verifyJwt } from '../../server/office.js';
+import { linkToken, officeCapability, officeType, readLinkToken, signJwt, verifyJwt } from '../../server/office.js';
 
 const secret = 'test-office-secret-0123456789abcdef';
 
@@ -33,6 +33,16 @@ describe('ONLYOFFICE signing', () => {
     expect(officeType('xlsx')).toEqual({ type: 'cell', editable: true });
     expect(officeType('pptx')).toEqual({ type: 'slide', editable: true });
     expect(officeType('doc')?.editable).toBe(false);
+    expect(officeType('pdf')).toEqual({ type: 'pdf', editable: false, fillable: true });
     expect(officeType('exe')).toBeNull();
+  });
+
+  it('limits PDF writers to form filling and keeps viewers read-only', () => {
+    expect(officeCapability('pdf', 'owner')).toBe('fill');
+    expect(officeCapability('pdf', 'editor')).toBe('fill');
+    expect(officeCapability('pdf', 'commenter')).toBe('view');
+    expect(officeCapability('pdf', 'viewer')).toBe('view');
+    expect(officeCapability('docx', 'editor')).toBe('edit');
+    expect(officeCapability('doc', 'owner')).toBe('view');
   });
 });

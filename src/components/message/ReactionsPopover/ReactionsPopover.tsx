@@ -66,7 +66,7 @@ export const ReactionsPopover = memo(function ReactionsPopover({
 
   return (
     <Portal>
-      <div ref={popoverRef} className={styles.popover} style={popoverStyle}>
+      <div ref={popoverRef} className={styles.popover} style={popoverStyle} role="dialog" aria-label="Message reactions">
         <div className={styles.grid}>
           {groups.map((group) => (
             <button
@@ -75,6 +75,8 @@ export const ReactionsPopover = memo(function ReactionsPopover({
               className={`${styles.chip} ${group.hasOwn ? styles.chipSelected : ''}`}
               onClick={() => handleSelect(group.emoji)}
               title={`${group.emoji} ${group.count}`}
+              aria-label={`${group.count} ${group.count === 1 ? 'reaction' : 'reactions'} with ${group.emoji}${group.hasOwn ? '; remove your reaction' : '; add your reaction'}`}
+              aria-pressed={group.hasOwn}
             >
               <span className={styles.emoji}>{group.emoji}</span>
               <span className={styles.count}>{group.count}</span>

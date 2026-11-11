@@ -192,32 +192,73 @@ export const proposeChannelMessage = defineTool({
 export const proposeSocialPosts = defineTool({
   name: 'propose_social_posts',
   description:
-    'Propose creating dated draft posts in the Social area. The drafts are created only after the requester approves the review card; this never publishes them or connects accounts.',
+    'Propose company-scoped, dated Social drafts with a channel caption, CTA, hashtags, script/visual brief and exact Drive brand assets. Requires a selected managed company. Approval creates drafts only; it never schedules, publishes or connects accounts.',
   schema: z.object({
     posts: z.array(z.object({
+      channel: z.enum(['x', 'linkedin', 'facebook', 'pinterest', 'tiktok']),
       body: z.string().min(1).max(10_000),
+      format: z.enum(['feed', 'carousel', 'story', 'reel', 'short_video', 'long_video']).optional(),
+      script: z.string().max(30_000).optional().describe('Spoken/on-screen script for video content'),
+      visual_brief: z.string().max(10_000).optional().describe('Production-ready visual direction, layout, shots and brand treatment'),
+      cta: z.string().max(500).optional(),
+      hashtags: z.array(z.string().min(1).max(80)).max(30).optional(),
+      drive_asset_ids: z.array(z.string().uuid()).max(12).optional().describe('Exact item_ids returned by read_brand_kit; never invent ids'),
       scheduled_at: z.iso.datetime({ offset: true }).optional().describe('Suggested publication time with UTC offset'),
       link: z.url().max(2_000).optional(),
-      company_id: z.string().uuid().optional().describe('CRM company id; omit for the workspace brand'),
     })).min(1).max(31),
   }),
   label: (input) => `Preparing ${input.posts.length} Social draft${input.posts.length === 1 ? '' : 's'}`,
   async run(ctx, input, call) {
+    if (!ctx.scope.company_id) {
+      return {
+        content: 'Choose one managed company before creating Social drafts. Portfolio-mode drafts are blocked so brand assets and posts cannot be mixed across companies.',
+        summary: { error: 'company_required' },
+        isError: true,
+      };
+    }
     const count = input.posts.length;
-    const companyId = ctx.scope.company_id ?? null;
+    const assetIds = [...new Set(input.posts.flatMap((post) => post.drive_asset_ids ?? []))];
+    const assets = assetIds.length
+      ? await rpc<Array<{ id: string; name: string; kind: string; mime_type: string | null }>>('agent_scope_items_scoped_for', {
+        p_actor: ctx.actorId,
+        p_workspace_id: ctx.workspaceId,
+        p_company_id: ctx.scope.company_id,
+        p_item_ids: assetIds,
+      })
+      : [];
+    const byId = new Map(assets.map((asset) => [asset.id, asset]));
+    const missing = assetIds.filter((id) => !byId.has(id) || byId.get(id)?.kind === 'folder');
+    if (missing.length) {
+      return {
+        content: 'One or more proposed assets are not readable files inside the selected company Drive folder. Call read_brand_kit again and use only exact returned item_ids.',
+        summary: { error: 'invalid_company_assets', count: missing.length },
+        isError: true,
+      };
+    }
     return proposeAction(
       ctx,
       call.toolUseId,
       'create_social_drafts',
       {
         posts: input.posts.map((post) => ({
-          ...post,
-          company_id: companyId ?? post.company_id ?? null,
+          channel: post.channel,
+          body: post.body,
+          format: post.format ?? 'feed',
+          script: post.script ?? null,
+          visual_brief: post.visual_brief ?? null,
+          cta: post.cta ?? null,
+          hashtags: post.hashtags ?? [],
+          assets: (post.drive_asset_ids ?? []).map((id) => ({
+            item_id: id,
+            label: byId.get(id)!.name,
+            mime_type: byId.get(id)!.mime_type,
+          })),
+          company_id: ctx.scope.company_id,
           scheduled_at: post.scheduled_at ?? null,
           link: post.link ?? null,
         })),
       },
-      `Create ${count} reviewed Social draft${count === 1 ? '' : 's'}`,
+      `Create ${count} company-scoped Social draft${count === 1 ? '' : 's'} for review`,
     );
   },
 });

@@ -2,6 +2,7 @@
 import { databasePool } from '../database.js';
 import { log } from '../log.js';
 import { decryptSession, encryptSession, inTurn, isPlatform, PLATFORMS, publishWith } from '../social.js';
+import { composeSocialPostText } from '../../src/lib/socialPost.js';
 import { PermanentJobError, type JobHandler } from './types.js';
 
 interface TargetRow {
@@ -11,6 +12,8 @@ interface TargetRow {
   platform: string;
   account_status: string;
   body: string;
+  cta: string | null;
+  hashtags: string[];
   link: string | null;
   scheduled_at: Date | null;
   post_status: string;
@@ -22,7 +25,8 @@ export const handleSocialPublish: JobHandler = async (job) => {
   if (!/^[0-9a-f-]{36}$/i.test(targetId)) throw new PermanentJobError('Job has no target_id');
   const db = databasePool();
   const t = (await db.query<TargetRow>(
-    `SELECT t.id, t.status, t.account_id, a.platform, a.status AS account_status, p.body, p.link, p.scheduled_at, p.status AS post_status, s.ciphertext
+    `SELECT t.id, t.status, t.account_id, a.platform, a.status AS account_status,
+            p.body, p.cta, p.hashtags, p.link, p.scheduled_at, p.status AS post_status, s.ciphertext
        FROM public.social_post_targets t
        JOIN public.social_posts p ON p.id = t.post_id
        JOIN public.social_accounts a ON a.id = t.account_id
@@ -41,12 +45,13 @@ export const handleSocialPublish: JobHandler = async (job) => {
   };
   if (!isPlatform(t.platform)) return fail('This network is not supported.');
   if (!t.ciphertext) return fail(`Log in to this ${PLATFORMS[t.platform].label} account first.`, true);
-  if (t.body.length > PLATFORMS[t.platform].maxLength) return fail(`Too long for ${PLATFORMS[t.platform].label} (${t.body.length}/${PLATFORMS[t.platform].maxLength} characters).`);
+  const publishText = composeSocialPostText(t.body, t.cta, t.hashtags);
+  if (publishText.length > PLATFORMS[t.platform].maxLength) return fail(`Too long for ${PLATFORMS[t.platform].label} (${publishText.length}/${PLATFORMS[t.platform].maxLength} characters).`);
 
   await db.query(`UPDATE public.social_post_targets SET status = 'publishing', error = NULL WHERE id = $1`, [targetId]);
   try {
     const platform = t.platform;
-    const outcome = await inTurn(() => publishWith(platform, decryptSession(t.ciphertext!), { text: t.body, link: t.link ?? undefined }));
+    const outcome = await inTurn(() => publishWith(platform, decryptSession(t.ciphertext!), { text: publishText, link: t.link ?? undefined }));
     await db.query(
       `INSERT INTO public.social_account_sessions (account_id, ciphertext, updated_at) VALUES ($1, $2, now())
        ON CONFLICT (account_id) DO UPDATE SET ciphertext = EXCLUDED.ciphertext, updated_at = now()`,

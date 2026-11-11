@@ -1,23 +1,29 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useNotifications } from '@/hooks/useNotifications';
+import { groupNotifications, summarizeNotificationGroups } from '@/features/notifications/presentation';
 import { NotificationCenter } from '../NotificationCenter/NotificationCenter';
 import styles from './NotificationBell.module.css';
 
 export function NotificationBell() {
-  const { unreadCount } = useNotifications();
+  const { unreadCount, notifications } = useNotifications();
   const [isOpen, setIsOpen] = useState(false);
-  const [prevUnreadCount, setPrevUnreadCount] = useState(unreadCount);
   const [pulse, setPulse] = useState(false);
   const bellRef = useRef<HTMLButtonElement>(null);
+  const previousUnreadCountRef = useRef(unreadCount);
+  const actionUnread = useMemo(
+    () => summarizeNotificationGroups(groupNotifications(notifications)).actionUnread,
+    [notifications],
+  );
 
   useEffect(() => {
-    if (unreadCount > prevUnreadCount) {
+    if (unreadCount > previousUnreadCountRef.current) {
       setPulse(true);
-      const timer = setTimeout(() => setPulse(false), 300);
+      const timer = window.setTimeout(() => setPulse(false), 600);
+      previousUnreadCountRef.current = unreadCount;
       return () => clearTimeout(timer);
     }
-    setPrevUnreadCount(unreadCount);
-  }, [unreadCount, prevUnreadCount]);
+    previousUnreadCountRef.current = unreadCount;
+  }, [unreadCount]);
 
   const handleToggle = useCallback(() => {
     setIsOpen((prev) => !prev);
@@ -43,10 +49,10 @@ export function NotificationBell() {
     <>
       <button
         ref={bellRef}
-        className={`${styles.bellButton} ${unreadCount > 0 ? styles.bellButtonHasUnread : ''}`}
+        className={`${styles.bellButton} ${unreadCount > 0 ? styles.bellButtonHasUnread : ''} ${actionUnread > 0 ? styles.bellButtonAction : ''}`}
         onClick={handleToggle}
         type="button"
-        aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}`}
+        aria-label={`Notifications${unreadCount > 0 ? `, ${unreadCount} unread` : ''}${actionUnread > 0 ? `, ${actionUnread} requiring action` : ''}`}
         aria-expanded={isOpen}
         aria-haspopup="dialog"
       >
@@ -63,7 +69,7 @@ export function NotificationBell() {
           <path d="M13.73 21a2 2 0 0 1-3.46 0" />
         </svg>
         {unreadCount > 0 && (
-          <span className={`${styles.badge} ${pulse ? styles.badgePulse : ''}`}>
+          <span className={`${styles.badge} ${actionUnread > 0 ? styles.badgeAction : ''} ${pulse ? styles.badgePulse : ''}`}>
             {displayCount}
           </span>
         )}

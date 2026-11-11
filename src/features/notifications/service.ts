@@ -5,8 +5,8 @@ export type NotificationCategory = 'messaging' | 'workspace' | 'channels' | 'pro
 export type EntityType = 'message' | 'channel' | 'workspace' | 'user' | 'file' | 'invitation' | 'project' | 'task' | 'event';
 
 export interface TypedNotification extends Notification {
-  category: NotificationCategory;
-  entity_type: EntityType;
+  category: NotificationCategory | null;
+  entity_type: EntityType | null;
   entity_id: string | null;
   actor_id: string | null;
   workspace_id: string | null;
@@ -137,6 +137,11 @@ export async function createTypedNotification(
       title,
       message,
       link,
+      category,
+      entity_type: entityType,
+      entity_id: entityId,
+      actor_id: actorId,
+      workspace_id: workspaceId,
     });
     return !fallbackError;
   }

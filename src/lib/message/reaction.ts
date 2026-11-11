@@ -1,5 +1,6 @@
 import { platform } from '@/lib/platform';
 import type { Reaction } from '@/types';
+export { groupReactions, type ReactionGroup } from './reactionGroups';
 
 const REACTION_CACHE_TTL_MS = 30_000;
 
@@ -149,38 +150,4 @@ export async function getReactionsByMessageIds(
   });
 
   return grouped;
-}
-
-export interface ReactionGroup {
-  emoji: string;
-  count: number;
-  userIds: string[];
-  hasOwn: boolean;
-}
-
-export function groupReactions(
-  reactions: Reaction[],
-  currentUserId: string,
-): ReactionGroup[] {
-  const map = new Map<string, ReactionGroup>();
-
-  reactions.forEach((r) => {
-    const existing = map.get(r.emoji);
-    if (existing) {
-      if (!existing.userIds.includes(r.user_id)) {
-        existing.userIds.push(r.user_id);
-        existing.count++;
-      }
-      if (r.user_id === currentUserId) existing.hasOwn = true;
-    } else {
-      map.set(r.emoji, {
-        emoji: r.emoji,
-        count: 1,
-        userIds: [r.user_id],
-        hasOwn: r.user_id === currentUserId,
-      });
-    }
-  });
-
-  return Array.from(map.values()).sort((a, b) => b.count - a.count);
 }

@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, memo } from 'react';
-import { EmojiPicker } from '@/components/ui/EmojiPicker';
+import { ReactionPicker } from '@/components/message/ReactionPicker';
 import { ReactionsPopover } from '@/components/message/ReactionsPopover';
 import type { ReactionGroup } from '@/lib/message';
 import styles from './ReactionBar.module.css';
@@ -58,6 +58,9 @@ export const ReactionBar = memo(function ReactionBar({
           className={styles.addButton}
           onClick={() => setShowPicker(!showPicker)}
           title="Add reaction"
+          aria-label="Add reaction"
+          aria-haspopup="dialog"
+          aria-expanded={showPicker}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="10" />
@@ -67,7 +70,7 @@ export const ReactionBar = memo(function ReactionBar({
           </svg>
         </button>
         {showPicker && (
-          <EmojiPicker
+          <ReactionPicker
             onSelect={handlePickerSelect}
             onClose={() => setShowPicker(false)}
             anchorRef={addRef}
@@ -86,6 +89,8 @@ export const ReactionBar = memo(function ReactionBar({
           className={`${styles.reaction} ${group.hasOwn ? styles.reactionActive : ''}`}
           onClick={handlePillClick}
           title={`${group.emoji} ${group.count}`}
+          aria-label={`${group.count} ${group.count === 1 ? 'reaction' : 'reactions'} with ${group.emoji}${group.hasOwn ? ', including yours' : ''}`}
+          aria-pressed={group.hasOwn}
         >
           <span className={styles.emoji}>{group.emoji}</span>
           <span className={styles.count}>{group.count}</span>
@@ -97,6 +102,9 @@ export const ReactionBar = memo(function ReactionBar({
         className={styles.addButton}
         onClick={() => setShowPicker(!showPicker)}
         title="Add reaction"
+        aria-label="Add reaction"
+        aria-haspopup="dialog"
+        aria-expanded={showPicker}
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="12" cy="12" r="10" />
@@ -105,7 +113,7 @@ export const ReactionBar = memo(function ReactionBar({
         </svg>
       </button>
       {showPicker && (
-        <EmojiPicker
+        <ReactionPicker
           onSelect={handlePickerSelect}
           onClose={() => setShowPicker(false)}
           anchorRef={addRef}

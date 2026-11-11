@@ -438,8 +438,8 @@ export async function executeRun(
       });
     }
     const teamTools = new Set(specialistConfigs.flatMap((specialist) => specialist.tools));
-    if (teamTools.has('read_brand_kit') && !claim.settings.brand_kit_folder_id) {
-      contextLines.push('Readiness limitation: no brand kit folder is configured; identify this when brand-specific output is requested.');
+    if (teamTools.has('read_brand_kit') && !claim.settings.brand_kit_folder_id && !selectedCompany) {
+      contextLines.push('Readiness limitation: portfolio view has no workspace brand folder configured. A selected managed company can instead use its own Drive/Brand kit folder.');
     }
     if (teamTools.has('fetch_site_page') && !ctx.settings.siteUrl) {
       contextLines.push('No selected company site is available; ask for a managed company or a public URL before claiming a site audit.');

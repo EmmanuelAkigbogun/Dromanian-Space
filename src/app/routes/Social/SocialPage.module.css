@@ -1,4 +1,4 @@
-.page { max-width: 1180px; margin: 0 auto; padding: var(--space-8); color: var(--color-text); }
+.page { max-width: 1380px; margin: 0 auto; padding: var(--space-8); color: var(--color-text); }
 .hero, .sectionHeading, .scheduleRow, .post, .accountCard, .dialogActions, .remoteControls { display: flex; align-items: center; }
 .hero { justify-content: space-between; gap: var(--space-6); margin-bottom: var(--space-6); }
 .hero h1 { margin: 2px 0 4px; font-size: var(--font-size-3xl); }
@@ -65,6 +65,65 @@
 .status[data-status='publishing'], .status[data-status='scheduled'] { color: var(--color-info); background: var(--color-info-subtle); }
 .empty { grid-column: 1 / -1; padding: var(--space-8); text-align: center; color: var(--color-text-muted); border: 1px dashed var(--color-border); border-radius: var(--radius-lg); }
 .emptyInline { padding: 8px 0; }
+.emptyState { display: grid; justify-items: start; gap: var(--space-3); padding: var(--space-8); border: 1px dashed var(--color-border); border-radius: var(--radius-xl); background: var(--color-surface); }
+.emptyState h2, .emptyState p { margin: 0; }
+.readiness { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--space-4); margin-top: var(--space-3); padding: var(--space-5); border: 1px solid var(--color-border); border-radius: var(--radius-xl); background: linear-gradient(135deg, var(--color-surface), var(--color-info-subtle)); }
+.stepBadge { display: inline-grid; width: 32px; height: 32px; place-items: center; flex: 0 0 auto; border-radius: 50%; background: var(--color-primary); color: var(--color-text-inverse); font-weight: 800; }
+.readinessMain h2 { margin: 2px 0 5px; font-size: var(--font-size-xl); }
+.readinessStats, .readinessActions, .headingWithStep, .viewControls, .segmented, .monthNav, .campaignActions, .reviewHeaderActions, .reviewTools, .assets, .assetList { display: flex; align-items: center; }
+.readinessStats { flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-3); color: var(--color-text-secondary); font-size: var(--font-size-sm); }
+.readinessStats span { padding-right: var(--space-3); border-right: 1px solid var(--color-border); }
+.readinessStats span:last-child { border-right: 0; }
+.readinessActions { align-items: stretch; flex-direction: column; gap: var(--space-2); }
+.headingWithStep { gap: var(--space-3); }
+.campaignGrid, .reviewGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); }
+.campaignGrid label, .reviewGrid label { display: grid; align-content: start; gap: 6px; color: var(--color-text-secondary); font-size: var(--font-size-sm); font-weight: 650; }
+.fieldWide, .channelField { grid-column: 1 / -1; }
+.channelField { min-width: 0; margin: 0; padding: 0; border: 0; }
+.channelField legend { margin-bottom: 7px; color: var(--color-text-secondary); font-size: var(--font-size-sm); font-weight: 650; }
+.channelChoices { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.channelChoice, .channelSelected { display: inline-flex !important; grid-auto-flow: column; align-items: center; justify-content: start; gap: 7px !important; padding: 7px 10px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); cursor: pointer; }
+.channelSelected { border-color: var(--color-primary); background: var(--color-info-subtle); color: var(--color-text) !important; }
+.channelChoice:focus-within, .channelSelected:focus-within { outline: 2px solid var(--color-focus); outline-offset: 2px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus) 18%, transparent); }
+.channelChoice input, .channelSelected input { position: absolute; opacity: 0; pointer-events: none; }
+.notes, .notesTall { width: 100%; min-height: 86px; padding: var(--space-3); resize: vertical; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); color: var(--color-text); font: inherit; line-height: 1.5; }
+.notesTall { min-height: 125px; }
+.notes:focus, .notesTall:focus { border-color: var(--color-focus); outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus) 20%, transparent); }
+.campaignActions { flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-5); color: var(--color-text-muted); font-size: var(--font-size-sm); }
+.primary[href] { display: inline-flex; align-items: center; text-decoration: none; }
+.viewControls { align-items: flex-end; flex-direction: column; gap: var(--space-2); }
+.segmented { padding: 3px; border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); }
+.segment, .segmentActive { min-height: 30px; padding: 4px 10px; border: 0; border-radius: var(--radius-md); color: var(--color-text-secondary); background: transparent; cursor: pointer; }
+.segmentActive { color: var(--color-text); background: var(--color-surface); box-shadow: var(--shadow-sm); font-weight: 700; }
+.monthNav { justify-content: center; gap: var(--space-3); margin: var(--space-3) 0; }
+.monthNav strong { min-width: 170px; text-align: center; }
+.weekdays, .calendarGrid { display: grid; grid-template-columns: repeat(7, minmax(92px, 1fr)); min-width: 720px; }
+.weekdays { color: var(--color-text-muted); font-size: var(--font-size-xs); font-weight: 700; text-align: center; }
+.weekdays span { padding: 7px; }
+.calendarGrid { overflow: hidden; border-top: 1px solid var(--color-border); border-left: 1px solid var(--color-border); border-radius: var(--radius-lg); }
+.calendarDay, .calendarDayMuted { min-height: 118px; padding: 6px; overflow: hidden; border-right: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); background: var(--color-surface); }
+.calendarDayMuted { color: var(--color-text-muted); background: var(--color-background); opacity: .72; }
+.dayNumber { display: block; margin-bottom: 4px; font-size: var(--font-size-xs); font-weight: 700; }
+.calendarPost { display: flex; align-items: center; gap: 4px; width: 100%; min-width: 0; margin: 3px 0; padding: 4px 5px; overflow: hidden; border: 0; border-radius: 6px; background: var(--color-info-subtle); color: var(--color-text); font: inherit; font-size: 11px; text-align: left; cursor: pointer; }
+.calendarPost:not(button) { cursor: default; }
+.calendarPost[data-status='published'] { background: var(--color-success-subtle); }
+.calendarPost[data-status='failed'], .calendarPost[data-status='partial'] { background: var(--color-error-subtle); }
+.calendarPost span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calendarPost .network { width: 17px; height: 17px; border-radius: 5px; font-size: 8px; }
+.emptyCalendar { min-width: 720px; padding: var(--space-6); color: var(--color-text-muted); text-align: center; }
+.reviewGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.reviewGrid .editor { margin: 0; }
+.reviewHeaderActions { gap: var(--space-3); }
+.assetPanel { display: grid; grid-template-columns: minmax(190px, .4fr) 1fr; gap: var(--space-4); margin-top: var(--space-4); padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-background); }
+.assetPanel p { margin: 4px 0 0; color: var(--color-text-muted); font-size: var(--font-size-sm); }
+.assetList { flex-wrap: wrap; align-content: start; gap: var(--space-2); }
+.assetList span { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border: 1px solid var(--color-border); border-radius: var(--radius-full); background: var(--color-surface); font-size: var(--font-size-sm); }
+.assetList a, .assets a { color: var(--color-primary); text-decoration: none; }
+.assetList button { padding: 0; border: 0; background: transparent; color: var(--color-text-muted); cursor: pointer; }
+.reviewTools { flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); color: var(--color-text-muted); font-size: var(--font-size-xs); }
+.postWorkflow { color: var(--color-text-secondary); font-size: var(--font-size-sm); line-height: 1.5; }
+.assets { flex-wrap: wrap; gap: 6px; margin: var(--space-2) 0; }
+.assets a { padding: 4px 7px; border-radius: var(--radius-full); background: var(--color-info-subtle); font-size: var(--font-size-xs); }
 .error { margin: var(--space-3) 0; padding: var(--space-3); border-radius: var(--radius-md); color: var(--color-error); background: var(--color-error-subtle); }
 .dialogForm, .dialogForm label { display: grid; gap: var(--space-2); }
 .dialogForm { gap: var(--space-4); }
@@ -82,7 +141,15 @@
 @media (max-width: 720px) {
   .page { padding: var(--space-4); }
   .hero, .sectionHeading, .post { align-items: stretch; flex-direction: column; }
+  .readiness { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+  .readinessActions { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; }
+  .campaignGrid, .reviewGrid { grid-template-columns: 1fr; }
+  .fieldWide, .channelField { grid-column: auto; }
+  .viewControls { align-items: stretch; }
+  .assetPanel { grid-template-columns: 1fr; }
+  .reviewHeaderActions { justify-content: space-between; }
   .compose, .section { padding: var(--space-4); }
+  .section { overflow-x: auto; }
   .dateLabel { width: 100%; margin-left: 0; align-items: stretch; flex-direction: column; }
   .dateLabel .input { width: 100%; }
   .scheduleRow .primary { width: 100%; }

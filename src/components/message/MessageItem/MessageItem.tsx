@@ -351,6 +351,8 @@ export const MessageItem = memo(function MessageItem({ message, isOwn, profile, 
                       className={`${styles.reactionPill} ${group.hasOwn ? styles.reactionPillActive : ''}`}
                       onClick={(e) => handlePillClick(e, group)}
                       title={`${group.emoji} ${group.count}`}
+                      aria-label={`${group.count} ${group.count === 1 ? 'reaction' : 'reactions'} with ${group.emoji}${group.hasOwn ? '; remove your reaction' : '; add your reaction'}`}
+                      aria-pressed={group.hasOwn}
                     >
                       <span className={styles.reactionEmoji}>{group.emoji}</span>
                       <span className={styles.reactionCount}>{group.count}</span>
@@ -362,6 +364,8 @@ export const MessageItem = memo(function MessageItem({ message, isOwn, profile, 
                       className={styles.reactionPill}
                       onClick={(e) => setPopoverAnchor(e.currentTarget)}
                       title="View all reactions"
+                      aria-label={`View ${reactionGroups.length - 3} more reaction types`}
+                      aria-haspopup="dialog"
                     >
                       <span className={styles.reactionCount}>+{reactionGroups.length - 3}</span>
                     </button>

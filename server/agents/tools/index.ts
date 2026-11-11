@@ -96,7 +96,7 @@ export function toolAvailability(names: string[], opts: AvailabilityInputs): Too
         : { name, available: false, approval, reason: 'The CRM module is not set up in this workspace yet.' };
     }
     if (name === 'read_brand_kit' && !opts.brandKitFolderId) {
-      return { name, available: true, approval, reason: 'No brand kit folder is chosen yet; drafts use general best practice.' };
+      return { name, available: true, approval, reason: 'No workspace-wide brand folder is chosen; selected managed companies can still use their own Drive/Brand kit folder.' };
     }
     return TOOL_REGISTRY[name]
       ? { name, available: true, approval }

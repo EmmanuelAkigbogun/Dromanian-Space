@@ -148,6 +148,10 @@ interface BrandItem {
   id: string;
   name: string;
   kind: string;
+  mime_type: string | null;
+  index_status: string | null;
+  source_mode: 'workspace_folder' | 'company_brand_kit' | 'company_named_fallback';
+  brand_folder_id: string | null;
 }
 interface ChunkRow {
   chunk_id: string;
@@ -160,17 +164,17 @@ interface ChunkRow {
 export const readBrandKit = defineTool({
   name: 'read_brand_kit',
   description:
-    "Read the workspace brand kit (voice, tone, vocabulary, visual rules) from the folder an admin chose in AI settings. Optionally search it for a topic. Returns numbered passages; cite them as [n].",
+    "Read brand assets and guidance for the selected managed company from its Drive/Brand kit folder. If no company is selected, use the workspace brand folder from AI settings. Optionally search indexed guidance for a topic. Returns Drive asset ids plus numbered passages; cite passages as [n].",
   schema: z.object({ topic: z.string().min(2).max(200).optional().describe('What to look up, e.g. "tone of voice"') }),
   label: () => 'Reading the brand kit',
   async run(ctx, input) {
-    if (!ctx.settings.brandKitFolderId) {
+    if (!ctx.scope.company_id && !ctx.settings.brandKitFolderId) {
       return {
         content: 'No brand kit is configured for this workspace. Tell the requester an admin can choose a brand kit folder in AI settings, and continue with general best practice.',
         summary: { configured: false },
       };
     }
-    const brandItems = await rpc<BrandItem[]>('agent_brand_kit_items_scoped_for', {
+    const brandItems = await rpc<BrandItem[]>('agent_brand_kit_items_v2_scoped_for', {
       p_actor: ctx.actorId,
       p_workspace_id: ctx.workspaceId,
       p_company_id: ctx.scope.company_id ?? null,
@@ -181,10 +185,22 @@ export const readBrandKit = defineTool({
     if (items.length === 0) {
       return {
         content: ctx.scope.company_id
-          ? 'No configured brand-kit files are inside the selected company\'s accessible Drive scope.'
+          ? 'No accessible company brand files were found. Ask the requester to create a folder named "Brand kit" directly inside the selected company Drive folder, then add logos, voice/tone guidance, colors, fonts and visual rules there.'
           : 'The brand kit folder is empty, or the requester cannot open its files.',
         summary: { configured: true, files: 0, company_scoped: Boolean(ctx.scope.company_id) },
       };
+    }
+    const sourceMode = items[0]?.source_mode ?? 'workspace_folder';
+    const inventory = items
+      .map((item) => quoteData('brand_asset', {
+        item_id: item.id,
+        file: item.name,
+        mime: item.mime_type,
+        indexed: item.index_status === 'ready' ? 'yes' : 'no',
+      }, 'Use this exact item_id when selecting the asset for a Social draft.'))
+      .join('\n');
+    for (const item of items) {
+      await ctx.recordSource('drive_item', item.id, { itemId: item.id, label: item.name });
     }
     let rows: ChunkRow[];
     if (input.topic) {
@@ -212,17 +228,28 @@ export const readBrandKit = defineTool({
         rows.push(...part.map((r) => ({ ...r, item_id: item.id })));
       }
     }
-    for (const r of rows) await ctx.recordSource('drive_item', r.item_id!, { itemId: r.item_id!, label: r.item_name });
     if (rows.length === 0) {
-      return { content: `The brand kit files are not indexed yet: ${items.map((i) => i.name).join(', ')}.`, summary: { files: items.length, passages: 0 } };
+      const warning = sourceMode === 'company_named_fallback'
+        ? 'The canonical Drive/Brand kit folder is missing. These are same-company files matched by brand-like names only; tell the requester to move/copy approved assets into Brand kit.'
+        : 'The listed assets are available, but no text passages are indexed yet. Visual assets can still be selected by item_id.';
+      return {
+        content: `${warning}\n\n${inventory}`,
+        summary: { files: items.length, passages: 0, source_mode: sourceMode },
+      };
     }
-    const body = rows
+    const passages = rows
       .map((r) => {
         const p = ctx.citations.add({ chunkId: r.chunk_id, itemId: r.item_id!, itemName: r.item_name, location: r.location ?? {}, content: r.content });
-        return quoteData('passage', { n: p.n, file: r.item_name, location: describeLocation(r.location ?? {}) }, r.content);
+        return quoteData('passage', { n: p.n, item_id: r.item_id, file: r.item_name, location: describeLocation(r.location ?? {}) }, r.content);
       })
       .join('\n\n');
-    return { content: body, summary: { files: items.length, passages: rows.length } };
+    const warning = sourceMode === 'company_named_fallback'
+      ? 'Warning: Drive/Brand kit is missing; this is the restricted same-company filename fallback.'
+      : `Brand source: ${sourceMode === 'company_brand_kit' ? 'selected company Drive/Brand kit' : 'workspace brand folder'}.`;
+    return {
+      content: `${warning}\n\n${inventory}\n\n${passages}`,
+      summary: { files: items.length, passages: rows.length, source_mode: sourceMode },
+    };
   },
 });
 

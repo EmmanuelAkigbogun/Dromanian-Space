@@ -12,6 +12,7 @@ import {
 } from '../helpers/db.ts';
 
 let owner: TestUser;
+let outsider: TestUser;
 let workspace: string;
 let companyA: string;
 let companyB: string;
@@ -20,6 +21,9 @@ let folderB: string;
 let documentA: string;
 let documentA2: string;
 let documentB: string;
+let brandFolderA: string;
+let brandAssetA: string;
+let brandAssetB: string;
 let runId: string;
 
 const svc = <T = Record<string, unknown>>(sql: string, params: unknown[] = []) =>
@@ -27,6 +31,7 @@ const svc = <T = Record<string, unknown>>(sql: string, params: unknown[] = []) =
 
 beforeAll(async () => {
   owner = await createUser('company-scope-owner');
+  outsider = await createUser('company-scope-outsider');
   workspace = await createWorkspace(owner, 'Company write scope');
   [companyA] = (await q<{ id: string }>(owner, `
     INSERT INTO crm_companies (
@@ -58,6 +63,18 @@ beforeAll(async () => {
   [documentB] = (await q<{ id: string }>(owner,
     `SELECT id FROM drive_create_document($1, $2, 'B brief', 'B evidence')`,
     [workspace, folderB])).map((row) => row.id);
+  [brandFolderA] = (await q<{ id: string }>(owner,
+    `SELECT id FROM drive_create_folder($1, $2, 'Brand kit')`,
+    [workspace, folderA])).map((row) => row.id);
+  [brandAssetA] = (await q<{ id: string }>(owner,
+    `SELECT id FROM drive_create_document($1, $2, 'Primary logo A', 'Approved A brand identity')`,
+    [workspace, brandFolderA])).map((row) => row.id);
+  const [brandFolderB] = (await q<{ id: string }>(owner,
+    `SELECT id FROM drive_create_folder($1, $2, 'Brand kit')`,
+    [workspace, folderB])).map((row) => row.id);
+  [brandAssetB] = (await q<{ id: string }>(owner,
+    `SELECT id FROM drive_create_document($1, $2, 'Primary logo B', 'Approved B brand identity')`,
+    [workspace, brandFolderB])).map((row) => row.id);
 
   const [agent] = await admin<{ id: string }>(`
     SELECT id FROM workspace_agents
@@ -75,6 +92,34 @@ beforeAll(async () => {
 afterAll(() => pool.end());
 
 describe('managed-company Drive and retrieval boundaries', () => {
+  it('reports and reads only the selected company Brand kit', async () => {
+    const [status] = await q<{ status: {
+      mode: string;
+      brand_folder_id: string;
+      asset_count: number;
+      logo_count: number;
+    } }>(owner, 'SELECT social_company_brand_status($1, $2) AS status', [workspace, companyA]);
+    expect(status.status).toMatchObject({
+      mode: 'ready',
+      brand_folder_id: brandFolderA,
+      asset_count: 1,
+      logo_count: 1,
+    });
+
+    const assets = await svc<{ id: string; source_mode: string }>(`
+      SELECT id, source_mode
+      FROM agent_brand_kit_items_v2_scoped_for($1, $2, $3)
+      ORDER BY id
+    `, [owner.id, workspace, companyA]);
+    expect(assets).toEqual([{ id: brandAssetA, source_mode: 'company_brand_kit' }]);
+    expect(assets.some((asset) => asset.id === brandAssetB)).toBe(false);
+
+    await expectDenied(
+      q(outsider, 'SELECT social_company_brand_status($1, $2)', [workspace, companyA]),
+      /not allowed|not a workspace member/i,
+    );
+  });
+
   it('filters exact selected sources in SQL before Drive LIMIT', async () => {
     const selected = await svc<{ id: string }>(`
       SELECT id FROM agent_list_company_drive_for(
@@ -126,25 +171,102 @@ describe('managed-company Drive and retrieval boundaries', () => {
 
 describe('managed-company reviewed writes', () => {
   it('forces Social drafts to the run company', async () => {
+    await expectDenied(svc(
+      `SELECT agent_create_proposal(
+        $1, 'social-cross-company-asset', 'create_social_drafts', $2,
+        'Try a cross-company Social asset'
+      )`,
+      [runId, { posts: [{
+        body: 'Wrong asset', channel: 'linkedin', hashtags: [],
+        assets: [{ item_id: brandAssetB }],
+      }] }],
+    ), /outside the selected managed company/i);
+
     const [created] = await svc<{ proposal: { proposal_id: string } }>(`
       SELECT agent_create_proposal(
         $1, 'social', 'create_social_drafts', $2, 'Create a Social draft'
       ) AS proposal
-    `, [runId, { posts: [{ body: 'Company A update', company_id: companyB }] }]);
-    const [proposal] = await admin<{ arguments_hash: string; arguments: { posts: Array<{ company_id: string }> } }>(
+    `, [runId, { posts: [{
+      body: 'Company A update', company_id: companyB, channel: 'linkedin',
+      format: 'carousel', script: 'Slide one, then slide two.',
+      visual_brief: 'Use the approved primary logo.', cta: 'Book a demo',
+      hashtags: ['#launch', 'launch'], assets: [{ item_id: brandAssetA }],
+    }] }]);
+    const [proposal] = await admin<{ arguments_hash: string; arguments: { posts: Array<{
+      company_id: string;
+      channel: string;
+      hashtags: string[];
+      assets: Array<{ item_id: string; label: string }>;
+    }> } }>(
       'SELECT arguments_hash, arguments FROM agent_action_proposals WHERE id = $1',
       [created.proposal.proposal_id],
     );
     expect(proposal.arguments.posts[0].company_id).toBe(companyA);
+    expect(proposal.arguments.posts[0]).toMatchObject({
+      channel: 'linkedin',
+      hashtags: ['launch'],
+      assets: [{ item_id: brandAssetA, label: 'Primary logo A' }],
+    });
     const [decision] = await q<{ result: { status: string; result: { post_ids: string[] } } }>(owner,
       'SELECT agent_decide_proposal($1, true, $2) AS result',
       [created.proposal.proposal_id, proposal.arguments_hash]);
     expect(decision.result.status).toBe('executed');
-    const posts = await admin<{ company_id: string }>(
-      'SELECT company_id FROM social_posts WHERE id = ANY($1::uuid[])',
+    const posts = await admin<{
+      company_id: string;
+      content_channel: string;
+      content_format: string;
+      script: string;
+      visual_brief: string;
+      cta: string;
+      hashtags: string[];
+      asset_refs: Array<{ item_id: string }>;
+    }>(
+      `SELECT company_id, content_channel, content_format, script,
+              visual_brief, cta, hashtags, asset_refs
+       FROM social_posts WHERE id = ANY($1::uuid[])`,
       [decision.result.result.post_ids],
     );
-    expect(posts).toEqual([{ company_id: companyA }]);
+    expect(posts).toEqual([expect.objectContaining({
+      company_id: companyA,
+      content_channel: 'linkedin',
+      content_format: 'carousel',
+      script: 'Slide one, then slide two.',
+      visual_brief: 'Use the approved primary logo.',
+      cta: 'Book a demo',
+      hashtags: ['launch'],
+      asset_refs: [expect.objectContaining({ item_id: brandAssetA })],
+    })]);
+
+    const postId = decision.result.result.post_ids[0];
+    await expectDenied(q(owner, `
+      SELECT (social_update_draft(
+        $1, $2, NULL, 'linkedin', 'carousel', NULL, NULL, NULL,
+        ARRAY['reviewed'], $3::jsonb
+      )).id
+    `, [postId, 'Attempted cross-company review', JSON.stringify([{ item_id: brandAssetB }])]), /outside the selected managed company/i);
+
+    await q(owner, `
+      SELECT (social_update_draft(
+        $1, $2, NULL, 'linkedin', 'carousel', $3, $4, $5,
+        ARRAY['reviewed'], $6::jsonb
+      )).id
+    `, [
+      postId,
+      'Human-reviewed Company A update',
+      'Reviewed carousel script',
+      'Reviewed visual direction',
+      'Request the Company A guide',
+      JSON.stringify([{ item_id: brandAssetA, label: 'Model-supplied label is ignored' }]),
+    ]);
+    const [reviewed] = await admin<{ body: string; cta: string; asset_refs: Array<{ item_id: string; label: string }> }>(
+      'SELECT body, cta, asset_refs FROM social_posts WHERE id = $1',
+      [postId],
+    );
+    expect(reviewed).toMatchObject({
+      body: 'Human-reviewed Company A update',
+      cta: 'Request the Company A guide',
+      asset_refs: [{ item_id: brandAssetA, label: 'Primary logo A' }],
+    });
   });
 
   it('links a directly approved task to the run company transactionally', async () => {

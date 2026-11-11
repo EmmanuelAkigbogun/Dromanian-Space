@@ -164,7 +164,17 @@ class DataQuery<T = any> implements PromiseLike<Result<T>> {
     return this;
   }
   single(): this { this.unwrap = 'single'; this.headers.set('accept', 'application/vnd.pgrst.object+json'); return this; }
-  maybeSingle(): this { this.unwrap = 'maybe'; this.headers.set('accept', 'application/vnd.pgrst.object+json'); return this; }
+  maybeSingle(): this {
+    this.unwrap = 'maybe';
+    // For reads, ask PostgREST for its normal array representation and unwrap
+    // it below. The singular media type makes an expected zero-row result an
+    // HTTP 406, which browsers report as a failed request even when the client
+    // subsequently treats PGRST116 as `null`.
+    this.headers.set('accept', this.method === 'GET' || this.method === 'HEAD'
+      ? 'application/json'
+      : 'application/vnd.pgrst.object+json');
+    return this;
+  }
   abortSignal(signal: AbortSignal): this { this.signal = signal; return this; }
   returns<U>(): DataQuery<U> { return this as unknown as DataQuery<U>; }
   throwOnError(): this { return this; }
@@ -193,6 +203,21 @@ class DataQuery<T = any> implements PromiseLike<Result<T>> {
     }
     const contentRange = response.headers.get('content-range');
     const count = contentRange?.includes('/') ? Number(contentRange.split('/')[1]) : null;
+    if (this.unwrap === 'maybe' && (this.method === 'GET' || this.method === 'HEAD') && Array.isArray(raw)) {
+      if (raw.length > 1) {
+        return {
+          data: null,
+          error: {
+            message: 'JSON object requested, multiple rows returned.',
+            code: 'PGRST116',
+            details: `The result contains ${raw.length} rows.`,
+            status: 406,
+          },
+          count: null,
+        };
+      }
+      return { data: (raw[0] ?? null) as T | null, error: null, count: Number.isFinite(count) ? count : null };
+    }
     return { data: raw as T, error: null, count: Number.isFinite(count) ? count : null };
   }
 

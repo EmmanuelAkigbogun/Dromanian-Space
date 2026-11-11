@@ -112,9 +112,9 @@ function CRM({ ws, userId, admin, kind, client }: { ws: string; userId: string; 
   });
 
   const record = useQuery({
-    queryKey: [...base, 'one', kind, recordId],
+    queryKey: [...base, 'one', kind, client, recordId],
     enabled: !!recordId,
-    queryFn: (): Promise<CrmRecord | null> => result(platform.from(TABLES[kind]).select('*').eq('workspace_id', ws).eq('id', recordId!).maybeSingle()),
+    queryFn: (): Promise<CrmRecord | null> => result(inBook(platform.from(TABLES[kind]).select('*').eq('workspace_id', ws).eq('id', recordId!)).maybeSingle()),
   });
 
   const refresh = () => cache.invalidateQueries({ queryKey: base });
@@ -145,7 +145,7 @@ function CRM({ ws, userId, admin, kind, client }: { ws: string; userId: string; 
     const patch = patchFor(r, column, value);
     const apply = (list: CrmRecord[] | undefined) => list?.map((x) => (x.id === r.id ? ({ ...x, ...patch } as CrmRecord) : x));
     cache.setQueriesData<CrmRecord[]>({ queryKey: [...base, 'rows', kind] }, apply);
-    cache.setQueryData<CrmRecord | null>([...base, 'one', kind, r.id], (x) => (x ? ({ ...x, ...patch } as CrmRecord) : x));
+    cache.setQueryData<CrmRecord | null>([...base, 'one', kind, client, r.id], (x) => (x ? ({ ...x, ...patch } as CrmRecord) : x));
     try {
       setError('');
       await result(platform.from(TABLES[kind]).update(patch).eq('id', r.id).eq('workspace_id', ws));
@@ -178,12 +178,22 @@ function CRM({ ws, userId, admin, kind, client }: { ws: string; userId: string; 
   const selectedRecord = recordId ? record.data : null;
   const selectedCompany = kind === 'companies' ? (selectedRecord as Company | null) : null;
   const anyError = error || rows.error || ctx.error || record.error || clients.error || views.error;
+  const objectName = kind[0].toUpperCase() + kind.slice(1);
+  const objectDescription = kind === 'companies'
+    ? 'Manage organisations, ownership, brand files and account activity.'
+    : kind === 'contacts'
+      ? 'Keep customer and prospect contacts connected to the right companies.'
+      : 'Track opportunities from first conversation through close.';
 
   return (
     <div className={s.page}>
       <div className={s.top}>
         <div className={s.titleRow}>
-          <h1 className={s.title}>{selectedRecord?.name ?? (clientName ? `${clientName}'s CRM` : 'CRM')}</h1>
+          <div className={s.titleBlock}>
+            <span className={s.eyebrow}>{clientName ? `${clientName}'s CRM` : 'CRM'}</span>
+            <h1 className={s.title}>{objectName}</h1>
+            {!recordId && <p className={s.subtitle}>{objectDescription}</p>}
+          </div>
           <div className={s.books} role="navigation" aria-label="CRMs">
             <Link className={`${s.chip} ${!client ? s.chipActive : ''}`} to={`/crm/${kind}`}>Our CRM</Link>
             {clients.data?.map((c) => (
@@ -206,8 +216,15 @@ function CRM({ ws, userId, admin, kind, client }: { ws: string; userId: string; 
 
       {recordId ? (
         <>
-          <div className={s.toolbar}>
-            <Link className={s.button} to={`/crm/${kind}${book}`}>← Back to {kind}</Link>
+          <div className={`${s.toolbar} ${s.recordToolbar}`}>
+            <Link className={s.button} to={`/crm/${kind}${book}`} aria-label={`Back to ${kind}`}>
+              <span aria-hidden="true">←</span> {objectName}
+            </Link>
+            {selectedCompany?.drive_folder_id && (
+              <Link className={s.primary} to={`/drive/folder/${selectedCompany.drive_folder_id}`}>
+                Brand files
+              </Link>
+            )}
             {selectedCompany && !selectedCompany.client_id && (selectedCompany.is_client
               ? <Link className={s.button} to={`/crm/companies?client=${selectedCompany.id}`}>Open {selectedCompany.name}'s CRM</Link>
               : editable(selectedCompany) && (
@@ -237,25 +254,32 @@ function CRM({ ws, userId, admin, kind, client }: { ws: string; userId: string; 
         </>
       ) : (
         <>
-          <div className={s.views} style={{ padding: '12px 20px 0' }}>
-            <button className={`${s.chip} ${!activeView ? s.chipActive : ''}`} onClick={() => { setActiveView(null); setView(EMPTY_VIEW); }}>All {kind}</button>
-            {views.data?.map((v) => (
-              <button key={v.id} className={`${s.chip} ${activeView === v.id ? s.chipActive : ''}`} onClick={() => { setActiveView(v.id); setView(viewFromSaved(v)); }}>{v.name}</button>
-            ))}
-            {dirty && savedView && (
-              <button className={s.ghost} disabled={busy} onClick={() => void act(() => result(platform.from('crm_views').update(savedFromView(view)).eq('id', savedView.id)))}>Update “{savedView.name}”</button>
-            )}
-            {dirty && <button className={s.ghost} onClick={() => setDialog('saveView')}>Save as view</button>}
-            {savedView && (admin || savedView.created_by === userId) && (
-              <button className={s.ghost} onClick={() => {
-                if (!window.confirm(`Delete the view “${savedView.name}”?`)) return;
-                void act(async () => { await result(platform.from('crm_views').delete().eq('id', savedView.id)); setActiveView(null); setView(EMPTY_VIEW); });
-              }}>Delete view</button>
-            )}
+          <div className={s.viewBar}>
+            <span className={s.viewLabel}>Views</span>
+            <div className={s.views} role="navigation" aria-label={`Saved ${kind} views`}>
+              <button className={`${s.chip} ${!activeView ? s.chipActive : ''}`} onClick={() => { setActiveView(null); setView(EMPTY_VIEW); }}>All {kind}</button>
+              {views.data?.map((v) => (
+                <button key={v.id} className={`${s.chip} ${activeView === v.id ? s.chipActive : ''}`} onClick={() => { setActiveView(v.id); setView(viewFromSaved(v)); }}>{v.name}</button>
+              ))}
+              {dirty && savedView && (
+                <button className={s.ghost} disabled={busy} onClick={() => void act(() => result(platform.from('crm_views').update(savedFromView(view)).eq('id', savedView.id)))}>Update “{savedView.name}”</button>
+              )}
+              {dirty && <button className={s.ghost} onClick={() => setDialog('saveView')}>Save as view</button>}
+              {savedView && (admin || savedView.created_by === userId) && (
+                <button className={s.ghost} onClick={() => {
+                  if (!window.confirm(`Delete the view “${savedView.name}”?`)) return;
+                  void act(async () => { await result(platform.from('crm_views').delete().eq('id', savedView.id)); setActiveView(null); setView(EMPTY_VIEW); });
+                }}>Delete view</button>
+              )}
+            </div>
           </div>
 
           <div className={s.toolbar}>
-            <input className={s.search} type="search" aria-label={`Search ${kind}`} placeholder={`Search ${kind}…`} value={search} onChange={(e) => setSearch(e.target.value)} />
+            <label className={s.searchWrap}>
+              <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m16.5 16.5 4 4" /></svg>
+              <span className={s.srOnly}>Search {kind}</span>
+              <input className={s.search} type="search" placeholder={`Search ${kind}…`} value={search} onChange={(e) => setSearch(e.target.value)} />
+            </label>
             <button className={s.button} onClick={() => setView({ ...view, rules: [...view.rules, { field: (visible[1] ?? columns[0]).key, op: OPERATORS[filterKind((visible[1] ?? columns[0]).type)][0].op }] })}>+ Filter</button>
             {kind === 'companies' && (
               <button className={s.button} onClick={() => setView({ ...view, rules: [...view.rules, { field: 'customer_since', op: 'not_empty' }] })}>Customers</button>
@@ -280,16 +304,23 @@ function CRM({ ws, userId, admin, kind, client }: { ws: string; userId: string; 
             {kind !== 'deals' && <button className={s.button} onClick={() => setDialog('import')}>Import</button>}
             <button className={s.button} onClick={exportCsv} disabled={!rows.data?.length}>Export</button>
             {kind === 'deals' && admin && <button className={s.button} onClick={() => setDialog('stages')}>Stages</button>}
-            <button className={s.primary} onClick={() => setDialog('new')}>New {SINGULAR[kind]}</button>
+            <button className={s.primary} onClick={() => setDialog('new')}>Create {SINGULAR[kind]}</button>
           </div>
 
           {view.rules.length > 0 && <FilterBar view={view} columns={columns} onView={setView} />}
           {clientName && <p className={s.hint} style={{ padding: '0 20px 8px' }}>Records here stay separate from our CRM. Companies added here get no Drive folder.</p>}
           {selected.size > 0 && (
-            <div className={s.bulk}>
-              {selected.size} selected
+            <div className={s.bulk} role="toolbar" aria-label="Selected record actions">
+              <strong>{selected.size} selected</strong>
               {admin && <button className={`${s.button} ${s.danger}`} disabled={busy} onClick={deleteSelected}>Delete</button>}
               <button className={s.ghost} onClick={() => setSelected(new Set())}>Clear</button>
+            </div>
+          )}
+
+          {!rows.isPending && rows.data && (
+            <div className={s.resultMeta} aria-live="polite">
+              {rows.data.length.toLocaleString()}{rows.data.length === LIMIT ? '+' : ''} {rows.data.length === 1 ? SINGULAR[kind] : kind}
+              {(search || view.rules.length > 0) && <span> matching this view</span>}
             </div>
           )}
 
@@ -311,7 +342,7 @@ function CRM({ ws, userId, admin, kind, client }: { ws: string; userId: string; 
             <div className={s.empty}>
               <p>No {kind} in {bookName} yet.</p>
               <div className={s.choiceRow} style={{ justifyContent: 'center' }}>
-                <button className={s.primary} onClick={() => setDialog('new')}>New {SINGULAR[kind]}</button>
+                <button className={s.primary} onClick={() => setDialog('new')}>Create {SINGULAR[kind]}</button>
                 {kind !== 'deals' && <button className={s.button} onClick={() => setDialog('import')}>Import from a file or Drive</button>}
               </div>
             </div>
