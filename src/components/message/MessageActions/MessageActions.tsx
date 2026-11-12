@@ -7,7 +7,7 @@ import { useToast } from '@/components/ui/Toast';
 import { ReactionPicker } from '@/components/message/ReactionPicker';
 import { useShareHandler } from '@/hooks/useShareHandler';
 import { ShareMessageDialog } from '@/components/message/ShareMessageDialog';
-import { addReaction, getMessagePermalink, isTempId } from '@/lib/message';
+import { addReaction, getFirstMessageUrl, getMessagePermalink, isTempId } from '@/lib/message';
 import {
   isMessagePinned,
   isMessageSaved,
@@ -55,6 +55,8 @@ export const MessageActions = memo(function MessageActions({
   const { share } = useShareHandler();
   const selection = useMessageSelectionSafe();
   const isSelected = selection?.isSelected(message.id) ?? false;
+  const firstLink = getFirstMessageUrl(message.content);
+  const hasLink = firstLink !== null;
 
   const channelId = message.channel_id ?? currentChannel?.id;
 
@@ -81,9 +83,10 @@ export const MessageActions = memo(function MessageActions({
 
   const handleCopyLink = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await navigator.clipboard.writeText(getMessagePermalink(message.id));
+    if (!firstLink) return;
+    await navigator.clipboard.writeText(firstLink);
     toast({ description: 'Link copied to clipboard', variant: 'success' });
-  }, [message.id, toast]);
+  }, [firstLink, toast]);
 
   const handlePin = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -249,17 +252,20 @@ export const MessageActions = memo(function MessageActions({
         </svg>
       </button>
 
-      <button
-        type="button"
-        className={styles.actionButton}
-        onClick={handleCopyLink}
-        title="Copy link"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
-          <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
-        </svg>
-      </button>
+      {hasLink && (
+        <button
+          type="button"
+          className={styles.actionButton}
+          onClick={handleCopyLink}
+          title="Copy link"
+          aria-label="Copy link"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
+            <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
+          </svg>
+        </button>
+      )}
 
       <button
         type="button"

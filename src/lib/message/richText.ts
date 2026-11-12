@@ -197,6 +197,10 @@ export function extractUrls(text: string): string[] {
   return urls;
 }
 
+export function getFirstMessageUrl(text: string): string | null {
+  return extractUrls(text)[0] ?? null;
+}
+
 export function removeUrlsFromText(text: string, urls: string[]): string {
   if (urls.length === 0) return text;
   let result = text;
