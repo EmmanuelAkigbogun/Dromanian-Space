@@ -563,8 +563,15 @@
 }
 
 .rowActions {
-  width: 64px;
+  width: 118px;
   text-align: right;
+}
+
+.rowActionGroup {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
 }
 
 .rowActions button:not(.starButton) {
@@ -575,6 +582,10 @@
 
 .rowActions button:not(.starButton):hover {
   background: var(--color-primary-subtle);
+}
+
+.shareAction {
+  min-height: 32px;
 }
 
 .fileGrid {
@@ -633,6 +644,24 @@
   gap: 8px;
   color: var(--color-text-muted);
   font-size: 11px;
+}
+
+.cardShareButton {
+  min-height: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: var(--font-weight-medium);
+}
+
+.cardShareButton:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
 }
 
 .detailsPane {
@@ -723,7 +752,14 @@
   text-align: right;
 }
 
-.detailsPane > a {
+.detailActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.detailActions > a,
+.detailActions > button {
   width: 100%;
 }
 
@@ -804,6 +840,8 @@
 .selectionBar button:focus-visible,
 .selectionBar a:focus-visible,
 .starButton:focus-visible,
+.cardShareButton:focus-visible,
+.shareAction:focus-visible,
 .detailsHeader button:focus-visible,
 .fileName:focus-visible,
 .nameCell a:focus-visible,
@@ -907,6 +945,15 @@
   .selectionBar button,
   .selectionBar a {
     flex-shrink: 0;
+  }
+
+  .selectionBar button,
+  .selectionBar a,
+  .rowActionGroup button,
+  .cardShareButton,
+  .detailActions > a,
+  .detailActions > button {
+    min-height: 44px;
   }
 
   .fileTable th:nth-child(4),

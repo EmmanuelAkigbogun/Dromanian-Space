@@ -16,7 +16,7 @@ import { vector } from '@electric-sql/pglite-pgvector';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { uuid_ossp } from '@electric-sql/pglite/contrib/uuid_ossp';
-import smoke, { pre, preBrowser } from './smoke.mjs';
+import smoke, { pre, preBrowser, preSessionReview } from './smoke.mjs';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const db = await PGlite.create({ extensions: { vector, pgcrypto, pg_trgm, uuid_ossp } });
@@ -28,10 +28,14 @@ await db.exec(readFileSync(path.join(repo, 'tools/local-database/bootstrap.sql')
 const dir = path.join(repo, 'database/migrations');
 let legacy = null;
 let browserUpgrade = null;
+let sessionReviewUpgrade = null;
 for (const f of readdirSync(dir).filter((x) => /^\d{14}_.+\.sql$/.test(x)).sort()) {
   // An installation created before the provider/roster/automation migrations.
   if (!legacy && f.slice(0, 14) >= '20261019000000') legacy = await pre(db);
   if (!browserUpgrade && f.slice(0, 14) >= '20261110000100') browserUpgrade = await preBrowser(db, legacy);
+  if (!sessionReviewUpgrade && f.slice(0, 14) >= '20261112000100') {
+    sessionReviewUpgrade = await preSessionReview(db, legacy);
+  }
   // As in tools/local-database: pg_cron is stubbed by the bootstrap.
   const sql = readFileSync(path.join(dir, f), 'utf8').replace(/CREATE EXTENSION IF NOT EXISTS pg_cron;/g, '-- pg_cron stub');
   try {
@@ -45,4 +49,4 @@ for (const f of readdirSync(dir).filter((x) => /^\d{14}_.+\.sql$/.test(x)).sort(
   console.log(`ok   ${f}`);
 }
 
-await smoke(db, legacy, browserUpgrade);
+await smoke(db, legacy, browserUpgrade, sessionReviewUpgrade);

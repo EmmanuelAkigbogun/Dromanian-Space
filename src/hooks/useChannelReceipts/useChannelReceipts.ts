@@ -17,6 +17,12 @@ export interface Receipt {
   readBy: string[];
   /** Members other than the sender. */
   others: number;
+  /** Per-recipient watermarks used by the message-status detail popover. */
+  participants: Array<{
+    userId: string;
+    deliveredAt: string | null;
+    readAt: string | null;
+  }>;
 }
 
 const after = (at: string | null, created: string) => !!at && new Date(at) >= new Date(created);
@@ -84,7 +90,16 @@ export function useChannelReceipts(channelId: string | undefined, messages: Mess
       const readBy = others.filter((m) => after(m.last_read_at, message.created_at)).map((m) => m.user_id);
       const status: ReceiptStatus =
         readBy.length === others.length ? 'read' : others.every((m) => after(m.last_delivered_at, message.created_at)) ? 'delivered' : 'sent';
-      return { status, readBy, others: others.length };
+      return {
+        status,
+        readBy,
+        others: others.length,
+        participants: others.map((member) => ({
+          userId: member.user_id,
+          deliveredAt: after(member.last_delivered_at, message.created_at) ? member.last_delivered_at : null,
+          readAt: after(member.last_read_at, message.created_at) ? member.last_read_at : null,
+        })),
+      };
     },
     [members, userId],
   );
@@ -95,7 +110,12 @@ export function useChannelReceipts(channelId: string | undefined, messages: Mess
     return null;
   }, [messages, userId]);
 
-  return { receiptFor, lastOwnId };
+  const participantIds = useMemo(
+    () => [...members.keys()].filter((memberId) => memberId !== userId),
+    [members, userId],
+  );
+
+  return { receiptFor, lastOwnId, participantIds };
 }
 
 /**

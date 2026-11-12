@@ -4,6 +4,19 @@
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 
+const safeNotificationTarget = (value) => {
+  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')) {
+    return '/notifications';
+  }
+  try {
+    const resolved = new URL(value, self.location.origin);
+    if (resolved.origin !== self.location.origin) return '/notifications';
+    return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+  } catch {
+    return '/notifications';
+  }
+};
+
 self.addEventListener('push', (event) => {
   let data = {};
   try {
@@ -11,7 +24,7 @@ self.addEventListener('push', (event) => {
   } catch {
     data = { title: 'Darkspace', body: event.data ? event.data.text() : '' };
   }
-  const url = typeof data.url === 'string' && data.url.startsWith('/') ? data.url : '/notifications';
+  const url = safeNotificationTarget(data.url);
   event.waitUntil(
     self.registration.showNotification(data.title || 'Darkspace', {
       body: data.body || '',
@@ -27,7 +40,7 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const target = new URL(event.notification.data?.url || '/notifications', self.location.origin).href;
+  const target = new URL(safeNotificationTarget(event.notification.data?.url), self.location.origin).href;
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });

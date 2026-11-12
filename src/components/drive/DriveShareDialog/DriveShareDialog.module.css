@@ -1,0 +1,188 @@
+.dialogContent {
+  display: grid;
+  gap: 18px;
+}
+
+.itemSummary,
+.linkRow,
+.accessRow,
+.requestRow,
+.toggleRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.itemSummary {
+  min-width: 0;
+}
+
+.itemIcon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
+  font-size: 20px;
+}
+
+.itemSummary > div,
+.linkRow > div,
+.accessRow > div,
+.requestRow > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.itemSummary strong,
+.accessRow strong,
+.requestRow strong {
+  overflow-wrap: anywhere;
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.itemSummary span,
+.linkRow span,
+.accessRow span,
+.requestRow span {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.linkRow {
+  justify-content: space-between;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-secondary);
+}
+
+.linkRow > button {
+  flex: 0 0 auto;
+}
+
+.toggleRow {
+  align-items: flex-start;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+.toggleRow input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--color-primary);
+}
+
+.toggleRow > span {
+  display: grid;
+  gap: 2px;
+}
+
+.toggleRow small {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.grantForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px auto;
+  align-items: end;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.grantForm label {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.grantForm button {
+  min-height: 39px;
+}
+
+.readOnlyNotice {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.accessList {
+  display: grid;
+  gap: 8px;
+}
+
+.accessList h3 {
+  margin: 0 0 2px;
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.accessRow,
+.requestRow {
+  justify-content: space-between;
+  min-width: 0;
+  padding: 10px 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.accessRow > button,
+.requestRow > div:last-child {
+  flex: 0 0 auto;
+}
+
+.requestRow > div:last-child {
+  display: flex;
+  gap: 6px;
+}
+
+@media (max-width: 639px) {
+  .dialogContent {
+    gap: 14px;
+  }
+
+  .linkRow,
+  .accessRow,
+  .requestRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .linkRow > button,
+  .accessRow > button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .grantForm {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+
+  .grantForm select,
+  .grantForm button,
+  .requestRow button {
+    min-height: 44px;
+  }
+
+  .requestRow > div:last-child {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}

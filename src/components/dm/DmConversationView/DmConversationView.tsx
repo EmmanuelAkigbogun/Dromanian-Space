@@ -28,8 +28,11 @@ import { useBulkMessageActions } from '@/hooks/useBulkMessageActions';
 import { ShareMessageDialog } from '@/components/message/ShareMessageDialog';
 import { BulkDeleteConfirmDialog } from '@/components/message/BulkDeleteConfirmDialog';
 import { CallButton } from '@/components/call';
-import { useToast } from '@/components/ui/Toast';
-import { useAiSession } from '@/hooks/useAiSession/useAiSession';
+import {
+  AiNotesSessionBanner,
+  AiNotesSessionButton,
+  useAiNotesSessionController,
+} from '@/components/ai/AiNotesSessionControls';
 import { useFeatureAccess } from '@/lib/workspace/features';
 import { seenByLabel, useChannelReceipts } from '@/hooks/useChannelReceipts';
 import type { LinkDisplayMode, Message, Profile } from '@/types';
@@ -87,33 +90,9 @@ export function DmConversationView() {
   const channelId = currentConversation?.channel_id;
   const { receiptFor, lastOwnId } = useChannelReceipts(channelId, messages);
   const nameOf = (id: string) => participantProfiles.get(id)?.display_name || participantProfiles.get(id)?.username || undefined;
-  const { session: aiSession, agent: aiAgent, busy: aiBusy, start: startAiSession, finish: finishAiSession } = useAiSession(currentWorkspace?.id, channelId);
-  const { toast } = useToast();
+  const aiNotesSession = useAiNotesSessionController(currentWorkspace?.id, channelId);
+  const { session: aiSession } = aiNotesSession;
   const aiVisible = useFeatureAccess().canSee('ai');
-
-  const handleStartAiSession = useCallback(async () => {
-    try {
-      await startAiSession();
-    } catch (err) {
-      toast({ variant: 'error', description: err instanceof Error ? err.message : 'The agent could not join this conversation.' });
-    }
-  }, [startAiSession, toast]);
-
-  const handleFinishAiSession = useCallback(async () => {
-    try {
-      const result = await finishAiSession();
-      if (!result) return;
-      if (result.notes === 'queued') {
-        toast({ variant: 'success', description: `${aiAgent?.name ?? 'The agent'} is writing the notes. They will appear here shortly.` });
-      } else if (result.notes === 'failed') {
-        toast({ variant: 'error', description: `Session ended, but no notes were written: ${result.error ?? 'try again later.'}` });
-      } else {
-        toast({ variant: 'success', description: 'Session ended. No messages were sent, so there are no notes.' });
-      }
-    } catch (err) {
-      toast({ variant: 'error', description: err instanceof Error ? err.message : 'The session could not be finished.' });
-    }
-  }, [finishAiSession, aiAgent, toast]);
 
   usePrefetchAttachments(messages.map((m) => m.id));
 
@@ -631,32 +610,7 @@ export function DmConversationView() {
               </button>
           </Floating>
         </div>
-        {aiSession ? (
-          <button
-            type="button"
-            className={`${styles.aiSessionButton} ${styles.aiSessionButtonActive}`}
-            onClick={() => void handleFinishAiSession()}
-            disabled={aiBusy}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <rect x="6" y="6" width="12" height="12" rx="2" />
-            </svg>
-            Finish session
-          </button>
-        ) : aiAgent && aiVisible ? (
-          <button
-            type="button"
-            className={styles.aiSessionButton}
-            onClick={() => void handleStartAiSession()}
-            disabled={aiBusy}
-            title={`${aiAgent.name} reads the messages you send from now on, then posts notes here when you finish.`}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M12 3l1.9 5.8L20 10l-5 3.6L16.8 20 12 16.4 7.2 20 9 13.6 4 10l6.1-1.2z" />
-            </svg>
-            Invite {aiAgent.name}
-          </button>
-        ) : null}
+        <AiNotesSessionButton controller={aiNotesSession} enabled={aiVisible} />
         <CallButton
           targetUserId={otherProfile?.id ?? (currentConversation.type === 'group' && currentParticipants && currentParticipants.length > 0 ? currentParticipants.find((p) => p.user_id !== userId)?.user_id : undefined)}
           participantIds={currentParticipants?.map((p) => p.user_id)}
@@ -664,15 +618,7 @@ export function DmConversationView() {
         />
       </div>
 
-      {aiSession && (
-        <div className={styles.aiSessionBanner} role="status">
-          <span className={styles.aiSessionDot} aria-hidden="true" />
-          <span>
-            <strong>{aiAgent?.name ?? 'The agent'} is in this conversation</strong> (invited by {sessionStarter}). It can read the messages sent
-            from now on. When you finish, it posts notes here and sends action items to the project managers for approval.
-          </span>
-        </div>
-      )}
+      <AiNotesSessionBanner controller={aiNotesSession} starterLabel={sessionStarter ?? 'a participant'} />
 
       <ConnectionIndicator status={connectionStatus} />
 
@@ -696,7 +642,8 @@ export function DmConversationView() {
                         isOwn={data.message.user_id === userId}
                         profile={participantProfiles.get(data.message.user_id) ?? null}
                         isGrouped={data.isGrouped}
-                        receipt={receipt?.status}
+                        receipt={receipt ?? undefined}
+                        receiptNameOf={nameOf}
                         seenBy={data.message.id === lastOwnId ? seenByLabel(receipt, nameOf) : undefined}
                         onDeleteMessage={handleDeleteMessage}
                         onRemoveLink={handleRemoveLink}

@@ -18,6 +18,13 @@ import { ChannelActionsMenu } from '@/components/channel/ChannelActionsMenu';
 import { MessageList, PinnedMessagesPanel } from '@/components/message';
 import { CallButton } from '@/components/call';
 import { useFeatureAccess } from '@/lib/workspace/features';
+import { useWorkspace } from '@/hooks/useWorkspace';
+import { useAuth } from '@/hooks/useAuth';
+import {
+  AiNotesSessionBanner,
+  AiNotesSessionButton,
+  useAiNotesSessionController,
+} from '@/components/ai/AiNotesSessionControls';
 import type { Channel } from '@/types';
 import styles from './Channels.module.css';
 
@@ -28,6 +35,9 @@ export function ChannelView() {
   const dmDisplayNames = useDmDisplayNames();
   const { activeThread } = useThread();
   const features = useFeatureAccess();
+  const { currentWorkspace, isAdmin } = useWorkspace();
+  const { userId } = useAuth();
+  const aiNotesSession = useAiNotesSessionController(currentWorkspace?.id, currentChannel?.id);
   const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
   const [deletingChannel, setDeletingChannel] = useState<Channel | null>(null);
   const [archivingChannel, setArchivingChannel] = useState<Channel | null>(null);
@@ -86,9 +96,15 @@ export function ChannelView() {
 
   const isUserMember = isMember(currentChannel.id);
   const canJoin = !currentChannel.is_private && !isUserMember;
+  const isGeneralChannel = currentChannel.slug === 'general';
+  const canControlNotes = !aiNotesSession.session
+    || aiNotesSession.session.started_by === userId
+    || currentChannel.created_by === userId
+    || isAdmin;
+  const sessionStarter = aiNotesSession.session?.started_by === userId ? 'you' : 'a channel member';
 
   return (
-    <div className={styles.channelView}>
+    <div className={`${styles.channelView} ${aiNotesSession.session ? styles.channelViewAiActive : ''}`}>
       <div className={styles.channelHeader}>
         <div className={styles.channelHeaderContent}>
           <div className={styles.channelHeaderText}>
@@ -115,14 +131,8 @@ export function ChannelView() {
             {features.canSee('ai') && (
               <Button variant="secondary" onClick={() => navigate(`/agents?channel=${currentChannel.id}`)}>Ask AI</Button>
             )}
-            {isUserMember && features.canSee('ai') && (
-              <Button
-                variant="secondary"
-                title="The notes specialist summarizes this channel and sends action items to project managers for approval"
-                onClick={() => navigate(`/agents/cerebras-writer?channel=${currentChannel.id}&prompt=notes`)}
-              >
-                Take notes
-              </Button>
+            {isGeneralChannel && isUserMember && features.canSee('ai') && (
+              <AiNotesSessionButton controller={aiNotesSession} enabled canControl={canControlNotes} />
             )}
             {features.canSee('drive') && (
               <Button variant="secondary" onClick={() => navigate(`/drive?view=channel&channel=${currentChannel.id}`)}>Files</Button>
@@ -153,6 +163,13 @@ export function ChannelView() {
           </div>
         </div>
       </div>
+
+      <AiNotesSessionBanner
+        controller={aiNotesSession}
+        starterLabel={sessionStarter}
+        conversationLabel={`#${currentChannel.name}`}
+        canControl={canControlNotes}
+      />
 
       {isUserMember ? (
         <div className={styles.channelBody}>

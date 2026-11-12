@@ -27,7 +27,6 @@ import { HomeIcon, MessageIcon, UsersIcon, BellIcon, SettingsIcon, UserIcon, Fol
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useAuth } from '@/hooks/useAuth';
 import { useFeatureAccess } from '@/lib/workspace/features';
-import { CHAT_HOME, CHAT_ONLY, chatOnlyPath } from '@/lib/pwa';
 import { PermissionsBanner } from '@/components/pwa/PermissionsBanner';
 import { useDeliveryTracker } from '@/hooks/useChannelReceipts';
 
@@ -121,10 +120,10 @@ function AppLayoutWithThread() {
   const { activeThread, closeThread } = useThread();
   const { pathname } = useLocation();
   const features = useFeatureAccess();
-  const shown = (n: { to: string }) => !features.pathHidden(n.to) && (!CHAT_ONLY || chatOnlyPath(n.to));
+  const shown = (n: { to: string }) => !features.pathHidden(n.to);
   const visiblePrimary = primaryNavigation.filter(shown);
   const visibleSecondary = secondaryNavigation.filter(shown);
-  const pageHidden = CHAT_ONLY ? !chatOnlyPath(pathname) : !features.loading && features.pathHidden(pathname);
+  const pageHidden = !features.loading && features.pathHidden(pathname);
   useEffect(() => {
     if (!/^\/(channels|dm|threads)(\/|$)/.test(pathname)) closeThread();
   }, [pathname, closeThread]);
@@ -147,7 +146,7 @@ function AppLayoutWithThread() {
       onRightPanelClose={closeThread}
     >
       <PermissionsBanner />
-      {pageHidden ? <Navigate to={CHAT_ONLY ? CHAT_HOME : '/'} replace /> : (
+      {pageHidden ? <Navigate to="/" replace /> : (
       <Suspense fallback={<p role="status">Loading workspace…</p>}><Routes>
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/invitations" element={<Invitations />} />

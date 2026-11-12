@@ -27,8 +27,14 @@ const CHECKPOINT_MS = 500;
 const RUN_BUDGET_MS = Number(process.env.AGENT_RUN_BUDGET_MS ?? 600_000);
 /** Specialist calls are independent and should not turn a team request into four serial waits. */
 const MAX_PARALLEL_SPECIALISTS = 4;
-/** Tools available in a direct-message AI session (see sessionTranscript). */
+/** Tools available in a conversation AI session (see sessionTranscript). */
 const SESSION_TOOLS = ['submit_tasks_for_approval'];
+
+interface SessionParticipant {
+  id: string;
+  display_name: string | null;
+  username: string | null;
+}
 
 export interface RunEvents {
   emit(event: string, data: unknown): void;
@@ -82,19 +88,66 @@ function systemPrompt(agentName: string, instructions: string): string {
   return `You are ${agentName}, an AI agent inside a team collaboration workspace.\n\n${instructions.trim()}\n\n${PLATFORM_RULES}`;
 }
 
-/** The messages sent while a direct-message AI session was active. */
-async function sessionTranscript(ctx: RunContext, sessionId: string, channelId: string): Promise<string> {
-  const rows = await rpc<Array<{ id: string; author_name: string; content: string; created_at: string; parent_id: string | null }>>(
+/** Participant-aware ownership rules for notes extracted from a conversation session. */
+export function sessionOwnershipContext(
+  participants: SessionParticipant[],
+  requesterId: string,
+  isDirect: boolean,
+): string {
+  const roster = participants.map((participant) => {
+    const name = participant.display_name?.trim() || participant.username?.trim() || 'Unnamed participant';
+    const handle = participant.username?.trim() ? ` (@${participant.username.trim().replace(/^@/, '')})` : '';
+    return `- ${name}${handle} [user_id=${participant.id}]: ${participant.id === requesterId ? 'conversation participant; initiated this AI step' : 'conversation participant'}`;
+  });
+  const directAddressRule = isDirect && participants.length === 2
+    ? 'This is a two-person conversation. In a human message, “you”, “please do”, and “I would like you to” refer to the other human participant, not to the message author.'
+    : 'This is a group conversation. Do not assign a second-person request unless its recipient is named; ask during review or leave it unassigned in final notes.';
+  return [
+    quoteData('conversation_participants', {}, roster.join('\n')),
+    directAddressRule,
+    'A first-person commitment such as “I will” or “I am to” belongs to that message author.',
+    'A person mentioned for coordination, consultation, or approval is not a task owner unless the conversation explicitly assigns the work to them.',
+    'Never use the AI-run requester as a fallback owner. Preserve an unresolved owner as unassigned.',
+  ].join('\n');
+}
+
+interface SessionTranscript {
+  text: string;
+  humanAuthorIds: string[];
+}
+
+/** The newest 500 messages sent while a conversation AI session was active. */
+async function sessionTranscript(
+  ctx: RunContext,
+  sessionId: string,
+  channelId: string,
+  sourceLabel: string,
+): Promise<SessionTranscript> {
+  const rows = await rpc<Array<{ id: string; author_id: string; author_name: string; is_agent: boolean; content: string; created_at: string; parent_id: string | null; truncated: boolean }>>(
     'ai_session_transcript_for',
     { p_actor: ctx.actorId, p_session_id: sessionId },
   );
-  await ctx.recordSource('channel', channelId, { channelId, label: 'a direct message' });
-  if (rows.length === 0) return 'No messages were sent during the session.';
-  return rows
+  await ctx.recordSource('channel', channelId, { channelId, label: sourceLabel });
+  const humanAuthorIds = [...new Set(rows.filter((row) => !row.is_agent).map((row) => row.author_id))];
+  if (rows.length === 0) return { text: 'No messages were sent during the session.', humanAuthorIds };
+  const messages = rows
     .map((m) =>
-      quoteData('message', { id: m.id, author: m.author_name, time: String(m.created_at).slice(0, 16).replace('T', ' '), reply_to: m.parent_id }, m.content),
+      quoteData('message', {
+        id: m.id,
+        author_id: m.author_id,
+        author: m.author_name,
+        author_type: m.is_agent ? 'agent_draft' : 'human',
+        time: String(m.created_at).slice(0, 16).replace('T', ' '),
+        reply_to: m.parent_id,
+      }, m.content),
     )
     .join('\n');
+  return {
+    text: rows.some((row) => row.truncated)
+      ? `This session had more than 500 messages. The snapshot contains only the newest 500.\n${messages}`
+      : messages,
+    humanAuthorIds,
+  };
 }
 
 /** A provider's message, safe to show: no key-like tokens, one line, bounded. */
@@ -234,6 +287,83 @@ export async function executeRun(
     return { status: final, error_code: code };
   };
 
+  // Once a run has been claimed, every subsequent failure must pass through
+  // the terminalizing catch/finally below. Start liveness before loading any
+  // requester-scoped context so membership revocation and context-load errors
+  // cannot leave a claimed run stuck in `running`.
+  const controller = new AbortController();
+  let abortReason: 'cancelled' | 'membership' | 'lost' | 'timeout' | null = null;
+  const abort = (reason: NonNullable<typeof abortReason>) => {
+    if (!abortReason) abortReason = reason;
+    controller.abort();
+  };
+  let steps = 0;
+  const budgetMs = Math.max(0, opts.budgetMs ?? RUN_BUDGET_MS);
+  const deadline = Date.now() + budgetMs;
+  const refreshLiveness = async () => {
+    const hb = await rpc<{ alive: boolean; cancel_requested?: boolean; member?: boolean }>('agent_heartbeat', {
+      p_run_id: runId,
+      p_worker: worker,
+      p_step_count: steps,
+    });
+    if (!hb.alive) abort('lost');
+    else if (hb.member === false) abort('membership');
+    else if (hb.cancel_requested) abort('cancelled');
+    // Workspace membership is not enough for a conversation-notes run. A
+    // requester removed from the source conversation must lose access before
+    // the transcript, provider, or any approval tool can run.
+    if (!controller.signal.aborted && run.scope?.session_id) {
+      const canControlSession = await rpc<boolean>('ai_session_actor_can_control', {
+        p_session_id: run.scope.session_id,
+        p_actor: run.requested_by,
+      });
+      if (!canControlSession) abort('membership');
+    }
+  };
+  const heartbeat = setInterval(() => {
+    void refreshLiveness().catch(() => {
+      /* transient; the next beat or finalization barrier decides */
+    });
+  }, HEARTBEAT_MS);
+  const relayExternalAbort = () => abort('cancelled');
+  if (opts.signal?.aborted) relayExternalAbort();
+  else opts.signal?.addEventListener('abort', relayExternalAbort, { once: true });
+  const budget = setTimeout(() => abort('timeout'), budgetMs);
+  const assertRunActive = async (message: string) => {
+    if (Date.now() >= deadline && !controller.signal.aborted) abort('timeout');
+    if (!controller.signal.aborted) await refreshLiveness();
+    if (Date.now() >= deadline && !controller.signal.aborted) abort('timeout');
+    if (controller.signal.aborted) {
+      throw new DOMException(message, 'AbortError');
+    }
+  };
+
+  let committed = '';
+  let turnText = '';
+  let usage: TurnUsage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 };
+  let servedModel: string | null = null;
+  let lastCheckpoint = 0;
+  let checkpointing = false;
+  const visible = () => (committed && turnText ? `${committed}\n\n${turnText}` : committed || turnText);
+  const checkpoint = (force = false) => {
+    const now = Date.now();
+    if (checkpointing || (!force && now - lastCheckpoint < CHECKPOINT_MS)) return;
+    checkpointing = true;
+    lastCheckpoint = now;
+    rpc('agent_checkpoint', { p_run_id: runId, p_worker: worker, p_content: visible() })
+      .catch(() => undefined)
+      .finally(() => {
+        checkpointing = false;
+      });
+  };
+
+  try {
+    await assertRunActive('The run stopped before context could be loaded.');
+    if (run.scope?.session_id && !run.scope.channel_id) {
+      abort('membership');
+      throw new DOMException('The AI session conversation is no longer available.', 'AbortError');
+    }
+
   // The provider follows from the model stored on the agent version, so
   // specialists in one team run may use different providers.
   const provider = opts.provider ?? providerFor(run.model);
@@ -275,7 +405,7 @@ export async function executeRun(
     citations: new CitationRegistry(),
     memo: new Map(),
     settings: { brandKitFolderId: claim.settings.brand_kit_folder_id ?? null, siteUrl: claim.settings.site_url ?? null },
-    signal: new AbortController().signal,
+    signal: controller.signal,
     async recordSource(kind: SourceKind, refId: string, o = {}) {
       const key = `${kind}:${refId}`;
       if (recorded.has(key)) return;
@@ -289,14 +419,6 @@ export async function executeRun(
         p_label: o.label ?? null,
       });
     },
-  };
-
-  const controller = new AbortController();
-  ctx.signal = controller.signal;
-  let abortReason: 'cancelled' | 'membership' | 'lost' | 'timeout' | null = null;
-  const abort = (reason: NonNullable<typeof abortReason>) => {
-    if (!abortReason) abortReason = reason;
-    controller.abort();
   };
 
   // Context the model needs that is not part of the stable system prompt.
@@ -353,6 +475,10 @@ export async function executeRun(
   if (run.scope?.channel_id) {
     const channels = await memberChannels(ctx);
     const channel = channels.find((c) => c.id === run.scope.channel_id);
+    if (run.scope.session_id && !channel) {
+      abort('membership');
+      throw new DOMException('The requester can no longer access the AI session conversation.', 'AbortError');
+    }
     if (channel) {
       const where = channel.is_direct ? 'a direct conversation' : `#${channel.name}`;
       contextLines.push(
@@ -361,9 +487,37 @@ export async function executeRun(
           : `This request is about ${where} (channel id ${channel.id}).`,
       );
       if (run.scope.session_id) {
-        snapshot = await sessionTranscript(ctx, run.scope.session_id, channel.id);
+        const sessionSnapshot = await sessionTranscript(ctx, run.scope.session_id, channel.id, where);
+        snapshot = sessionSnapshot.text;
+        let participantIds: string[];
+        if (channel.is_direct) {
+          const members = await db
+            .from('channel_members')
+            .select('user_id')
+            .eq('channel_id', channel.id);
+          if (members.error) {
+            throw new HttpError(503, 'session_participants_unavailable', 'The conversation participants could not be loaded. Please retry.');
+          }
+          participantIds = [...new Set(((members.data ?? []) as Array<{ user_id: string }>).map((member) => String(member.user_id)))];
+        } else {
+          // #general may contain the whole company. The model needs the people
+          // who actually spoke, not a token-heavy directory of every member.
+          participantIds = [...new Set([...sessionSnapshot.humanAuthorIds, run.requested_by])];
+        }
+        let participantRows: SessionParticipant[] = [];
+        if (participantIds.length) {
+          const participants = await db
+            .from('profiles')
+            .select('id, display_name, username')
+            .in('id', participantIds);
+          if (participants.error) {
+            throw new HttpError(503, 'session_participants_unavailable', 'The participant names could not be loaded. Please retry.');
+          }
+          participantRows = (participants.data ?? []) as SessionParticipant[];
+        }
         contextLines.push(
-          'The participants invited you into this conversation for an AI session. The snapshot holds every message sent while the session was active, and nothing else.',
+          'This conversation invited you into an AI notes session. The snapshot contains up to the newest 500 messages sent while the session was active, and nothing from outside that time window.',
+          sessionOwnershipContext(participantRows, run.requested_by, channel.is_direct),
         );
       } else if (run.trigger === 'mention' || run.trigger === 'thread_summary' || run.scope.thread_root_id) {
         snapshot = await readConversation(ctx, channel, run.scope.thread_root_id ?? null, 30);
@@ -461,7 +615,8 @@ export async function executeRun(
   // ---- Tools ----------------------------------------------------------------
   // A session run may read nothing beyond its transcript.
   const allowed = (n: string) =>
-    (!run.scope?.session_id || SESSION_TOOLS.includes(n))
+    (!run.scope?.session_id
+      || (run.scope.session_phase !== 'review' && SESSION_TOOLS.includes(n)))
     && (n !== 'browser_scrape' || browserScrapeAllowed);
   // The coordinator receives only its own tools plus delegation. Specialist
   // permissions stay inside child runs instead of being unioned into the lead.
@@ -470,38 +625,6 @@ export async function executeRun(
     .filter((n) => allowed(n) && !PROVIDER_TOOLS.includes(n) && (n !== 'delegate_to_specialists' || isCoordinator))
     .map((n) => TOOL_REGISTRY[n])
     .filter((t): t is AgentTool => Boolean(t));
-
-  // ---- Liveness: heartbeat, cancellation, time budget ----------------------
-  let steps = 0;
-  const refreshLiveness = async () => {
-    const hb = await rpc<{ alive: boolean; cancel_requested?: boolean; member?: boolean }>('agent_heartbeat', {
-      p_run_id: runId,
-      p_worker: worker,
-      p_step_count: steps,
-    });
-    if (!hb.alive) abort('lost');
-    else if (hb.member === false) abort('membership');
-    else if (hb.cancel_requested) abort('cancelled');
-  };
-  const heartbeat = setInterval(() => {
-    void refreshLiveness().catch(() => {
-      /* transient; the next beat or finalization barrier decides */
-    });
-  }, HEARTBEAT_MS);
-  const relayExternalAbort = () => abort('cancelled');
-  if (opts.signal?.aborted) relayExternalAbort();
-  else opts.signal?.addEventListener('abort', relayExternalAbort, { once: true });
-  const budgetMs = Math.max(0, opts.budgetMs ?? RUN_BUDGET_MS);
-  const deadline = Date.now() + budgetMs;
-  const budget = setTimeout(() => abort('timeout'), budgetMs);
-  const assertRunActive = async (message: string) => {
-    if (Date.now() >= deadline && !controller.signal.aborted) abort('timeout');
-    if (!controller.signal.aborted) await refreshLiveness();
-    if (Date.now() >= deadline && !controller.signal.aborted) abort('timeout');
-    if (controller.signal.aborted) {
-      throw new DOMException(message, 'AbortError');
-    }
-  };
 
   if (isCoordinator) {
     ctx.delegate = (tasks) => delegate({
@@ -517,25 +640,6 @@ export async function executeRun(
       signal: controller.signal,
     });
   }
-
-  let committed = '';
-  let turnText = '';
-  let usage: TurnUsage = { input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 };
-  let servedModel: string | null = null;
-  let lastCheckpoint = 0;
-  let checkpointing = false;
-  const visible = () => (committed && turnText ? `${committed}\n\n${turnText}` : committed || turnText);
-  const checkpoint = (force = false) => {
-    const now = Date.now();
-    if (checkpointing || (!force && now - lastCheckpoint < CHECKPOINT_MS)) return;
-    checkpointing = true;
-    lastCheckpoint = now;
-    rpc('agent_checkpoint', { p_run_id: runId, p_worker: worker, p_content: visible() })
-      .catch(() => undefined)
-      .finally(() => {
-        checkpointing = false;
-      });
-  };
 
   const runTool = async (call: { id: string; name: string; input: unknown }): Promise<{ id: string; content: string; isError?: boolean }> => {
     await assertRunActive('The run stopped before the tool could start.');
@@ -601,7 +705,6 @@ export async function executeRun(
   };
 
   // ---- Model execution ------------------------------------------------------
-  try {
     if (controller.signal.aborted || Date.now() >= deadline) {
       if (!controller.signal.aborted) abort('timeout');
       throw new DOMException('The run was aborted before model execution.', 'AbortError');
@@ -642,13 +745,9 @@ export async function executeRun(
     const liveTeam = new Map<string, { task_id: string; agent: string; status: string }>();
     let teamEventWrites = Promise.resolve();
     await setStage('starting_team', isCoordinator ? 'Starting the team' : `Starting ${agent.name}`);
-    // Stage persistence yields to I/O. Recheck immediately before invoking the
-    // provider so an abort/deadline that arrived during that await cannot start
-    // another specialist.
-    if (controller.signal.aborted || Date.now() >= deadline) {
-      if (!controller.signal.aborted) abort('timeout');
-      throw new DOMException('The run was aborted before model execution.', 'AbortError');
-    }
+    // Stage persistence yields to I/O. Recheck both run liveness and the
+    // session conversation permission at the provider invocation boundary.
+    await assertRunActive('The run was aborted before model execution.');
     const result = await agentRunner.run(
       {
         run_id: runId,
@@ -741,6 +840,21 @@ export async function executeRun(
     if (controller.signal.aborted) {
       throw new DOMException('The run stopped before publication.', 'AbortError');
     }
+    if (run.trigger === 'session_notes' && run.scope?.session_phase === 'final') {
+      // The model's prose is not a final-session outcome. Publication is
+      // allowed only after this exact attached run has durably recorded its one
+      // complete task batch (including an explicit empty batch). The database
+      // also rechecks abandonment and conversation membership here.
+      const outcomeReady = await rpc<boolean>('agent_session_outcome_ready', {
+        p_run_id: runId,
+      });
+      if (!outcomeReady) {
+        throw new Error('Final session notes did not persist a valid task outcome and cannot be posted.');
+      }
+    }
+    if (run.trigger === 'session_notes' && run.destination?.type === 'channel' && !text) {
+      throw new Error('The AI session response was empty and could not be posted.');
+    }
     if (run.destination?.type === 'channel' && text) {
       const reply = await rpc<{ status: string; proposal_id?: string }>('agent_publish_reply', {
         p_run_id: runId,
@@ -752,6 +866,14 @@ export async function executeRun(
       if (reply.status === 'cancelled' || reply.status === 'not_running') {
         abort(reply.status === 'cancelled' ? 'cancelled' : 'lost');
         throw new DOMException('The run stopped while publishing.', 'AbortError');
+      }
+      if (run.trigger === 'session_notes'
+        && reply.status !== 'published') {
+        const alreadyPublished = reply.status === 'exists'
+          && await rpc<boolean>('agent_session_reply_was_published', { p_run_id: runId });
+        if (!alreadyPublished) {
+          throw new Error(`The AI session response could not be posted (${reply.status}).`);
+        }
       }
       emit('reply', reply);
     }
@@ -777,7 +899,7 @@ export async function executeRun(
         return await finish('interrupted', partial, usage, servedModel, 'timeout', 'The run reached its time limit before finishing. Retry to continue.');
       }
       if (abortReason === 'membership') {
-        return await finish('failed', partial, usage, servedModel, 'membership_removed', 'The requester is no longer a workspace member.');
+        return await finish('failed', partial, usage, servedModel, 'membership_removed', 'The requester can no longer access this conversation or workspace.');
       }
       if (abortReason === 'lost') return { status: 'lost' };
       return await finish('cancelled', partial, usage, servedModel, 'cancelled', 'Stopped.');

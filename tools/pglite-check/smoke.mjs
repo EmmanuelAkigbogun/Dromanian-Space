@@ -105,7 +105,78 @@ export async function preBrowser(db, legacy) {
   };
 }
 
-export default async function smoke(db, legacy, browserUpgrade) {
+/** A failed final-notes run created before the durable retry ledger. */
+export async function preSessionReview(db, legacy) {
+  const h = helpers(db);
+  const participant = await h.createUser('legacy-session-participant');
+  await h.admin(`INSERT INTO workspace_members (workspace_id, user_id, role)
+    VALUES ($1, $2, 'member')`, [legacy.ws, participant.id]);
+  const conversation = (await h.user(legacy.owner,
+    'SELECT create_direct_conversation($1, $2, $3) AS id',
+    [legacy.ws, legacy.owner.id, participant.id]))[0].id;
+  const channel = (await h.admin(
+    'SELECT channel_id FROM direct_conversations WHERE id = $1',
+    [conversation]))[0].channel_id;
+  const agent = (await h.admin(`SELECT id FROM workspace_agents
+    WHERE workspace_id = $1 AND template_key = 'cerebras_writer'`,
+  [legacy.ws]))[0].id;
+  const session = (await h.svc('SELECT (ai_session_start($1, $2, $3)).*',
+    [legacy.owner.id, channel, agent]))[0];
+  await h.admin(`INSERT INTO messages (channel_id, user_id, content)
+    VALUES ($1, $2, 'Please prepare the legacy launch task.')`,
+  [channel, participant.id]);
+  await h.svc('SELECT ai_session_finish($1, $2)', [legacy.owner.id, session.id]);
+
+  const started = (await h.svc(`SELECT agent_start_run(
+      $1, $2, $3, NULL, 'Write legacy session notes', $4,
+      'session_notes', '{}', $5, $6, 1000
+    ) AS run`, [
+    legacy.owner.id,
+    legacy.ws,
+    agent,
+    { channel_id: channel, session_id: session.id, session_phase: 'final' },
+    { type: 'channel', channel_id: channel },
+    randomUUID(),
+  ]))[0].run;
+  await h.svc('SELECT ai_session_attach_run($1, $2)', [session.id, started.run_id]);
+  await h.svc("SELECT agent_claim_run($1, 'legacy-session-worker')", [started.run_id]);
+  const submitted = (await h.svc(`SELECT agent_submit_task_requests(
+      $1, 'legacy-final-tool', $2, 'a legacy AI session'
+    ) AS result`, [started.run_id, JSON.stringify([{
+    title: 'Prepare the legacy launch task',
+    assignee_ids: [participant.id],
+    priority: 'high',
+  }])]))[0].result;
+  await h.svc(`SELECT agent_finish_run(
+    $1, 'legacy-session-worker', 'failed', NULL, NULL,
+    'provider_error', 'Legacy provider stopped after task submission'
+  )`, [started.run_id]);
+  const legacyActiveConversation = (await h.user(legacy.owner,
+    'SELECT create_direct_conversation($1, $2, $3) AS id',
+    [legacy.ws, legacy.owner.id, participant.id]))[0].id;
+  const legacyActiveChannel = (await h.admin(
+    'SELECT channel_id FROM direct_conversations WHERE id = $1',
+    [legacyActiveConversation]))[0].channel_id;
+  const wrongAgent = (await h.admin(`SELECT id FROM workspace_agents
+    WHERE workspace_id = $1 AND id <> $2 AND archived_at IS NULL
+    ORDER BY id LIMIT 1`, [legacy.ws, agent]))[0].id;
+  const legacyActiveSession = (await h.svc(
+    'SELECT (ai_session_start($1, $2, $3)).*',
+    [legacy.owner.id, legacyActiveChannel, wrongAgent]))[0];
+  console.log('pre-fixture: failed session final run with durable task requests');
+  return {
+    owner: legacy.owner,
+    participant,
+    sessionId: session.id,
+    runId: started.run_id,
+    requestId: submitted.request_ids[0],
+    activeSessionId: legacyActiveSession.id,
+    canonicalAgentId: agent,
+    wrongAgentId: wrongAgent,
+  };
+}
+
+export default async function smoke(db, legacy, browserUpgrade, sessionReviewUpgrade) {
   const h = helpers(db);
 
   if (legacy) {
@@ -169,6 +240,48 @@ export default async function smoke(db, legacy, browserUpgrade) {
       && archived.status === 'disabled'
       && archived.current_version_id === browserUpgrade.archivedVersion,
     'browser upgrade leaves archived built-ins unchanged');
+  }
+
+  if (sessionReviewUpgrade) {
+    const [canonicalizedActive] = await h.admin(`SELECT status, agent_id, review_run_id
+      FROM conversation_ai_sessions WHERE id = $1`,
+    [sessionReviewUpgrade.activeSessionId]);
+    check(canonicalizedActive.status === 'active'
+      && canonicalizedActive.agent_id === sessionReviewUpgrade.canonicalAgentId
+      && canonicalizedActive.agent_id !== sessionReviewUpgrade.wrongAgentId
+      && canonicalizedActive.review_run_id === null,
+    'session review upgrade canonicalizes a legacy active session that selected another agent');
+
+    const [ledger] = await h.admin(`SELECT run_id, request_ids
+      FROM ai_session_task_submissions WHERE session_id = $1`,
+    [sessionReviewUpgrade.sessionId]);
+    check(ledger?.run_id === sessionReviewUpgrade.runId
+      && ledger.request_ids.includes(sessionReviewUpgrade.requestId),
+    'session review upgrade backfills task requests from a failed final run');
+
+    const reserved = (await h.svc('SELECT (ai_session_request_finish($1, $2)).*',
+      [sessionReviewUpgrade.owner.id, sessionReviewUpgrade.sessionId]))[0];
+    const retry = (await h.svc(`SELECT (ai_session_start_run(
+      $1, $2, 'final', 'Retry legacy notes', 1000
+    )).*`, [sessionReviewUpgrade.owner.id, sessionReviewUpgrade.sessionId]))[0];
+    await h.svc("SELECT agent_claim_run($1, 'legacy-retry-worker')", [retry.notes_run_id]);
+    const corrected = (await h.svc(`SELECT agent_submit_task_requests(
+      $1, 'legacy-retry-tool', $2, 'a legacy AI session'
+    ) AS result`, [retry.notes_run_id, JSON.stringify([{
+      title: 'Prepare the corrected legacy launch task',
+      assignee_ids: [sessionReviewUpgrade.participant.id],
+      priority: 'urgent',
+    }])]))[0].result;
+    const [oldRequest] = await h.admin(`SELECT status, decision_note
+      FROM task_requests WHERE id = $1`, [sessionReviewUpgrade.requestId]);
+    check(reserved.notes_attempt === 2
+      && oldRequest.status === 'rejected'
+      && oldRequest.decision_note === 'Superseded by corrected AI session notes'
+      && corrected.new === 1,
+    'a historical failed final retry supersedes its pending legacy request');
+    await h.svc(`SELECT agent_finish_run(
+      $1, 'legacy-retry-worker', 'completed', 'Legacy notes retried', NULL, NULL, NULL
+    )`, [retry.notes_run_id]);
   }
 
   const [owner, member, other] = [await h.createUser('owner'), await h.createUser('member'), await h.createUser('other')];
@@ -311,10 +424,10 @@ export default async function smoke(db, legacy, browserUpgrade) {
   check((await approver(member)) && !(await approver(owner)), 'once chosen, only project managers approve tasks');
   const scribe = (await h.admin(`SELECT id FROM workspace_agents WHERE workspace_id = $1 AND template_key = 'cerebras_writer'`, [wsA]))[0]?.id;
   check(Boolean(scribe), 'every workspace gets the Content & Notes Specialist');
-  const startScribe = async (u, scope = {}, trigger = 'interactive') => {
-    const started = (await h.svc(`SELECT agent_start_run($1, $2, $3, NULL, 'Extract the tasks', $4, $5, '{}', '{"type":"private"}', $6, 1000) AS r`,
-      [u.id, wsA, scribe, scope, trigger, randomUUID()]))[0].r;
-    await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [started.run_id]);
+  const startScribe = async (u, scope = {}, trigger = 'interactive', destination = { type: 'private' }, claim = true) => {
+    const started = (await h.svc(`SELECT agent_start_run($1, $2, $3, NULL, 'Extract the tasks', $4, $5, '{}', $6, $7, 1000) AS r`,
+      [u.id, wsA, scribe, scope, trigger, destination, randomUUID()]))[0].r;
+    if (claim) await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [started.run_id]);
     return started.run_id;
   };
   const submitRun = await startScribe(owner);
@@ -355,27 +468,297 @@ export default async function smoke(db, legacy, browserUpgrade) {
   check(pushJobs.length >= 1, 'assignments to people with push enabled queue a push delivery');
   check((await h.admin(`SELECT count(*)::int AS n FROM jobs WHERE kind = 'notification.push' AND principal_id = $1`, [owner.id]))[0].n === 0, 'people without push subscriptions queue nothing');
 
-  // AI sessions in direct conversations
+  await h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'completed', 'Task requests submitted', NULL, NULL, NULL)", [submitRun]);
+
+  // AI notes sessions in #general and direct conversations
   const conv = (await h.user(owner, 'SELECT create_direct_conversation($1, $2, $3) AS c', [wsA, owner.id, member.id]))[0].c;
   const dm = (await h.admin('SELECT channel_id FROM direct_conversations WHERE id = $1', [conv]))[0].channel_id;
-  const general = (await h.admin(`SELECT id FROM channels WHERE workspace_id = $1 AND id NOT IN (SELECT channel_id FROM direct_conversations) LIMIT 1`, [wsA]))[0]?.id;
-  if (general) check(await h.denied(h.svc('SELECT ai_session_start($1, $2, $3)', [owner.id, general, scribe]), /not found/), 'sessions are only for direct conversations');
+  const general = (await h.admin(`SELECT id FROM channels WHERE workspace_id = $1 AND slug = 'general' AND archived_at IS NULL`, [wsA]))[0]?.id;
+  const viewer = await h.createUser('viewer');
+  await h.admin(`INSERT INTO workspace_members (workspace_id, user_id, role) VALUES ($1, $2, 'member')`, [wsA, viewer.id]);
+  await h.admin(`INSERT INTO channel_members (channel_id, user_id, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`, [general, viewer.id]);
+
+  const wrongSessionAgent = (await h.admin('SELECT id FROM workspace_agents WHERE workspace_id = $1 AND id <> $2 AND archived_at IS NULL ORDER BY id LIMIT 1', [wsA, scribe]))[0]?.id;
+  check((await h.admin(`SELECT to_regprocedure('public.ai_session_attach_run(uuid,uuid)') IS NULL AS removed`))[0].removed,
+    'the unvalidated legacy session-run attachment RPC is removed from the service API');
+  const generalSession = (await h.svc('SELECT (ai_session_start($1, $2, $3)).*', [owner.id, general, wrongSessionAgent]))[0];
+  check(generalSession.status === 'active' && generalSession.started_by === owner.id && generalSession.agent_id === scribe,
+    'the notes session in canonical #general always uses the built-in note taker, even for an old client-supplied agent id');
+  check((await h.user(viewer, 'SELECT id FROM conversation_ai_sessions WHERE id = $1', [generalSession.id])).length === 1, '#general members can follow the shared session');
+  check(await h.denied(h.svc('SELECT ai_session_request_review($1, $2)', [viewer.id, generalSession.id]), /not found/), 'ordinary #general members cannot close another member\'s notes session');
+  await h.admin(`INSERT INTO messages (channel_id, user_id, content) VALUES ($1, $2, 'Member will prepare the launch checklist.')`, [general, member.id]);
+  const generalReviewReservation = (await h.svc('SELECT (ai_session_request_review($1, $2)).*', [owner.id, generalSession.id]))[0];
+  const generalReviewed = (await h.svc(`SELECT (ai_session_start_run($1, $2, 'review', 'Review general', 1000)).*`, [owner.id, generalSession.id]))[0];
+  const generalReviewRun = generalReviewed.review_run_id;
+  check(generalReviewReservation.review_requested_by === owner.id && Boolean(generalReviewRun), '#general review is reserved and attached atomically');
+  await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [generalReviewRun]);
+  await h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'completed', 'The launch owner is clear.', NULL, NULL, NULL)", [generalReviewRun]);
+  const generalFinishReservation = (await h.svc('SELECT (ai_session_request_finish($1, $2)).*', [owner.id, generalSession.id]))[0];
+  const generalEnded = (await h.svc(`SELECT (ai_session_start_run($1, $2, 'final', 'Write general notes', 1000)).*`, [owner.id, generalSession.id]))[0];
+  const generalNotesRun = generalEnded.notes_run_id;
+  check(generalFinishReservation.notes_requested_by === owner.id && generalEnded.status === 'finished' && Boolean(generalNotesRun), '#general final notes freeze and enqueue the reviewed transcript');
+  await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [generalNotesRun]);
+  check(await h.denied(
+    h.svc(`SELECT agent_publish_reply_pre_session_outcome($1, 'Bypass notes')`, [generalNotesRun]),
+    /permission denied/i,
+  ), 'the service role cannot bypass the final-session publication gate through the renamed implementation');
+  check(await h.denied(
+    h.user(owner, 'SELECT agent_session_outcome_ready($1)', [generalNotesRun]),
+    /permission denied/i,
+  ), 'clients cannot probe the service-only final outcome predicate');
+  const prematureGeneralPublish = (await h.svc(`SELECT agent_publish_reply($1, 'Premature general notes') AS r`, [generalNotesRun]))[0].r;
+  check(prematureGeneralPublish.status === 'session_outcome_missing'
+    && (await h.admin('SELECT count(*)::int AS n FROM messages WHERE agent_run_id = $1', [generalNotesRun]))[0].n === 0,
+  'final session notes cannot publish before the exact run persists its durable task outcome');
+  check(await h.denied(
+    h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'completed', 'Incomplete notes', NULL, NULL, NULL)", [generalNotesRun]),
+    /durable task outcome/,
+  ), 'a final session run cannot complete before it records tasks or an explicit no-action-items outcome');
+  check((await h.admin('SELECT status FROM agent_runs WHERE id = $1', [generalNotesRun]))[0].status === 'running',
+    'rejecting an incomplete final run leaves it retryable by the same worker');
+  const generalTasks = JSON.stringify([{ title: 'Prepare the launch checklist', assignee_ids: [member.id], priority: 'high' }]);
+  const generalSubmission = (await h.svc(`SELECT agent_submit_task_requests($1, 'general-final', $2, 'an AI session in #General') AS r`, [generalNotesRun, generalTasks]))[0].r;
+  check(generalSubmission.new === 1, '#general final notes persist task approval requests');
+  check((await h.user(viewer, 'SELECT id FROM task_requests WHERE id = $1', [generalSubmission.request_ids[0]])).length === 1, '#general members can see requests prepared from their shared notes session');
+  const published = (await h.svc(`SELECT agent_publish_reply($1, 'General session notes') AS r`, [generalNotesRun]))[0].r;
+  const repeatedPublish = (await h.svc(`SELECT agent_publish_reply($1, 'General session notes') AS r`, [generalNotesRun]))[0].r;
+  check(published.status === 'published' && repeatedPublish.status === 'exists'
+    && (await h.svc('SELECT agent_session_reply_was_published($1) AS ok', [generalNotesRun]))[0].ok,
+  'an existing session reply counts only after a real channel message was published');
+  check(!(await h.svc('SELECT agent_session_reply_was_published($1) AS ok', [generalReviewRun]))[0].ok, 'a run without an executed reply is not mistaken for a published session note');
+  await h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'completed', 'General session notes', NULL, NULL, NULL)", [generalNotesRun]);
+
   check(await h.denied(h.svc('SELECT ai_session_start($1, $2, $3)', [other.id, dm, scribe]), /not found/), 'non-participants cannot start a session');
   await h.admin(`INSERT INTO messages (channel_id, user_id, content, created_at) VALUES ($1, $2, 'Before the session', now() - interval '1 hour')`, [dm, owner.id]);
   const session = (await h.svc('SELECT (ai_session_start($1, $2, $3)).*', [owner.id, dm, scribe]))[0];
   const sameSession = (await h.svc('SELECT (ai_session_start($1, $2, $3)).*', [member.id, dm, scribe]))[0];
   check(session.status === 'active' && sameSession.id === session.id, 'one active session per conversation');
-  await h.admin(`INSERT INTO messages (channel_id, user_id, content, created_at) VALUES ($1, $2, 'Can you send the deck by Friday?', now() + interval '1 second')`, [dm, member.id]);
-  check((await h.user(member, 'SELECT id FROM conversation_ai_sessions')).length === 1 && (await h.user(other, 'SELECT id FROM conversation_ai_sessions')).length === 0, 'participants see the session; others do not');
+  await h.admin(`INSERT INTO messages (channel_id, user_id, content, created_at) VALUES ($1, $2, 'Can you send the deck by Friday?', now())`, [dm, member.id]);
+  check((await h.user(member, 'SELECT id FROM conversation_ai_sessions WHERE id = $1', [session.id])).length === 1 && (await h.user(other, 'SELECT id FROM conversation_ai_sessions WHERE id = $1', [session.id])).length === 0, 'participants see the DM session; outsiders do not');
   check(await h.denied(h.svc('SELECT ai_session_finish($1, $2)', [other.id, session.id]), /not found/), 'non-participants cannot finish a session');
-  const ended = (await h.svc('SELECT (ai_session_finish($1, $2)).*', [member.id, session.id]))[0];
-  check(ended.status === 'finished' && ended.ended_by === member.id, 'either participant can finish the session');
+  check(await h.denied(h.svc('SELECT ai_session_request_review($1, $2)', [other.id, session.id]), /not found/), 'non-participants cannot review a session');
+  check(await h.denied(h.svc('SELECT ai_session_finish($1, $2)', [member.id, session.id]), /Review this session/), 'a session with messages stays open until its review is persisted');
+  const reviewRequested = (await h.svc('SELECT (ai_session_request_review($1, $2)).*', [owner.id, session.id]))[0];
+  check(reviewRequested.status === 'active' && reviewRequested.review_requested_at && reviewRequested.review_requested_by === owner.id, 'requesting a review keeps the session active for participant answers');
+  const reviewed = (await h.svc(`SELECT (ai_session_start_run($1, $2, 'review', 'Review DM', 1000)).*`, [member.id, session.id]))[0];
+  const reviewRun = reviewed.review_run_id;
+  const repeatedReviewStart = (await h.svc(`SELECT (ai_session_start_run($1, $2, 'review', 'Review DM', 1000)).*`, [owner.id, session.id]))[0];
+  const reviewOwner = (await h.admin('SELECT requested_by FROM agent_runs WHERE id = $1', [reviewRun]))[0].requested_by;
+  check(reviewed.review_run_id === repeatedReviewStart.review_run_id && reviewOwner === owner.id, 'simultaneous DM participants converge on the reservation owner and one review run');
+  check((await h.admin(`SELECT count(*)::int AS n FROM jobs WHERE kind = 'agent.run' AND payload ->> 'run_id' = $1`, [reviewRun]))[0].n === 1, 'review attachment durably enqueues its worker job in the same transaction');
+  check(await h.denied(h.svc('SELECT ai_session_finish($1, $2)', [member.id, session.id]), /Wait for the AI review/), 'an attached but unfinished review cannot unlock finalization');
+  await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [reviewRun]);
+  await h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'failed', NULL, NULL, 'provider_error', 'try again')", [reviewRun]);
+  check((await h.svc('SELECT review_status FROM conversation_ai_sessions WHERE id = $1', [session.id]))[0].review_status === 'failed', 'a failed review is visible to both participants');
+  check(await h.denied(h.svc('SELECT ai_session_finish($1, $2)', [member.id, session.id]), /Retry the AI review/), 'a failed review cannot unlock finalization');
+  const finalReviewRequest = (await h.svc('SELECT (ai_session_request_review($1, $2)).*', [owner.id, session.id]))[0];
+  const finalReview = (await h.svc(`SELECT (ai_session_start_run($1, $2, 'review', 'Review DM retry', 1000)).*`, [owner.id, session.id]))[0];
+  const finalReviewRun = finalReview.review_run_id;
+  check(finalReviewRequest.review_attempt === 2 && finalReview.review_status === 'queued', 'a failed review reserves and starts a fresh serialized attempt');
+  await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [finalReviewRun]);
+  await h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'completed', 'Who should own the deck?', NULL, NULL, NULL)", [finalReviewRun]);
+  check((await h.svc('SELECT review_status FROM conversation_ai_sessions WHERE id = $1', [session.id]))[0].review_status === 'completed', 'only a completed review unlocks finalization');
+  await h.admin(`INSERT INTO messages (channel_id, user_id, content, created_at) VALUES ($1, $2, 'The deck owner is Berssey.', now())`, [dm, owner.id]);
+  const prepared = (await h.svc('SELECT (ai_session_request_finish($1, $2)).*', [member.id, session.id]))[0];
+  check(prepared.status === 'active' && prepared.message_count === 2 && prepared.notes_status === 'reserving' && prepared.notes_attempt === 1 && prepared.notes_requested_by === member.id, 'finalization reserves an exact retryable attempt before creating a run');
+  const ended = (await h.svc(`SELECT (ai_session_start_run($1, $2, 'final', 'Write DM notes', 1000)).*`, [owner.id, session.id]))[0];
+  const notesRun = ended.notes_run_id;
+  const notesOwner = (await h.admin('SELECT requested_by FROM agent_runs WHERE id = $1', [notesRun]))[0].requested_by;
+  check(ended.status === 'finished' && ended.ended_by === member.id && ended.message_count === 2 && ended.notes_run_id === notesRun && ended.notes_status === 'queued', 'final notes run attachment and session finish are atomic');
+  check(notesOwner === member.id, 'a competing finisher cannot steal ownership of the reserved final run');
+  check((await h.admin(`SELECT count(*)::int AS n FROM jobs WHERE kind = 'agent.run' AND payload ->> 'run_id' = $1`, [notesRun]))[0].n === 1, 'finishing durably enqueues the final notes run exactly once');
+  await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [notesRun]);
+  const finalTasks = JSON.stringify([{ title: 'Send the reviewed deck', assignee_ids: [member.id], priority: 'high' }]);
+  const firstFinalSubmission = (await h.svc(`SELECT agent_submit_task_requests($1, 'final-tool-1', $2, 'an AI session in a direct message') AS r`, [notesRun, finalTasks]))[0].r;
+  check(firstFinalSubmission.new === 1 && firstFinalSubmission.request_ids.length === 1, 'the first final attempt persists its task requests');
+  check((await h.user(owner, 'SELECT id FROM task_requests WHERE id = $1', [firstFinalSubmission.request_ids[0]])).length === 1,
+    'every conversation participant can see its session task requests');
+  await h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'failed', NULL, NULL, 'provider_error', 'try again')", [notesRun]);
+  check((await h.svc('SELECT notes_status FROM conversation_ai_sessions WHERE id = $1', [session.id]))[0].notes_status === 'failed', 'a failed final-notes run is visible on the session');
+  const notesRetry = (await h.svc('SELECT (ai_session_request_finish($1, $2)).*', [owner.id, session.id]))[0];
+  check(notesRetry.status === 'finished' && notesRetry.notes_status === 'reserving' && notesRetry.notes_attempt === 2 && notesRetry.notes_run_id === null, 'failed final notes reserve a fresh attempt over the frozen transcript');
+  const notesRetrySession = (await h.svc(`SELECT (ai_session_start_run($1, $2, 'final', 'Write corrected DM notes', 1000)).*`, [member.id, session.id]))[0];
+  const notesRetryRun = notesRetrySession.notes_run_id;
+  await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [notesRetryRun]);
+  const correctedTasks = JSON.stringify([{ title: 'Send the corrected reviewed deck', assignee_ids: [member.id], priority: 'urgent' }]);
+  const invalidCorrectedTasks = JSON.stringify([{ title: 'Leak the corrected deck', assignee_ids: [other.id], priority: 'urgent' }]);
+  check(await h.denied(
+    h.svc(`SELECT agent_submit_task_requests($1, 'invalid-final-tool', $2, 'an AI session in a direct message') AS r`, [notesRetryRun, invalidCorrectedTasks]),
+    /assignee|member|workspace|invalid|not found/i,
+  ), 'an invalid corrected batch is rejected atomically');
+  const afterInvalidReplacement = (await h.admin(`SELECT request.status,
+      EXISTS (
+        SELECT 1 FROM ai_session_task_submissions submission
+        WHERE submission.session_id = $2 AND request.id = ANY(submission.request_ids)
+      ) AS still_ledgered
+    FROM task_requests request WHERE request.id = $1`, [firstFinalSubmission.request_ids[0], session.id]))[0];
+  check(afterInvalidReplacement.status === 'pending' && afterInvalidReplacement.still_ledgered,
+    'a failed replacement rolls back both superseding the old request and deleting its durable ledger');
+  const retriedFinalSubmission = (await h.svc(`SELECT agent_submit_task_requests($1, 'final-tool-2', $2, 'an AI session in a direct message') AS r`, [notesRetryRun, correctedTasks]))[0].r;
+  const repeatedFinalSubmission = (await h.svc(`SELECT agent_submit_task_requests($1, 'final-tool-3', $2, 'an AI session in a direct message') AS r`, [notesRetryRun, correctedTasks]))[0].r;
+  const oldRequest = (await h.admin('SELECT status, decision_note FROM task_requests WHERE id = $1', [firstFinalSubmission.request_ids[0]]))[0];
+  check(oldRequest.status === 'rejected' && oldRequest.decision_note === 'Superseded by corrected AI session notes'
+    && retriedFinalSubmission.new === 1
+    && repeatedFinalSubmission.new === 0
+    && repeatedFinalSubmission.request_ids[0] === retriedFinalSubmission.request_ids[0],
+  'a corrected retry supersedes pending requests and exact provider retries reuse the new batch');
+  check((await h.user(owner, 'SELECT id FROM task_requests WHERE id = $1', [firstFinalSubmission.request_ids[0]])).length === 0,
+    'conversation visibility does not leak superseded requests from an earlier, no-longer-attached final run');
+  await h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'completed', 'Final notes', NULL, NULL, NULL)", [notesRetryRun]);
+  check((await h.svc('SELECT notes_status FROM conversation_ai_sessions WHERE id = $1', [session.id]))[0].notes_status === 'completed', 'a retried final-notes run can complete');
   await h.admin(`UPDATE conversation_ai_sessions SET ended_at = now() + interval '1 minute' WHERE id = $1`, [session.id]);
   const transcript = await h.svc('SELECT content FROM ai_session_transcript_for($1, $2)', [owner.id, session.id]);
-  check(transcript.length === 1 && transcript[0].content.startsWith('Can you send'), 'the agent reads only messages sent during the session');
+  check(transcript.length === 2 && transcript[0].content.startsWith('Can you send') && transcript[1].content === 'The deck owner is Berssey.', 'final notes include participant answers sent after review');
   check((await h.svc('SELECT content FROM ai_session_transcript_for($1, $2)', [other.id, session.id])).length === 0, 'non-participants get no transcript');
-  const notesRun = await startScribe(member, { channel_id: dm, session_id: session.id }, 'session_notes');
   check(Boolean(notesRun), 'session-notes runs can start');
+
+  const noActionSession = (await h.svc('SELECT (ai_session_start($1, $2, $3)).*', [owner.id, dm, wrongSessionAgent]))[0];
+  await h.admin(`INSERT INTO messages (channel_id, user_id, content) VALUES ($1, $2, 'No follow-up is needed; this is informational.')`, [dm, owner.id]);
+  await h.svc('SELECT ai_session_request_review($1, $2)', [owner.id, noActionSession.id]);
+  const noActionReview = (await h.svc(`SELECT (ai_session_start_run($1, $2, 'review', 'Review informational DM', 1000)).*`, [owner.id, noActionSession.id]))[0];
+  await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [noActionReview.review_run_id]);
+  await h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'completed', 'There are no action items.', NULL, NULL, NULL)", [noActionReview.review_run_id]);
+  await h.svc('SELECT ai_session_request_finish($1, $2)', [owner.id, noActionSession.id]);
+  const noActionFinal = (await h.svc(`SELECT (ai_session_start_run($1, $2, 'final', 'Write informational notes', 1000)).*`, [owner.id, noActionSession.id]))[0];
+  await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [noActionFinal.notes_run_id]);
+  const noActionResult = (await h.svc(`SELECT agent_submit_task_requests($1, 'no-actions', '[]'::jsonb, 'an informational AI session') AS r`, [noActionFinal.notes_run_id]))[0].r;
+  check(noActionResult.status === 'no_action_items' && noActionResult.new === 0,
+    'an explicit empty final batch records a durable no-action-items outcome');
+  check((await h.admin(`SELECT outcome FROM ai_session_task_submissions WHERE session_id = $1 AND run_id = $2`, [noActionSession.id, noActionFinal.notes_run_id]))[0]?.outcome === 'no_action_items',
+    'the no-action-items outcome is attached to the exact final attempt');
+  await h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'completed', 'No action items.', NULL, NULL, NULL)", [noActionFinal.notes_run_id]);
+  check((await h.svc('SELECT notes_status FROM conversation_ai_sessions WHERE id = $1', [noActionSession.id]))[0].notes_status === 'completed',
+    'an explicit no-action-items outcome allows final notes to complete');
+
+  const changedOutcomeSession = (await h.svc('SELECT (ai_session_start($1, $2, $3)).*', [owner.id, dm, wrongSessionAgent]))[0];
+  await h.admin(`INSERT INTO messages (channel_id, user_id, content) VALUES ($1, $2, 'Review whether this needs a follow-up task.')`, [dm, owner.id]);
+  await h.svc('SELECT ai_session_request_review($1, $2)', [owner.id, changedOutcomeSession.id]);
+  const changedOutcomeReview = (await h.svc(`SELECT (ai_session_start_run($1, $2, 'review', 'Review changing outcome', 1000)).*`, [owner.id, changedOutcomeSession.id]))[0];
+  await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [changedOutcomeReview.review_run_id]);
+  await h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'completed', 'Confirm whether follow-up is needed.', NULL, NULL, NULL)", [changedOutcomeReview.review_run_id]);
+  await h.svc('SELECT ai_session_request_finish($1, $2)', [owner.id, changedOutcomeSession.id]);
+  const firstChangedFinal = (await h.svc(`SELECT (ai_session_start_run($1, $2, 'final', 'First changing outcome', 1000)).*`, [owner.id, changedOutcomeSession.id]))[0];
+  await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [firstChangedFinal.notes_run_id]);
+  await h.svc(`SELECT agent_submit_task_requests($1, 'first-empty-outcome', '[]'::jsonb, 'a changing AI session')`, [firstChangedFinal.notes_run_id]);
+  await h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'failed', NULL, NULL, 'provider_error', 'Retry after clarification')", [firstChangedFinal.notes_run_id]);
+  await h.svc('SELECT ai_session_request_finish($1, $2)', [owner.id, changedOutcomeSession.id]);
+  const retriedChangedFinal = (await h.svc(`SELECT (ai_session_start_run($1, $2, 'final', 'Correct changing outcome', 1000)).*`, [owner.id, changedOutcomeSession.id]))[0];
+  await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [retriedChangedFinal.notes_run_id]);
+  const changedOutcomeTasks = JSON.stringify([{ title: 'Follow up after the reviewed conversation', assignee_ids: [owner.id], priority: 'medium' }]);
+  const changedOutcomeResult = (await h.svc(`SELECT agent_submit_task_requests($1, 'corrected-task-outcome', $2, 'a changing AI session') AS r`, [retriedChangedFinal.notes_run_id, changedOutcomeTasks]))[0].r;
+  const authoritativeOutcomes = await h.admin(`SELECT outcome, run_id, request_ids
+    FROM ai_session_task_submissions WHERE session_id = $1`, [changedOutcomeSession.id]);
+  check(changedOutcomeResult.new === 1
+    && authoritativeOutcomes.length === 1
+    && authoritativeOutcomes[0].outcome === 'submitted'
+    && authoritativeOutcomes[0].run_id === retriedChangedFinal.notes_run_id
+    && authoritativeOutcomes[0].request_ids[0] === changedOutcomeResult.request_ids[0],
+  'a task-bearing retry atomically replaces an earlier empty outcome with one authoritative ledger');
+  check(await h.denied(
+    h.svc(`SELECT agent_submit_task_requests($1, 'resurrect-empty', '[]'::jsonb, 'a changing AI session')`, [retriedChangedFinal.notes_run_id]),
+    /complete session task list/,
+  ), 'the same final attempt cannot resurrect a conflicting prior empty outcome');
+  check((await h.admin('SELECT count(*)::int AS n FROM ai_session_task_submissions WHERE session_id = $1', [changedOutcomeSession.id]))[0].n === 1,
+    'a rejected conflicting exact-hash retry leaves the authoritative task outcome unchanged');
+  await h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'completed', 'Corrected notes', NULL, NULL, NULL)", [retriedChangedFinal.notes_run_id]);
+
+  const emptySession = (await h.svc('SELECT (ai_session_start($1, $2, $3)).*', [member.id, dm, wrongSessionAgent]))[0];
+  const emptyPrepared = (await h.svc('SELECT (ai_session_request_finish($1, $2)).*', [member.id, emptySession.id]))[0];
+  const emptyFinished = emptyPrepared.status === 'finished'
+    ? emptyPrepared
+    : (await h.svc('SELECT (ai_session_finish($1, $2)).*', [member.id, emptySession.id]))[0];
+  check(emptyFinished.status === 'finished' && emptyFinished.message_count === 0 && emptyFinished.notes_run_id === null,
+    'a zero-message session can still finish immediately without a provider run');
+
+  const malformedLegacyRun = (await h.svc(`SELECT agent_start_run(
+      $1, $2, $3, NULL, 'Malformed legacy session run', $4,
+      'session_notes', '{}'::jsonb, $5, $6, 1000
+    ) AS run`, [
+    owner.id,
+    wsA,
+    scribe,
+    { channel_id: dm, session_id: emptySession.id },
+    { type: 'channel', channel_id: dm },
+    randomUUID(),
+  ]))[0].run;
+  await h.admin(`UPDATE conversation_ai_sessions
+    SET notes_run_id = $2, notes_status = 'queued'
+    WHERE id = $1`, [emptySession.id, malformedLegacyRun.run_id]);
+  await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [malformedLegacyRun.run_id]);
+  await h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'completed', 'Malformed notes', NULL, NULL, NULL)", [malformedLegacyRun.run_id]);
+  check((await h.admin('SELECT notes_status FROM conversation_ai_sessions WHERE id = $1', [emptySession.id]))[0].notes_status === 'queued',
+    'status synchronization ignores an attached legacy session run without an exact final phase');
+  await h.admin(`UPDATE conversation_ai_sessions
+    SET notes_run_id = NULL, notes_status = NULL
+    WHERE id = $1`, [emptySession.id]);
+
+  const abandonedFinalSession = (await h.svc('SELECT (ai_session_start($1, $2, $3)).*', [owner.id, dm, wrongSessionAgent]))[0];
+  await h.admin(`INSERT INTO messages (channel_id, user_id, content) VALUES ($1, $2, 'Prepare notes, but I may cancel them.')`, [dm, owner.id]);
+  await h.svc('SELECT ai_session_request_review($1, $2)', [owner.id, abandonedFinalSession.id]);
+  const abandonedFinalReview = (await h.svc(`SELECT (ai_session_start_run($1, $2, 'review', 'Review cancellable final', 1000)).*`, [owner.id, abandonedFinalSession.id]))[0];
+  await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [abandonedFinalReview.review_run_id]);
+  await h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'completed', 'Ready to finish.', NULL, NULL, NULL)", [abandonedFinalReview.review_run_id]);
+  await h.svc('SELECT ai_session_request_finish($1, $2)', [owner.id, abandonedFinalSession.id]);
+  const abandonedFinal = (await h.svc(`SELECT (ai_session_start_run($1, $2, 'final', 'Write cancellable final', 1000)).*`, [owner.id, abandonedFinalSession.id]))[0];
+  await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [abandonedFinal.notes_run_id]);
+  const abandonedFinalRow = (await h.svc('SELECT (ai_session_abandon($1, $2)).*', [owner.id, abandonedFinalSession.id]))[0];
+  check(abandonedFinalRow.abandoned_at
+    && !(await h.svc('SELECT ai_session_actor_can_control($1, $2) AS allowed', [abandonedFinalSession.id, owner.id]))[0].allowed
+    && !(await h.svc('SELECT agent_session_outcome_ready($1) AS ready', [abandonedFinal.notes_run_id]))[0].ready,
+  'an abandoned final session is independently dead to worker liveness and outcome checks');
+  check(await h.denied(
+    h.svc(`SELECT agent_submit_task_requests($1, 'after-abandon', $2, 'an abandoned AI session')`, [abandonedFinal.notes_run_id, changedOutcomeTasks]),
+    /active notes session|no longer use/i,
+  ), 'the task mutation boundary rejects a running final attempt after its session is abandoned');
+  const abandonedPublish = (await h.svc(`SELECT agent_publish_reply($1, 'These notes must not appear') AS r`, [abandonedFinal.notes_run_id]))[0].r;
+  check(abandonedPublish.status === 'cancelled'
+    && (await h.admin('SELECT count(*)::int AS n FROM messages WHERE agent_run_id = $1', [abandonedFinal.notes_run_id]))[0].n === 0,
+  'the publication boundary rejects an abandoned final attempt before writing a message');
+  const abandonedFinalCancel = (await h.svc('SELECT ai_session_cancel_abandoned_run($1, $2, $3) AS status', [owner.id, abandonedFinalSession.id, abandonedFinal.notes_run_id]))[0].status;
+  check(abandonedFinalCancel === 'cancelling', 'the service cancellation RPC marks an abandoned running final attempt for cancellation');
+  await h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'completed', NULL, NULL, NULL, NULL)", [abandonedFinal.notes_run_id]);
+  check((await h.admin('SELECT status FROM agent_runs WHERE id = $1', [abandonedFinal.notes_run_id]))[0].status === 'cancelled',
+    'a worker cannot complete after the abandoned session requested cancellation');
+
+  const abandonedFailedSession = (await h.svc('SELECT (ai_session_start($1, $2, $3)).*', [owner.id, dm, wrongSessionAgent]))[0];
+  await h.admin(`INSERT INTO messages (channel_id, user_id, content)
+    VALUES ($1, $2, 'Prepare one task, but abandon the notes if the provider fails.')`, [dm, owner.id]);
+  await h.svc('SELECT ai_session_request_review($1, $2)', [owner.id, abandonedFailedSession.id]);
+  const abandonedFailedReview = (await h.svc(`SELECT (ai_session_start_run($1, $2, 'review', 'Review failed final cancellation', 1000)).*`, [owner.id, abandonedFailedSession.id]))[0];
+  await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [abandonedFailedReview.review_run_id]);
+  await h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'completed', 'Ready to finish.', NULL, NULL, NULL)", [abandonedFailedReview.review_run_id]);
+  await h.svc('SELECT ai_session_request_finish($1, $2)', [owner.id, abandonedFailedSession.id]);
+  const abandonedFailedFinal = (await h.svc(`SELECT (ai_session_start_run($1, $2, 'final', 'Write failed cancellable final', 1000)).*`, [owner.id, abandonedFailedSession.id]))[0];
+  await h.svc(`SELECT agent_claim_run($1, 'smoke-worker')`, [abandonedFailedFinal.notes_run_id]);
+  const abandonedFailedSubmission = (await h.svc(`SELECT agent_submit_task_requests(
+    $1, 'failed-before-abandon', $2, 'a failed AI notes session'
+  ) AS r`, [abandonedFailedFinal.notes_run_id, changedOutcomeTasks]))[0].r;
+  await h.svc("SELECT agent_finish_run($1, 'smoke-worker', 'failed', NULL, NULL, 'provider_error', 'Provider failed after task submission')", [abandonedFailedFinal.notes_run_id]);
+  check((await h.admin('SELECT status FROM task_requests WHERE id = $1', [abandonedFailedSubmission.request_ids[0]]))[0].status === 'pending',
+    'a failed final attempt retains its task request until the session owner decides whether to retry or abandon');
+  await h.svc('SELECT ai_session_abandon($1, $2)', [owner.id, abandonedFailedSession.id]);
+  const abandonedFailedCancel = (await h.svc('SELECT ai_session_cancel_abandoned_run($1, $2, $3) AS status', [owner.id, abandonedFailedSession.id, abandonedFailedFinal.notes_run_id]))[0].status;
+  const abandonedFailedRequest = (await h.admin('SELECT status, decision_note FROM task_requests WHERE id = $1', [abandonedFailedSubmission.request_ids[0]]))[0];
+  check(abandonedFailedCancel === 'failed'
+    && abandonedFailedRequest.status === 'rejected'
+    && abandonedFailedRequest.decision_note === 'AI notes session cancelled',
+  'explicit abandonment rejects pending task requests persisted by a failed final attempt');
+
+  const abandonedSession = (await h.svc('SELECT (ai_session_start($1, $2, $3)).*', [owner.id, dm, wrongSessionAgent]))[0];
+  await h.admin(`INSERT INTO messages (channel_id, user_id, content) VALUES ($1, $2, 'Cancel these notes before the review starts.')`, [dm, owner.id]);
+  await h.svc('SELECT ai_session_request_review($1, $2)', [owner.id, abandonedSession.id]);
+  const queuedAbandoned = (await h.svc(`SELECT (ai_session_start_run($1, $2, 'review', 'Review then cancel', 1000)).*`, [owner.id, abandonedSession.id]))[0];
+  check(await h.denied(h.user(owner, 'SELECT ai_session_abandon($1, $2)', [owner.id, abandonedSession.id]), /permission denied/i),
+    'clients cannot bypass the sessions API to abandon sessions');
+  const abandoned = (await h.svc('SELECT (ai_session_abandon($1, $2)).*', [owner.id, abandonedSession.id]))[0];
+  const cancelledRun = (await h.svc('SELECT ai_session_cancel_abandoned_run($1, $2, $3) AS status', [owner.id, abandonedSession.id, queuedAbandoned.review_run_id]))[0].status;
+  check(abandoned.status === 'finished' && Boolean(abandoned.abandoned_at) && abandoned.notes_status === null && cancelledRun === 'cancelled',
+    'a controller can durably abandon an active session and cancel its queued review run');
+  check((await h.svc(`SELECT id FROM conversation_ai_sessions
+      WHERE id = $1 AND (status = 'active' OR (status = 'finished' AND notes_status IN ('reserving','queued','running','failed','cancelled','interrupted')))`, [abandonedSession.id])).length === 0,
+    'an explicitly abandoned session cannot reappear in the active or retryable-session view');
+  check(await h.denied(h.svc('SELECT ai_session_request_review($1, $2)', [owner.id, abandonedSession.id]), /cancelled|not found/i),
+    'an abandoned session cannot start another review attempt');
 
   // @all announcements (20261025000200)
   const generalA = (await h.admin(`SELECT id FROM channels WHERE workspace_id = $1 AND slug = 'general'`, [wsA]))[0]?.id;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { enablePush, pushState, type PushState } from '@/lib/push';
-import { CHAT_ONLY, isIOS, isStandalone } from '@/lib/pwa';
+import { isInstalledPwa, isIOS, isStandalone } from '@/lib/pwa';
 import styles from './PermissionsBanner.module.css';
 
 type MediaState = 'granted' | 'prompt' | 'denied' | 'unsupported';
@@ -50,7 +50,7 @@ export function PermissionsBanner() {
   useEffect(() => {
     let cancelled = false;
     pushState().then((s) => !cancelled && setPush(s)).catch(() => !cancelled && setPush('unavailable'));
-    if (CHAT_ONLY) mediaState().then((s) => !cancelled && setMedia(s));
+    if (isInstalledPwa()) mediaState().then((s) => !cancelled && setMedia(s));
     return () => {
       cancelled = true;
     };

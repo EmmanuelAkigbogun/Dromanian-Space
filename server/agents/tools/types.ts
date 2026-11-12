@@ -7,8 +7,12 @@ export interface RunScope {
   company_id?: string;
   channel_id?: string;
   thread_root_id?: string;
-  /** A direct-message AI session: the run reads only that session's messages. */
+  /** A conversation AI session: the run reads only that session's messages. */
   session_id?: string;
+  /** Review stays non-mutating; final may submit task approval requests. */
+  session_phase?: 'review' | 'final';
+  /** Monotonic retry attempt bound into the run idempotency key. */
+  session_attempt?: number;
 }
 
 export type SourceKind = 'drive_item' | 'channel' | 'crm_record' | 'task' | 'web';

@@ -11,7 +11,7 @@ interface MemberMatch {
 }
 
 interface SubmitResult {
-  status: 'submitted';
+  status: 'submitted' | 'no_action_items';
   request_ids: string[];
   new: number;
   approvers: number;
@@ -39,10 +39,12 @@ const task = z.object({
 export const submitTasksForApproval = defineTool({
   name: 'submit_tasks_for_approval',
   description:
-    'Send one or more tasks to the project managers for approval. Use it for action items from a conversation or a pasted list. ' +
+    'Durably record the complete action-item outcome. Send one or more tasks to project managers for approval, or—only when a conversation has no action items—call with an empty tasks list to record that outcome. ' +
     'Owners that do not match a member are kept in the description. Nothing is created until a project manager approves.',
-  schema: z.object({ tasks: z.array(task).min(1).max(25) }),
-  label: (i) => `Sending ${i.tasks.length} ${i.tasks.length === 1 ? 'task' : 'tasks'} for approval`,
+  schema: z.object({ tasks: z.array(task).max(25) }),
+  label: (i) => i.tasks.length
+    ? `Sending ${i.tasks.length} ${i.tasks.length === 1 ? 'task' : 'tasks'} for approval`
+    : 'Recording that there are no action items',
   async run(ctx, input, call) {
     const names = [...new Set(input.tasks.flatMap((t) => t.assignees ?? []))];
     const matches = names.length
@@ -87,21 +89,46 @@ export const submitTasksForApproval = defineTool({
     }
 
     const channel = await resolveChannel(ctx, undefined);
-    const source = ctx.scope.session_id ? 'an AI session in a direct message' : channel ? channelLabel(channel) : null;
+    const channelSource = channel ? channelLabel(channel) : null;
+    const source = ctx.scope.session_id
+      ? channelSource ? `an AI session in ${channelSource}` : 'an AI session'
+      : channelSource;
     const result = await rpc<SubmitResult>('agent_submit_task_requests', {
       p_run_id: ctx.runId,
       p_tool_use_id: call.toolUseId,
       p_tasks: rows,
       p_source_label: source,
     });
+    if (result.status === 'no_action_items') {
+      return {
+        content: 'Persisted the reviewed outcome: this conversation has no action items. No task approval requests were created.',
+        summary: {
+          submitted: 0,
+          new: 0,
+          request_ids: [],
+          no_action_items: true,
+        },
+        status: 'succeeded',
+      };
+    }
     const count = result.request_ids.length;
     const who = result.requester_is_approver && result.approvers === 1 ? 'the requester (the only approver)' : 'the project managers';
+    const persistence = result.new > 0
+      ? `Persisted ${count} ${count === 1 ? 'task request' : 'task requests'} for ${who}. They have NOT been created as tasks yet; a project manager reviews them in the Tasks page.`
+      : `Reused ${count} ${count === 1 ? 'task request' : 'task requests'} already persisted by an earlier attempt; their current review state is authoritative.`;
     return {
       content:
-        `Sent ${count} ${count === 1 ? 'task' : 'tasks'} to ${who} for approval. They have NOT been created yet; ` +
-        'a project manager approves them in the Tasks page.' +
+        `${persistence} ` +
+        `The persisted request ${count === 1 ? 'ID is' : 'IDs are'}: ${result.request_ids.join(', ')}. ` +
+        'Open Tasks → Approvals. ' +
         (unmatched.size ? ` These owners did not match a member and were noted in the description instead: ${[...unmatched].join(', ')}.` : ''),
-      summary: { submitted: count, unmatched_owners: [...unmatched] },
+      summary: {
+        submitted: count,
+        new: result.new,
+        request_ids: result.request_ids,
+        review_path: '/tasks?view=approvals',
+        unmatched_owners: [...unmatched],
+      },
       status: 'succeeded',
     };
   },

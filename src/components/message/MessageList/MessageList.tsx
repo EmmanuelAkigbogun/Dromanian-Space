@@ -42,12 +42,12 @@ export function MessageList() {
   const messageIds = useMemo(() => messages.map((m) => m.id), [messages]);
   usePrefetchAttachments(messageIds);
 
+  const { receiptFor, lastOwnId, participantIds: receiptParticipantIds } = useChannelReceipts(currentChannel?.id, messages);
   const uniqueUserIds = useMemo(
-    () => [...new Set(messages.map((m) => m.user_id))],
-    [messages],
+    () => [...new Set([...messages.map((m) => m.user_id), ...receiptParticipantIds])],
+    [messages, receiptParticipantIds],
   );
   const { profiles } = useProfiles(uniqueUserIds);
-  const { receiptFor, lastOwnId } = useChannelReceipts(currentChannel?.id, messages);
   const nameOf = (id: string) => profiles.get(id)?.display_name || profiles.get(id)?.username || undefined;
 
   const { setReplyCount } = useThreadCounts();
@@ -244,7 +244,8 @@ export function MessageList() {
                       profile={profiles.get(data.message.user_id) ?? null}
                       isGrouped={data.isGrouped}
                       highlight={highlightId === data.message.id}
-                      receipt={receipt?.status}
+                      receipt={receipt ?? undefined}
+                      receiptNameOf={nameOf}
                       seenBy={data.message.id === lastOwnId ? seenByLabel(receipt, nameOf) : undefined}
                     />
                   );

@@ -24,14 +24,14 @@ export async function getNotifications(userId: string): Promise<Notification[]> 
   return data as Notification[];
 }
 
-export async function getUnreadCount(userId: string): Promise<number> {
+export async function getUnreadCount(userId: string): Promise<number | null> {
   const { count, error } = await platform
     .from('notifications')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
     .eq('read', false);
 
-  if (error) return 0;
+  if (error) return null;
   return count ?? 0;
 }
 
@@ -90,7 +90,7 @@ export async function createInvitationNotification(
 export async function getNotificationsPaginated(
   userId: string,
   options?: { limit?: number; offset?: number },
-): Promise<TypedNotification[]> {
+): Promise<TypedNotification[] | null> {
   const limit = options?.limit ?? 20;
   const offset = options?.offset ?? 0;
 
@@ -101,7 +101,7 @@ export async function getNotificationsPaginated(
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (error || !data) return [];
+  if (error || !data) return null;
   return data as TypedNotification[];
 }
 
@@ -148,7 +148,7 @@ export async function createTypedNotification(
   return true;
 }
 
-export async function getNotificationUnreadCount(_userId: string): Promise<number> {
+export async function getNotificationUnreadCount(_userId: string): Promise<number | null> {
   const { data, error } = await platform.rpc('get_notification_unread_count' as never);
 
   if (error) {

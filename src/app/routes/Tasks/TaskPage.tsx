@@ -241,6 +241,18 @@ export function TaskPage() {
         </div>
       </div>
 
+      {!showApprovals && pendingApprovals > 0 && (
+        <div className={styles.approvalNotice} role="status">
+          <div>
+            <strong>{pendingApprovals} prepared {pendingApprovals === 1 ? 'task is' : 'tasks are'} waiting for approval.</strong>
+            <span> They appear in All tasks after a project manager reviews them.</span>
+          </div>
+          <button type="button" className={styles.approvalNoticeButton} onClick={() => setTab(true)}>
+            Review prepared tasks
+          </button>
+        </div>
+      )}
+
       {showApprovals ? (
         <div className={styles.content}>
           <TaskApprovals workspaceId={currentWorkspace.id} isApprover={isApprover} onPendingCountChange={setPendingApprovals} />

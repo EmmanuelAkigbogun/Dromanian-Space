@@ -70,10 +70,10 @@ export function Notifications() {
 
   const handleOpen = useCallback(async (group: NotificationGroup) => {
     const unreadIds = group.items.filter((item) => !item.read).map((item) => item.id);
-    if (unreadIds.length > 0) {
-      await Promise.all(unreadIds.map((id) => markAsRead(id)));
-    }
     if (group.primary.link) navigate(group.primary.link);
+    if (unreadIds.length > 0) {
+      void Promise.allSettled(unreadIds.map((id) => markAsRead(id)));
+    }
   }, [markAsRead, navigate]);
 
   const handleDismiss = useCallback((notificationId: string) => {
@@ -192,27 +192,34 @@ export function Notifications() {
               </div>
             ))
           ) : filteredGroups.length === 0 ? (
-            <div className={styles.empty}>
-              <div className={styles.emptyIcon} aria-hidden="true">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="m5 12 4 4L19 6" />
-                  <circle cx="12" cy="12" r="10" />
-                </svg>
+            <>
+              <div className={styles.empty}>
+                <div className={styles.emptyIcon} aria-hidden="true">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="m5 12 4 4L19 6" />
+                    <circle cx="12" cy="12" r="10" />
+                  </svg>
+                </div>
+                <h3>{emptyTitle}</h3>
+                <p>{emptyDescription}</p>
+                {(activeFilter !== 'all' || activeCategory !== 'all') && summary.total > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveFilter('all');
+                      setActiveCategory('all');
+                    }}
+                  >
+                    Show all notifications
+                  </button>
+                ) : null}
               </div>
-              <h3>{emptyTitle}</h3>
-              <p>{emptyDescription}</p>
-              {(activeFilter !== 'all' || activeCategory !== 'all') && summary.total > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveFilter('all');
-                    setActiveCategory('all');
-                  }}
-                >
-                  Show all notifications
-                </button>
+              {hasMore ? (
+                <div ref={loadMoreRef} className={styles.loadMoreTrigger}>
+                  <Spinner size="sm" label="Looking for older matching notifications" />
+                </div>
               ) : null}
-            </div>
+            </>
           ) : (
             <>
               {filteredGroups.map((group) => (

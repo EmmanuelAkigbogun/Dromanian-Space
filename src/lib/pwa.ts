@@ -15,17 +15,21 @@ const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((l) => l());
 
 export function isStandalone(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
   return (
     window.matchMedia?.('(display-mode: standalone)').matches ||
     (navigator as Navigator & { standalone?: boolean }).standalone === true
   );
 }
 
-// The installed phone/tablet app is a chat app: conversations plus the
-// notification settings push needs. Everything else stays in the browser.
-export const CHAT_ONLY = typeof window !== 'undefined' && !window.darkspaceDesktop && isStandalone();
-export const CHAT_HOME = '/dm';
-export const chatOnlyPath = (path: string) => /^\/(dm|channels|threads|messages|notifications|invitations|profile)(\/|$)/.test(path);
+function isDesktopApp(): boolean {
+  return typeof window !== 'undefined' && Boolean((window as Window & { darkspaceDesktop?: unknown }).darkspaceDesktop);
+}
+
+/** Whether the web app is running from an installed phone/tablet PWA. */
+export function isInstalledPwa(): boolean {
+  return !isDesktopApp() && isStandalone();
+}
 
 export function isIOS(): boolean {
   const ua = navigator.userAgent;
@@ -34,7 +38,7 @@ export function isIOS(): boolean {
 
 /** Called once at startup. */
 export function initPwa(): void {
-  if (typeof window === 'undefined' || window.darkspaceDesktop) return;
+  if (typeof window === 'undefined' || isDesktopApp()) return;
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e as InstallPromptEvent;
@@ -75,7 +79,7 @@ export function useInstallPrompt() {
     /** Chrome, Edge and Android offer a one-click install. */
     canPrompt: !installed && deferredPrompt !== null,
     /** iOS installs through Share → Add to Home Screen. */
-    needsIOSInstructions: !installed && !window.darkspaceDesktop && isIOS(),
+    needsIOSInstructions: !installed && !isDesktopApp() && isIOS(),
     async install(): Promise<boolean> {
       if (!deferredPrompt) return false;
       const prompt = deferredPrompt;

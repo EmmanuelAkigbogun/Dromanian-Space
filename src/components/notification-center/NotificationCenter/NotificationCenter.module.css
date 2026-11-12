@@ -1,7 +1,10 @@
 .overlay {
   position: fixed;
   inset: 0;
-  z-index: calc(var(--z-popover) + 10);
+  z-index: calc(var(--z-toast) - 1);
+  overflow: hidden;
+  overscroll-behavior: none;
+  isolation: isolate;
 }
 
 .backdrop {
@@ -18,7 +21,9 @@
   right: 0;
   bottom: 0;
   width: min(440px, 100vw);
-  height: 100dvh;
+  height: 100%;
+  min-height: 100dvh;
+  max-height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -56,6 +61,11 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.panelHeader > div:first-child {
+  min-width: 0;
 }
 
 .markAllReadButton,
@@ -230,6 +240,7 @@
   flex: 1;
   overflow-y: auto;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .emptyState {
@@ -316,7 +327,11 @@
 
 @media (max-width: 639px) {
   .panel {
-    width: 100vw;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    min-height: 100dvh;
+    max-height: 100dvh;
     border-left: 0;
   }
 
@@ -333,6 +348,17 @@
   .filters {
     padding-right: calc(var(--space-3) + var(--safe-area-inset-right));
     padding-left: calc(var(--space-3) + var(--safe-area-inset-left));
+  }
+
+  .filterTabs {
+    grid-template-columns: minmax(0, 1.35fr) repeat(2, minmax(0, 1fr));
+  }
+
+  .filterTab {
+    min-height: var(--touch-target-min);
+    padding-inline: var(--space-1);
+    white-space: normal;
+    line-height: 1.15;
   }
 
   .markAllReadButton {

@@ -198,7 +198,9 @@
   .item,
   .compact {
     min-height: 96px;
-    padding: var(--space-3) var(--space-4);
+    padding: var(--space-3);
+    content-visibility: visible;
+    contain-intrinsic-size: none;
   }
 
   .glyph {
@@ -209,8 +211,12 @@
   .dismissButton {
     width: var(--touch-target-min);
     height: var(--touch-target-min);
-    margin: calc((var(--touch-target-min) - 32px) / -2);
+    margin: 0;
     opacity: 1;
+  }
+
+  .titleRow {
+    flex-wrap: wrap;
   }
 
   .actionLabel {

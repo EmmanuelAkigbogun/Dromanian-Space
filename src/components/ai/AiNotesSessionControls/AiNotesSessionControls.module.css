@@ -1,0 +1,102 @@
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.endButton {
+  padding-inline: 9px;
+  color: var(--color-text-muted);
+}
+
+.endButton:hover:not(:disabled) {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.button:hover:not(:disabled) {
+  border-color: #7c3aed;
+  color: var(--color-text);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.buttonActive {
+  border-color: #7c3aed;
+  background: #7c3aed;
+  color: #fff;
+}
+
+.buttonActive:hover:not(:disabled) {
+  background: #6d28d9;
+  color: #fff;
+}
+
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) clamp(var(--space-3), 2vw, var(--space-6));
+  border-bottom: 1px solid color-mix(in srgb, #7c3aed 25%, var(--color-border));
+  background: color-mix(in srgb, #7c3aed 14%, var(--color-surface));
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #7c3aed;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .button {
+    padding: 0 8px;
+    font-size: 12px;
+  }
+}
