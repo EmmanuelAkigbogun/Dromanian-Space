@@ -58,6 +58,10 @@ x-server-env: &server-env
   # Increment together with any APP_JWT_SECRET rotation. It is also present on
   # Crawl4AI so Compose recreates every token consumer in the same rollout.
   CRAWL4AI_TOKEN_EPOCH: ${CRAWL4AI_TOKEN_EPOCH:-1}
+  # Private mailbox checker (Reacher) for the CRM's "Find emails" action,
+  # reached the same way as the scraper: bridge gateway + random token.
+  EMAIL_VERIFIER_URL: http://host.docker.internal:11236
+  EMAIL_VERIFIER_TOKEN_FILE: /run/email-verifier/token
   N8N_BASE_URL: ${N8N_BASE_URL:-}
   SOCIAL_BROWSER_WS_ENDPOINT: ${SOCIAL_BROWSER_WS_ENDPOINT:-}
   SOCIAL_BROWSER_TOKEN: ${SOCIAL_BROWSER_TOKEN:-}
@@ -130,6 +134,76 @@ services:
       - ALL
     volumes:
       - browser-scraper-token:/run/browser-scraper
+
+  # Random token for the mailbox checker, generated once and shared read-only
+  # with it and the app services only.
+  email-verifier-token:
+    image: busybox:1.37.0@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec
+    restart: "no"
+    logging: *logging
+    command:
+      - sh
+      - -ec
+      - |
+        umask 033
+        if [ ! -s /run/email-verifier/token ]; then
+          head -c 32 /dev/urandom | sha256sum | cut -c 1-64 > /run/email-verifier/.token.tmp
+          chmod 0444 /run/email-verifier/.token.tmp
+          mv /run/email-verifier/.token.tmp /run/email-verifier/token
+        fi
+    network_mode: none
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - email-verifier-token:/run/email-verifier
+
+  # Reacher (github.com/reacherhq/check-if-email-exists, MIT): asks a domain's
+  # mail server whether a mailbox exists, without sending mail. Needs outbound
+  # port 25. Like Crawl4AI it stays off Coolify's shared network and is
+  # published only on the Docker bridge gateway; every request must carry the
+  # random token (x-reacher-secret). Nothing calls it unless a person starts
+  # "Find emails" in the CRM.
+  email-verifier:
+    image: reacherhq/backend:v0.11.8@sha256:6f05f02980c9bebe894d3fc7d312bf569a39063ad3b789bd510631884c7a8153
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      email-verifier-token:
+        condition: service_completed_successfully
+    entrypoint: ["/bin/ash", "-c"]
+    command: ["RCH__HEADER_SECRET=$$(cat /run/secrets/token) exec ./reacher_backend"]
+    working_dir: /home/reacher
+    environment:
+      RCH__HTTP_HOST: 0.0.0.0
+      RCH__HTTP_PORT: "8080"
+      RCH__BACKEND_NAME: dromanian-space
+      RCH__HELLO_NAME: ${EMAIL_VERIFIER_HELLO_NAME:-darkspace.purplehive.pro}
+      RCH__FROM_EMAIL: ${EMAIL_VERIFIER_FROM_EMAIL:-postmaster@darkspace.purplehive.pro}
+      RCH__SMTP_TIMEOUT: "30"
+      RCH__WORKER__ENABLE: "false"
+      RUST_LOG: reacher=warn
+    network_mode: bridge
+    ports:
+      - "${DOCKER_HOST_GATEWAY_IP:?DOCKER_HOST_GATEWAY_IP must be the Docker bridge gateway}:11236:8080"
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - email-verifier-token:/run/secrets:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+          pids: 128
 
   # Browser-rendered extraction from Crawl4AI. `network_mode` prevents Coolify
   # from attaching its shared base network. Port 11235 on the Docker bridge
@@ -322,6 +396,8 @@ services:
         condition: service_healthy
       browser-scraper-token:
         condition: service_completed_successfully
+      email-verifier-token:
+        condition: service_completed_successfully
       crawl4ai-gateway:
         condition: service_healthy
     read_only: true
@@ -334,6 +410,7 @@ services:
         bind:
           create_host_path: false
       - browser-scraper-token:/run/browser-scraper:ro
+      - email-verifier-token:/run/email-verifier:ro
     networks:
       - default
     extra_hosts:
@@ -413,6 +490,8 @@ services:
         condition: service_healthy
       browser-scraper-token:
         condition: service_completed_successfully
+      email-verifier-token:
+        condition: service_completed_successfully
       crawl4ai-gateway:
         condition: service_healthy
     expose:
@@ -427,6 +506,7 @@ services:
         bind:
           create_host_path: false
       - browser-scraper-token:/run/browser-scraper:ro
+      - email-verifier-token:/run/email-verifier:ro
     networks:
       - default
     extra_hosts:
@@ -587,3 +667,4 @@ services:
 
 volumes:
   browser-scraper-token:
+  email-verifier-token:

@@ -16,6 +16,7 @@ import * as auth from '../api/auth.js';
 import * as events from '../api/events.js';
 import * as calls from '../api/calls.js';
 import * as domains from '../api/domains.js';
+import * as crm from '../api/crm.js';
 
 export type Handler = (request: Request) => Promise<Response>;
 export type ApiMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE' | 'HEAD';
@@ -58,4 +59,5 @@ export const ROUTES: Record<string, Partial<Record<ApiMethod, Handler>>> = {
   '/api/calls/active': { GET: calls.active },
   '/api/calls/ice': { GET: calls.ice },
   '/api/domains': domains,
+  '/api/crm/find-emails': { POST: crm.findEmails, GET: crm.findEmailsStatus },
 };

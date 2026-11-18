@@ -9,7 +9,7 @@ import { useWorkspaceContext } from '@/app/providers/WorkspaceProvider';
 import { useAuth } from '@/hooks/useAuth';
 import { Dialog } from '@/components/ui/Dialog';
 import { Floating } from '@/lib/overlay/Floating';
-import { platform, result, errorText, workspacePeople } from '@/features/platform/client';
+import { api, platform, result, errorText, workspacePeople } from '@/features/platform/client';
 import { RecordTable } from './RecordTable';
 import { DealsBoard } from './DealsBoard';
 import { RecordView } from './RecordView';
@@ -24,6 +24,8 @@ import {
 import s from './CRM.module.css';
 
 const KINDS: Kind[] = ['companies', 'contacts', 'deals'];
+const EMAIL_SEARCH_DONE = new Set(['succeeded', 'failed', 'dead', 'cancelled']);
+const MAX_EMAIL_SELECTION = 300;
 const LIMIT = 1000;
 
 export default function CRMPage() {
@@ -118,6 +120,28 @@ function CRM({ ws, userId, admin, kind, client }: { ws: string; userId: string; 
   });
 
   const refresh = () => cache.invalidateQueries({ queryKey: base });
+
+  // Email search (server job): selected contacts, or every contact here without one.
+  const [emailJob, setEmailJob] = useState<{ id: string; contacts: number; mailboxCheck: boolean } | null>(null);
+  const emailSearch = useQuery({
+    queryKey: ['platform', ws, userId, 'crm-find-emails', emailJob?.id],
+    enabled: !!emailJob,
+    queryFn: async (): Promise<{ status: string; result: Record<string, number> | null; last_error: string | null }> => {
+      const data = await (await api(`crm/find-emails?job_id=${emailJob!.id}`)).json();
+      if (kind === 'contacts') void cache.invalidateQueries({ queryKey: [...base, 'rows', 'contacts'] });
+      return data;
+    },
+    refetchInterval: (q) => (EMAIL_SEARCH_DONE.has(q.state.data?.status ?? '') ? false : 8000),
+  });
+  const findEmails = (ids?: string[]) => {
+    const what = ids ? `${ids.length} selected contact${ids.length === 1 ? '' : 's'}` : `every contact in ${bookName} without an email`;
+    if (!window.confirm(`Search for work emails for ${what}? This reads each company's website and asks its mail server whether the likely addresses exist (no email is sent). Existing emails are never changed.`)) return;
+    void act(async () => {
+      const res = await (await api('crm/find-emails', { workspace_id: ws, client_id: client, ...(ids ? { contact_ids: ids } : {}) })).json() as { job_id: string; contacts: number; mailbox_check: boolean };
+      setEmailJob({ id: res.job_id, contacts: res.contacts, mailboxCheck: res.mailbox_check });
+    });
+  };
+
   const editable = (r: CrmRecord) => admin || r.owner_id === userId || r.created_by === userId;
 
   const suggestions = useMemo(() => {
@@ -302,16 +326,32 @@ function CRM({ ws, userId, admin, kind, client }: { ws: string; userId: string; 
             </div>
             <span className={s.spacer} />
             {kind !== 'deals' && <button className={s.button} onClick={() => setDialog('import')}>Import</button>}
+            {kind === 'contacts' && <button className={s.button} disabled={busy} onClick={() => findEmails()}>Find emails</button>}
             <button className={s.button} onClick={exportCsv} disabled={!rows.data?.length}>Export</button>
             {kind === 'deals' && admin && <button className={s.button} onClick={() => setDialog('stages')}>Stages</button>}
             <button className={s.primary} onClick={() => setDialog('new')}>Create {SINGULAR[kind]}</button>
           </div>
 
           {view.rules.length > 0 && <FilterBar view={view} columns={columns} onView={setView} />}
+          {emailJob && (
+            <p className={s.hint} role="status" style={{ padding: '0 20px 8px' }}>
+              {!emailSearch.data || emailSearch.data.status === 'queued' || emailSearch.data.status === 'running'
+                ? `Searching for emails for ${emailJob.contacts} contact${emailJob.contacts === 1 ? '' : 's'}… results appear here as each company is done.${emailJob.mailboxCheck ? '' : ' Mailbox checks are not set up on this server, so only addresses published on company websites can be found.'}`
+                : emailSearch.data.status === 'succeeded'
+                  ? `Email search finished: ${Object.entries(emailSearch.data.result ?? {}).filter(([k]) => !['contacts', 'domains'].includes(k)).map(([k, v]) => `${v} ${k.toLowerCase()}`).join(', ') || 'nothing to do'}. See the Email status column.`
+                  : `Email search stopped: ${emailSearch.data.last_error ?? emailSearch.data.status}`}
+              {' '}<button className={s.ghost} onClick={() => setEmailJob(null)}>Dismiss</button>
+            </p>
+          )}
           {clientName && <p className={s.hint} style={{ padding: '0 20px 8px' }}>Records here stay separate from our CRM. Companies added here get no Drive folder.</p>}
           {selected.size > 0 && (
             <div className={s.bulk} role="toolbar" aria-label="Selected record actions">
               <strong>{selected.size} selected</strong>
+              {kind === 'contacts' && (
+                <button className={s.button} disabled={busy || selected.size > MAX_EMAIL_SELECTION}
+                  title={selected.size > MAX_EMAIL_SELECTION ? `Select up to ${MAX_EMAIL_SELECTION}, or use Find emails above for all` : undefined}
+                  onClick={() => findEmails([...selected])}>Find emails</button>
+              )}
               {admin && <button className={`${s.button} ${s.danger}`} disabled={busy} onClick={deleteSelected}>Delete</button>}
               <button className={s.ghost} onClick={() => setSelected(new Set())}>Clear</button>
             </div>

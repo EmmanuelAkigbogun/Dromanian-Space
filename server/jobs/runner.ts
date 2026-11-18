@@ -6,6 +6,7 @@ import { executeRun } from '../agents/engine.js';
 import { handleAutomationCallback, queueCallbackForRun } from '../integrations/n8n.js';
 import { handleMessagePush, handleNotificationPush } from '../push.js';
 import { handleSocialPublish } from './social.js';
+import { handleCrmFindEmails } from './crm-emails.js';
 import { PermanentJobError, type JobHandler, type JobRow } from './types.js';
 
 const LEASE_SECONDS = 120;
@@ -36,6 +37,7 @@ const handlers: Record<string, JobHandler> = {
   'notification.push': handleNotificationPush,
   'message.push': handleMessagePush,
   'social.publish': handleSocialPublish,
+  'crm.find_emails': handleCrmFindEmails,
 };
 
 export const JOB_KINDS = Object.keys(handlers);
