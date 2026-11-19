@@ -1,6 +1,8 @@
 .trigger {
   display: inline-block;
   width: 100%;
+  /* Our long-press menu replaces the phone's own copy/lookup bubble. */
+  -webkit-touch-callout: none;
 }
 
 .content {

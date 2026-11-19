@@ -11,6 +11,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/components/ui/Toast';
 import { useThreadSafe } from '@/app/providers/ThreadProvider';
 import { useShareHandler } from '@/hooks/useShareHandler';
+import { useMessageSelectionSafe } from '@/app/providers/MessageSelectionProvider';
 import { ShareMessageDialog } from '@/components/message/ShareMessageDialog';
 import { addReaction, getFirstMessageUrl, getMessagePermalink, isTempId } from '@/lib/message';
 import {
@@ -53,6 +54,8 @@ export const MessageContextMenu = memo(function MessageContextMenu({
   const [isLoadingSave, setIsLoadingSave] = useState(false);
   const [forwardOpen, setForwardOpen] = useState(false);
   const { share } = useShareHandler();
+  const selection = useMessageSelectionSafe();
+  const isSelected = selection?.isSelected(message.id) ?? false;
 
   const channelId = message.channel_id ?? currentChannel?.id;
   const firstLink = getFirstMessageUrl(message.content);
@@ -276,6 +279,17 @@ export const MessageContextMenu = memo(function MessageContextMenu({
 
           <ContextMenuSeparator />
 
+          {selection && (
+            <ContextMenuItem onClick={() => selection.toggleSelected(message)}>
+              <span className={styles.itemIcon}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="9 12 11 14 15 10" />
+                </svg>
+              </span>
+              <span className={styles.itemLabel}>{isSelected ? 'Remove from selection' : 'Select message'}</span>
+            </ContextMenuItem>
+          )}
           <ContextMenuItem onClick={handlePin} disabled={isLoadingPin}>
             <span className={styles.itemIcon}>
               {isPinned ? (

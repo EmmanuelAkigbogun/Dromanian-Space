@@ -85,22 +85,51 @@ interface TriggerProps {
 function Trigger({ children, asChild }: TriggerProps) {
   const { onOpen } = useContextMenuContext();
 
+  const press = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number; fired: boolean } | null>(null);
+
   const handleContextMenu = (event: MouseEvent) => {
     event.preventDefault();
     onOpen(event.clientX, event.clientY);
   };
 
+  // Long-press opens the menu on touch screens that never send a right-click (iOS).
+  const touch = {
+    onTouchStart: (event: React.TouchEvent) => {
+      if (event.touches.length !== 1) return;
+      const { clientX: x, clientY: y } = event.touches[0];
+      const state = { x, y, fired: false, timer: setTimeout(() => { state.fired = true; onOpen(x, y); }, 500) };
+      press.current = state;
+    },
+    onTouchMove: (event: React.TouchEvent) => {
+      const state = press.current;
+      if (!state) return;
+      const t = event.touches[0];
+      if (Math.abs(t.clientX - state.x) > 10 || Math.abs(t.clientY - state.y) > 10) {
+        clearTimeout(state.timer);
+        press.current = null;
+      }
+    },
+    onTouchEnd: (event: React.TouchEvent) => {
+      const state = press.current;
+      press.current = null;
+      if (!state) return;
+      clearTimeout(state.timer);
+      // Keep the tap that ends a long-press from closing the menu it opened.
+      if (state.fired) event.preventDefault();
+    },
+  };
+
   if (asChild && typeof children === 'object' && children !== null && 'props' in children) {
     const child = children as React.ReactElement<Record<string, unknown>>;
     return (
-      <span onContextMenu={handleContextMenu} className={styles.trigger}>
+      <span onContextMenu={handleContextMenu} {...touch} className={styles.trigger}>
         {child}
       </span>
     );
   }
 
   return (
-    <div onContextMenu={handleContextMenu} className={styles.trigger}>
+    <div onContextMenu={handleContextMenu} {...touch} className={styles.trigger}>
       {children}
     </div>
   );
