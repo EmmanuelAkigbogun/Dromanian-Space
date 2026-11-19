@@ -23,9 +23,10 @@ describe('Drive sharing UI', () => {
     const browser = read('src/app/routes/Drive/DrivePage.tsx');
     const item = read('src/app/routes/Drive/DriveItem.tsx');
 
-    expect(browser).toContain('className={d.cardShareButton}');
-    expect(browser).toContain('className={d.shareAction}');
-    expect(browser).toContain('setShareItem(focusedItem)');
+    // Share sits in the item menu, the selection bar, list rows and the details panel.
+    expect(browser).toContain("label: 'Share'");
+    expect(browser).toContain('setSharing(focused)');
+    expect(browser).toContain('setSharing(i)');
     expect(browser).toContain('<DriveShareDialog');
     expect(item).toContain('<DriveShareDialog');
   });
