@@ -24,7 +24,7 @@ const GLYPH: Record<FileType, ReactNode> = {
   other: <path d="M6 3h8l4 4v14H6zM14 3v4h4" />,
 };
 
-export function TypeIcon({ item, size = 'md' }: { item: Pick<Item, 'kind' | 'name' | 'mime_type'> & { id?: string }; size?: 'sm' | 'md' | 'lg' }) {
+export function TypeIcon({ item, size = 'md' }: { item: { kind: string; name: string; mime_type?: string | null; id?: string }; size?: 'sm' | 'md' | 'lg' }) {
   const type = fileTypeOf(item);
   return (
     <span className={`${d.typeIcon} ${d[`size-${size}`]}`} data-type={type} data-tone={type === 'folder' && item.id ? folderTone(item.id) : undefined} aria-hidden="true">

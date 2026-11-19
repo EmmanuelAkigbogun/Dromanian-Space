@@ -25,7 +25,7 @@ export function extensionOf(name: string) {
   return ext && ext !== name ? ext.toLowerCase() : '';
 }
 
-export function fileTypeOf(item: Pick<Item, 'kind' | 'name' | 'mime_type'>): FileType {
+export function fileTypeOf(item: { kind: string; name: string; mime_type?: string | null }): FileType {
   if (item.kind === 'folder') return 'folder';
   if (item.kind === 'document') return 'document';
   const byExt = EXT[extensionOf(item.name)];

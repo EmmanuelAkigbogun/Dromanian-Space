@@ -11,6 +11,7 @@ import { DriveShareDialog } from '@/components/drive/DriveShareDialog';
 import { Floating } from '@/lib/overlay/Floating';
 import { platform, result, api, errorText } from '@/features/platform/client';
 import { DriveItem } from './DriveItem';
+import { isOfficeFile } from '@/components/drive/OfficeEditor';
 import {
   MODIFIED_LABELS, NO_FILTERS, TYPE_LABELS, canEdit, fileTypeOf, formatSize, isPdf, kindLabel, matches, shortDate,
   type FileType, type Filters, type Item, type Modified,
@@ -114,7 +115,9 @@ function DriveBrowser({ workspaceId: ws, userId, itemId, folderId }: { workspace
 
   const refresh = useCallback(() => cache.invalidateQueries({ queryKey: ['platform', ws, userId] }), [cache, ws, userId]);
   const viewTitle = folderId ? crumbs.data?.at(-1)?.name ?? currentFolder.data?.name ?? 'Folder' : driveViews.find(([id]) => id === view)?.[1] ?? 'Drive';
-  const itemLink = (i: Item) => `/drive/${i.kind === 'folder' ? 'folder' : 'item'}/${i.id}${isPdf(i) ? '?edit=1' : ''}`;
+  /** Where opening an item goes: folders open, Office files and PDFs open in the editor, everything else in the viewer. */
+  const opensInEditor = (i: Item) => i.kind === 'file' && (isPdf(i) || (!!office.data?.enabled && isOfficeFile(i.name)));
+  const itemLink = (i: Item) => `/drive/${i.kind === 'folder' ? 'folder' : 'item'}/${i.id}${opensInEditor(i) ? '?edit=1' : ''}`;
   const open = (i: Item) => navigate(itemLink(i));
 
   async function run(label: string, ops: Array<() => PromiseLike<unknown>>, undo?: () => Promise<unknown>) {
@@ -167,6 +170,8 @@ function DriveBrowser({ workspaceId: ws, userId, itemId, folderId }: { workspace
 
   // ── Selection ──
   const click = (item: Item, e: React.MouseEvent) => {
+    // Touch screens have no double-click: a tap opens, like the Drive app.
+    if ((e.nativeEvent as PointerEvent).pointerType === 'touch' && !selected.size) { open(item); return; }
     if (e.shiftKey && anchor.current) {
       const a = ordered.findIndex((i) => i.id === anchor.current);
       const b = ordered.findIndex((i) => i.id === item.id);
@@ -201,7 +206,7 @@ function DriveBrowser({ workspaceId: ws, userId, itemId, folderId }: { workspace
     }
     const editable = items.every(canEdit);
     return [
-      ...(one ? [{ label: one.kind === 'folder' ? 'Open' : isPdf(one) ? 'Open PDF' : 'Open', icon: '↗', onSelect: () => open(one) }] : []),
+      ...(one ? [{ label: one.kind === 'folder' ? 'Open' : opensInEditor(one) ? (isPdf(one) ? 'Open PDF' : 'Open in editor') : 'Open', icon: '↗', onSelect: () => open(one) }] : []),
       ...(items.some((i) => i.kind === 'file') ? [{ label: 'Download', icon: '⤓', onSelect: () => download(items) }] : []),
       ...(one ? [{ label: 'Rename', icon: '✎', disabled: !canEdit(one), hint: canEdit(one) ? 'F2' : 'You need edit access', onSelect: () => setRenaming(one) }] : []),
       ...(one ? [{ label: 'Share', icon: '⇪', divider: true, onSelect: () => setSharing(one) }] : []),
