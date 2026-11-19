@@ -11,6 +11,8 @@ import { MessageItem } from '@/components/message/MessageItem';
 import { TypingIndicator } from '@/components/typing/TypingIndicator';
 import { ChatDropZone } from '@/components/chat/ChatDropZone/ChatDropZone';
 import { ChatInfoPanel } from '@/components/chat/ChatInfoPanel/ChatInfoPanel';
+import { AddPeopleDialog, RenameGroupDialog, groupActions, useRefreshGroup } from '@/components/chat/GroupManage/GroupManage';
+import { useToast } from '@/components/ui/Toast';
 import { MessageEmpty } from '@/components/message/MessageEmpty';
 import { MessageLoading } from '@/components/message/MessageLoading';
 import { DateSeparator } from '@/components/message/DateSeparator';
@@ -52,8 +54,11 @@ export function DmConversationView() {
   const { conversationId } = useParams<{ conversationId: string }>();
   const navigate = useNavigate();
   const { userId } = useAuth();
-  const { currentWorkspace } = useWorkspace();
-  const { currentConversation, currentParticipants, conversations, switchConversation, clearCurrentConversation } = useConversation();
+  const { currentWorkspace, isAdmin } = useWorkspace();
+  const { toast } = useToast();
+  const refreshGroup = useRefreshGroup();
+  const [groupDialog, setGroupDialog] = useState<'rename' | 'add' | null>(null);
+  const { currentConversation, currentParticipants, conversations, switchConversation, clearCurrentConversation, refreshConversations } = useConversation();
   const { presenceMap } = usePresenceContext();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -624,6 +629,46 @@ export function DmConversationView() {
                 </svg>
                 {showPinned ? 'Hide pinned' : 'Pinned messages'}
               </button>
+              {currentConversation.type === 'group' && (() => {
+                const canManage = currentConversation.created_by === userId || isAdmin;
+                const resident = aiNotesSession.resident;
+                const item = (label: string, onClick: () => void, danger = false) => (
+                  <button type="button" role="menuitem" className={`${styles.pinnedMenuItem} ${danger ? styles.pinnedMenuItemDanger : ''}`} onClick={() => { setPinnedMenuOpen(false); onClick(); }}>{label}</button>
+                );
+                const afterExit = async (what: string) => {
+                  toast({ variant: 'success', description: what });
+                  clearCurrentConversation();
+                  await refreshConversations();
+                  navigate('/dm');
+                };
+                return (
+                  <>
+                    <div className={styles.pinnedMenuDivider} />
+                    <div className={styles.pinnedMenuSectionLabel}>Group</div>
+                    {canManage && item('Rename group', () => setGroupDialog('rename'))}
+                    {canManage && item('Add people', () => setGroupDialog('add'))}
+                    {canManage && channelId && aiVisible && item(resident ? 'Turn off permanent AI' : 'Keep AI in this group', () => {
+                      if (resident && !window.confirm('Turn off the permanent AI? It stops reading new messages after today and posts no more daily summaries.')) return;
+                      groupActions.setResident(channelId, !resident)
+                        .then(() => refreshGroup(channelId))
+                        .then(() => toast({ variant: 'success', description: resident ? 'Permanent AI turned off.' : 'AI is on in this group. It posts a daily summary at 18:00.' }))
+                        .catch((err: Error) => toast({ variant: 'error', description: err.message }));
+                    })}
+                    {item('Leave group', () => {
+                      if (!window.confirm(`Leave “${displayName}”? You stop receiving its messages.`)) return;
+                      groupActions.leave(currentConversation.id)
+                        .then((r) => afterExit(r === 'deleted' ? 'You were the last member, so the group was deleted.' : `You left “${displayName}”.`))
+                        .catch((err: Error) => toast({ variant: 'error', description: err.message }));
+                    }, true)}
+                    {canManage && item('Delete group', () => {
+                      if (!window.confirm(`Delete “${displayName}” for everyone? Its messages and shared files are removed. This can’t be undone.`)) return;
+                      groupActions.remove(currentConversation.id)
+                        .then(() => afterExit(`“${displayName}” was deleted.`))
+                        .catch((err: Error) => toast({ variant: 'error', description: err.message }));
+                    }, true)}
+                  </>
+                );
+              })()}
           </Floating>
         </div>
         <AiNotesSessionButton controller={aiNotesSession} enabled={aiVisible} />
@@ -697,6 +742,10 @@ export function DmConversationView() {
             subtitle={currentConversation.type === 'group' && currentParticipants ? `${currentParticipants.length} members` : getPresenceLabel(otherProfile ? presenceMap.get(otherProfile.id)?.status : 'offline')}
             avatar={<Avatar src={displayAvatar ?? undefined} name={displayName} size="xl" />}
             onClose={() => setShowInfo(false)}
+            ownerId={currentConversation.type === 'group' ? currentConversation.created_by : null}
+            onRemoveMember={currentConversation.type === 'group' && (currentConversation.created_by === userId || isAdmin)
+              ? async (id) => { try { await groupActions.removeMember(currentConversation.id, id); await refreshConversations(); } catch (err) { toast({ variant: 'error', description: (err as Error).message }); } }
+              : undefined}
           />
         )}
       </div>
@@ -722,6 +771,16 @@ export function DmConversationView() {
         onSaveEdit={handleSaveEdit}
         onCancelEdit={handleCancelEdit}
       />
+
+      {groupDialog === 'rename' && (
+        <RenameGroupDialog conversationId={currentConversation.id} current={displayName} onClose={() => setGroupDialog(null)}
+          onDone={() => { void refreshConversations(); toast({ variant: 'success', description: 'Group renamed.' }); }} />
+      )}
+      {groupDialog === 'add' && currentWorkspace && (
+        <AddPeopleDialog workspaceId={currentWorkspace.id} conversationId={currentConversation.id}
+          memberIds={currentParticipants?.map((p) => p.user_id) ?? []} onClose={() => setGroupDialog(null)}
+          onDone={() => { void refreshConversations(); if (channelId) void refreshGroup(channelId); toast({ variant: 'success', description: 'People added.' }); }} />
+      )}
 
       <ShareMessageDialog
         open={bulk.forwardOpen}

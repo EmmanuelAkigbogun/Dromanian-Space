@@ -33,6 +33,7 @@ import { extractUrls, removeUrlsFromText } from '@/lib/message/richText';
 import type { Receipt } from '@/hooks/useChannelReceipts';
 import type { LinkDisplayMode, Message, Profile, Reaction } from '@/types';
 import { replySnippet, requestReply } from '@/components/chat/reply';
+import { RunTaskCards } from '@/components/chat/TaskCards/TaskCards';
 import styles from './MessageItem.module.css';
 
 interface MessageItemProps {
@@ -335,6 +336,7 @@ export const MessageItem = memo(function MessageItem({ message, isOwn, profile, 
                 );
               })()}
 
+              {message.agent_id && message.agent_run_id && <RunTaskCards channelId={message.channel_id} runId={message.agent_run_id} />}
               {!!message.drive_resource_count && <MessageResources messageId={message.id} workspaceId={message.workspace_id ?? null} />}
               {attachments.length > 0 && (
                   <div className={`${styles.attachments} ${attachments.length === 1 ? styles.attachmentsSingle : ''}`}>

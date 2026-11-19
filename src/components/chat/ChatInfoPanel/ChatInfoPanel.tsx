@@ -13,6 +13,7 @@ import { extractUrls } from '@/lib/message/richText';
 import { getDisplayName } from '@/lib/message';
 import { presenceToAvatarStatus, getPresenceLabel } from '@/lib/presence';
 import type { FileAttachment } from '@/types';
+import { TaskCardList, useTaskCards } from '@/components/chat/TaskCards/TaskCards';
 import styles from './ChatInfoPanel.module.css';
 
 type Group = 'documents' | 'photos' | 'videos' | 'audio' | 'other';
@@ -41,13 +42,20 @@ interface Props {
   subtitle?: string;
   avatar: ReactNode;
   onClose: () => void;
-  /** Start on the People tab. */
-  initialTab?: 'files' | 'people';
+  /** Start on another tab. */
+  initialTab?: Tab;
+  /** Group owner or admin: may remove people (never the owner). */
+  ownerId?: string | null;
+  onRemoveMember?: (userId: string) => Promise<void>;
 }
 
-export function ChatInfoPanel({ channelId, title, subtitle, avatar, onClose, initialTab = 'files' }: Props) {
+type Tab = 'files' | 'tasks' | 'people';
+
+export function ChatInfoPanel({ channelId, title, subtitle, avatar, onClose, initialTab = 'files', ownerId, onRemoveMember }: Props) {
   const { userId } = useAuth();
-  const [tab, setTab] = useState<'files' | 'people'>(initialTab);
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const tasks = useTaskCards(channelId);
+  const pendingTasks = (tasks.data ?? []).filter((t) => t.status === 'pending').length;
   const [open, setOpen] = useState<Group | 'links' | null>(null);
 
   const shared = useQuery({
@@ -104,9 +112,12 @@ export function ChatInfoPanel({ channelId, title, subtitle, avatar, onClose, ini
     <aside className={styles.panel} aria-label="Conversation details">
       <header className={styles.head}>
         <div className={styles.tabs} role="tablist">
-          <button type="button" role="tab" aria-selected={tab === 'files'} className={tab === 'files' ? styles.tabOn : undefined} onClick={() => setTab('files')}>Shared files</button>
+          <button type="button" role="tab" aria-selected={tab === 'files'} className={tab === 'files' ? styles.tabOn : undefined} onClick={() => setTab('files')}>Files</button>
+          <button type="button" role="tab" aria-selected={tab === 'tasks'} className={tab === 'tasks' ? styles.tabOn : undefined} onClick={() => setTab('tasks')}>
+            Tasks{pendingTasks ? <span className={styles.badge}>{pendingTasks}</span> : null}
+          </button>
           <button type="button" role="tab" aria-selected={tab === 'people'} className={tab === 'people' ? styles.tabOn : undefined} onClick={() => setTab('people')}>
-            Participants{members.data ? ` (${members.data.length})` : ''}
+            People{members.data ? ` (${members.data.length})` : ''}
           </button>
         </div>
         <button type="button" className={styles.close} onClick={onClose} aria-label="Close details">×</button>
@@ -119,7 +130,12 @@ export function ChatInfoPanel({ channelId, title, subtitle, avatar, onClose, ini
           {subtitle && <span>{subtitle}</span>}
         </div>
 
-        {tab === 'files' ? (
+        {tab === 'tasks' ? (
+          <section className={styles.section}>
+            <h4>Tasks proposed in this conversation</h4>
+            {tasks.data?.length ? <TaskCardList channelId={channelId} cards={tasks.data} compact /> : <p className={styles.muted}>{tasks.isPending ? 'Loading…' : 'No tasks yet. The AI proposes them in its summaries and notes.'}</p>}
+          </section>
+        ) : tab === 'files' ? (
           <>
             <div className={styles.tiles}>
               <button type="button" className={`${styles.tile} ${styles.tileFiles} ${open && open !== 'links' ? styles.tileOn : ''}`} onClick={() => setOpen(open && open !== 'links' ? null : 'documents')}>
@@ -190,8 +206,12 @@ export function ChatInfoPanel({ channelId, title, subtitle, avatar, onClose, ini
                   <Avatar src={profile?.avatar_url || undefined} name={name} size="sm" status={presenceToAvatarStatus(status)} />
                   <span className={styles.rowText}>
                     <strong>{name}{id === userId && <em> (you)</em>}</strong>
-                    <span>{getPresenceLabel(status)}</span>
+                    <span>{id === ownerId ? 'Group owner · ' : ''}{getPresenceLabel(status)}</span>
                   </span>
+                  {onRemoveMember && id !== ownerId && id !== userId && (
+                    <button type="button" className={styles.removePerson} title={`Remove ${name}`} aria-label={`Remove ${name} from the group`}
+                      onClick={() => { if (window.confirm(`Remove ${name} from this group?`)) void onRemoveMember(id).then(() => members.refetch()); }}>Remove</button>
+                  )}
                 </div>
               );
             })}

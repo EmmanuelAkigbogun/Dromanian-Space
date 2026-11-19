@@ -3,6 +3,7 @@ import { useAiSession, type AiSession } from '@/hooks/useAiSession/useAiSession'
 import { useToast } from '@/components/ui/Toast';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { isAiNotesRunInFlight, isAiNotesRunRetryable } from './sessionState';
+import { ResidentNotice, useResident, type Resident } from '@/components/chat/GroupManage/GroupManage';
 import styles from './AiNotesSessionControls.module.css';
 
 interface AiNotesSessionController {
@@ -17,6 +18,8 @@ interface AiNotesSessionController {
   notesRetryable: boolean;
   runNextStep: () => Promise<void>;
   endSession: () => Promise<boolean>;
+  /** The conversation's permanent AI, which never ends its session. */
+  resident: Resident | null;
 }
 
 interface AiNotesSessionButtonProps {
@@ -40,6 +43,7 @@ interface AiNotesSessionBannerProps {
 export function useAiNotesSessionController(workspaceId: string | undefined, channelId: string | undefined): AiNotesSessionController {
   const { session, agent, busy, cancelling, start, review, finish, cancel } = useAiSession(workspaceId, channelId);
   const { toast } = useToast();
+  const resident = useResident(channelId).data ?? null;
   const reviewRunning = isAiNotesRunInFlight(session?.review_status ?? null);
   const reviewReady = session?.review_status === 'completed';
   const reviewFailed = isAiNotesRunRetryable(session?.review_status ?? null);
@@ -126,6 +130,7 @@ export function useAiNotesSessionController(workspaceId: string | undefined, cha
     notesRetryable,
     runNextStep,
     endSession,
+    resident,
   };
 }
 
@@ -142,6 +147,7 @@ export function AiNotesSessionButton({ controller, enabled, canControl = true }:
     notesRetryable,
     runNextStep,
     endSession,
+    resident,
   } = controller;
   const [confirmEndOpen, setConfirmEndOpen] = useState(false);
 
@@ -160,6 +166,8 @@ export function AiNotesSessionButton({ controller, enabled, canControl = true }:
           ? 'Reviewing…'
           : reviewFailed
             ? 'Retry review'
+            : session && resident
+              ? 'Review now'
             : session
               ? `Review with ${agent?.name ?? 'AI'}`
               : `Invite ${agent?.name ?? 'notes agent'}`;
@@ -215,7 +223,7 @@ export function AiNotesSessionButton({ controller, enabled, canControl = true }:
           )}
           {label}
         </button>
-        {session && canControl && (
+        {session && canControl && !resident && (
           <button
             type="button"
             className={`${styles.button} ${styles.endButton}`}
@@ -262,8 +270,16 @@ export function AiNotesSessionBanner({
     reviewFailed,
     notesRunning,
     notesRetryable,
+    resident,
   } = controller;
 
+  if (resident) {
+    const busy = notesRunning ? 'Writing today’s summary and proposed tasks…'
+      : reviewRunning ? 'Reviewing the conversation so far…'
+        : reviewReady ? 'Review posted. Answer its questions here; the summary still goes out at the usual time, or choose Finish & send tasks to send it now.'
+          : null;
+    return <ResidentNotice resident={resident} agentName={agent?.name ?? 'AI assistant'} busy={busy} />;
+  }
   if (!session) return null;
 
   return (

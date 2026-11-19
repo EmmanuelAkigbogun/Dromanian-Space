@@ -9,6 +9,7 @@ import { rpc } from './database.js';
 import { JOB_KINDS, runJob, runMaintenance } from './jobs/runner.js';
 import type { JobRow } from './jobs/types.js';
 import { reconcileStorage } from './storage-maintenance.js';
+import { runResidentSummaries } from './agents/resident.js';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -58,6 +59,11 @@ export function startWorker(options: WorkerOptions = {}): RunningWorker {
           lastMaintenance = Date.now();
           const result = await runMaintenance();
           log.info('maintenance', result);
+          const summaries = await runResidentSummaries().catch((err) => {
+            log.warn('daily AI summaries failed', { error: err instanceof Error ? err : String(err) });
+            return 0;
+          });
+          if (summaries) log.info('daily AI summaries started', { count: summaries });
           if (Date.now() - lastStorageMaintenance > 60 * 60_000) {
             lastStorageMaintenance = Date.now();
             const storage = await reconcileStorage();

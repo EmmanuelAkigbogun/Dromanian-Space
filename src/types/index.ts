@@ -87,6 +87,8 @@ export type LinkDisplayMode = 'text' | 'embed' | 'grid';
 export interface Message {
   workspace_id?: string | null;
   agent_id?: string | null;
+  /** The AI run that wrote this message, for its proposed-task cards. */
+  agent_run_id?: string | null;
   drive_resource_count?: number;
   id: UUID;
   channel_id: UUID;
