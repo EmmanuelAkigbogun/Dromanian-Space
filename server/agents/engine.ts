@@ -13,7 +13,7 @@ import { PROVIDER_KEYS, PROVIDER_LABELS, providerFor, providerNameFor } from '..
 import { ProviderError, type Effort, type ModelProvider, type TurnUsage } from '../ai/provider.js';
 import { CitationRegistry, resolveCitations, sourcesFooter } from './citations.js';
 import { AgnoRunError, providerAgentRunner, remoteAgentRunner, type AgentRuntimeConfig, type AgentRunner } from './agno.js';
-import { PROVIDER_TOOLS, TOOL_REGISTRY, toolSpecs } from './tools/index.js';
+import { companionTools, CRM_COUNTS_GUIDANCE, PROVIDER_TOOLS, TOOL_REGISTRY, toolSpecs } from './tools/index.js';
 import { browserScraperReadiness } from './tools/browser.js';
 import { readConversation, memberChannels } from './tools/read.js';
 import { quoteData, type AgentTool, type RunContext, type RunScope, type SourceKind, type ToolOutput } from './tools/types.js';
@@ -533,6 +533,8 @@ export async function executeRun(
     && Boolean(ctx.settings.siteUrl);
   if (canFetchSite) contextLines.push(`You may use the site fetch only for ${ctx.settings.siteUrl}.`);
   const isCoordinator = agent.kind === 'coordinator' && run.depth === 0;
+  const runTools = companionTools(version.tools, { coordinator: isCoordinator });
+  if (runTools.includes('crm_report') && !run.scope?.session_id) contextLines.push(CRM_COUNTS_GUIDANCE);
   const browserReadiness = webResearchEnabled && (version.tools.includes('browser_scrape') || isCoordinator)
     ? await browserScraperReadiness()
     : { available: false, reason: undefined };
@@ -585,7 +587,7 @@ export async function executeRun(
           kind: 'specialist' as const,
           model: v.model as string,
           effort: v.effort as string,
-          tools: (v.tools as string[]) ?? [],
+          tools: companionTools((v.tools as string[]) ?? []),
           max_iter: Number(v.max_tool_steps ?? 8),
           max_execution_time: Math.max(60, Math.floor((opts.budgetMs ?? RUN_BUDGET_MS) / 1000) - 30),
         }];
@@ -620,7 +622,7 @@ export async function executeRun(
     && (n !== 'browser_scrape' || browserScrapeAllowed);
   // The coordinator receives only its own tools plus delegation. Specialist
   // permissions stay inside child runs instead of being unioned into the lead.
-  const requestedTools = new Set(version.tools);
+  const requestedTools = new Set(runTools);
   const tools: AgentTool[] = [...requestedTools]
     .filter((n) => allowed(n) && !PROVIDER_TOOLS.includes(n) && (n !== 'delegate_to_specialists' || isCoordinator))
     .map((n) => TOOL_REGISTRY[n])
@@ -728,7 +730,7 @@ export async function executeRun(
       // avoiding an unconditional 19-member provider fan-out.
       tools: isCoordinator
         ? coordinatorToolNames
-        : version.tools.filter((name) => allowed(name) && (Boolean(TOOL_REGISTRY[name]) || nativeToolAllowed(name)) && name !== 'delegate_to_specialists'),
+        : runTools.filter((name) => allowed(name) && (Boolean(TOOL_REGISTRY[name]) || nativeToolAllowed(name)) && name !== 'delegate_to_specialists'),
       max_iter: version.max_tool_steps,
       max_execution_time: maxSeconds,
     };

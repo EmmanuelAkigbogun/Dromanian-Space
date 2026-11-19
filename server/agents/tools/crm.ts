@@ -18,6 +18,20 @@ export const searchCrm=defineTool({
   return{content:rows.length?rows.map((row)=>quoteData('crm_record',{kind:row.kind,record_id:row.id,link:`/crm/${row.kind}/${row.id}`,updated_at:row.updated_at},`${row.name}\n${row.detail}`)).join('\n\n'):'No matching CRM records.',summary:{results:rows.length,kinds:[...new Set(rows.map((row)=>row.kind))]}};
  }
 });
+export const crmReport=defineTool({
+ name:'crm_report',
+ description:'Exact counts and breakdowns for the run\'s CRM (the selected managed company\'s CRM, or the agency CRM without one). Use for any "how many", total, share or breakdown question instead of counting search_crm results. entity=contacts gives totals, contacts linked to a company, distinct companies with contacts, with/without email; group_by: company, lifecycle_stage, owner, email_status, has_email, location, title. entity=companies gives totals, companies with at least one contact, without contacts, with deals; group_by: contacts_per_company, has_contacts, industry, prospect_type, contact_status, listed_location, owner. entity=deals gives totals and value per currency; group_by: stage, company, owner, currency.',
+ schema:z.object({
+  entity:z.enum(['contacts','companies','deals']),
+  group_by:z.enum(['company','lifecycle_stage','owner','email_status','has_email','location','title','contacts_per_company','has_contacts','industry','prospect_type','contact_status','listed_location','stage','currency']).optional(),
+  limit:z.number().int().min(1).max(200).optional(),
+ }),
+ label:(input)=>`Counting CRM ${input.entity}${input.group_by?` by ${input.group_by.replace(/_/g,' ')}`:''}`,
+ async run(ctx,input){
+  const data=await rpc<Record<string,unknown>>('crm_report_for_context',{p_actor:ctx.actorId,p_workspace_id:ctx.workspaceId,p_client_id:ctx.scope.company_id??null,p_entity:input.entity,p_group_by:input.group_by??null,p_limit:input.limit??50});
+  return{content:quoteData('crm_report',{entity:input.entity,group_by:input.group_by??'none',computed_by:'database'},JSON.stringify(data)),summary:{entity:input.entity,group_by:input.group_by??null,summary:data.summary}};
+ }
+});
 export const readCrmRecord=defineTool({
  name:'read_crm_record',description:'Read one workspace CRM contact, company or deal by its ID. CRM records are shared within the workspace. It does not grant access to linked resources.',schema:record,label:()=> 'Reading CRM record',
  async run(ctx,input){const data=await rpc<Record<string,unknown>>('crm_read_for_context',{p_actor:ctx.actorId,p_workspace_id:ctx.workspaceId,p_client_id:ctx.scope.company_id??null,p_kind:input.kind,p_record_id:input.record_id});await ctx.recordSource('crm_record',input.record_id,{label:String(data.name)});return{content:quoteData('crm_record',{link:`/crm/${input.kind}/${input.record_id}`},JSON.stringify(data)),summary:{record_id:input.record_id,kind:input.kind}};}

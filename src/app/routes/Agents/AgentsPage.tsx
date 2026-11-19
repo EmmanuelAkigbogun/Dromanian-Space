@@ -109,6 +109,7 @@ const TOOL_LABELS: Record<string, string> = {
   search_crm: 'Search CRM companies and contacts',
   search_crm_notes: 'Search CRM notes and comments',
   read_crm_record: 'Read CRM records',
+  crm_report: 'Count and break down CRM records',
   list_drive: 'Find files and folders in Drive',
   compute_csv_metrics: 'Calculate metrics from CSV or Excel files',
   workspace_metrics: 'Calculate workspace metrics',
