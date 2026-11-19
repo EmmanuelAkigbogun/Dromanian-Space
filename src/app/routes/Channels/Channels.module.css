@@ -555,3 +555,27 @@
     transition: none;
   }
 }
+
+/* Toggle for the shared files / participants panel. */
+.infoToggle {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.infoToggle:hover {
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
+}
+
+.infoToggleOn {
+  border-color: var(--color-primary);
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
+}

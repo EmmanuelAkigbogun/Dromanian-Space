@@ -30,6 +30,7 @@ interface MessageContextMenuProps {
   canDelete: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onReply?: () => void;
   children: React.ReactNode;
 }
 
@@ -39,6 +40,7 @@ export const MessageContextMenu = memo(function MessageContextMenu({
   canDelete,
   onEdit,
   onDelete,
+  onReply,
   children,
 }: MessageContextMenuProps) {
   const { currentChannel } = useChannelSafe();
@@ -170,6 +172,17 @@ export const MessageContextMenu = memo(function MessageContextMenu({
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent>
         <div className={styles.contextMenu}>
+          {onReply && (
+            <ContextMenuItem onClick={onReply}>
+              <span className={styles.itemIcon}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 14L4 9l5-5" />
+                  <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+                </svg>
+              </span>
+              <span className={styles.itemLabel}>Reply</span>
+            </ContextMenuItem>
+          )}
           <ContextMenuItem onClick={handleCopy}>
             <span className={styles.itemIcon}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

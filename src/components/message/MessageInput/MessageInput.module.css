@@ -504,3 +504,64 @@
     display: none;
   }
 }
+
+/* WhatsApp-style "Replying to" chip above the text box. */
+.replyChip {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin-bottom: 6px;
+  padding: 8px 8px 8px 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  animation: replyIn 0.15s ease-out;
+}
+
+.replyBar {
+  width: 4px;
+  flex: 0 0 4px;
+  border-radius: 0 4px 4px 0;
+  background: var(--color-primary);
+}
+
+.replyText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.replyText strong {
+  color: var(--color-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.replyText span {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.replyClose {
+  align-self: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.replyClose:hover {
+  background: var(--color-surface-secondary);
+}
+
+@keyframes replyIn {
+  from { opacity: 0; transform: translateY(6px); }
+}

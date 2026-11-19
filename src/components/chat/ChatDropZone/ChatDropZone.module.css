@@ -1,0 +1,106 @@
+.zone {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.overlay {
+  position: absolute;
+  inset: 8px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 2px dashed color-mix(in srgb, var(--color-primary) 60%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  backdrop-filter: blur(3px);
+  color: var(--color-text);
+  pointer-events: none;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.overlay strong {
+  margin-top: 18px;
+  font-size: 22px;
+  font-weight: var(--font-weight-semibold);
+}
+
+.overlay span {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
+.overlay b {
+  color: var(--color-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.burst {
+  position: relative;
+  width: 170px;
+  height: 170px;
+}
+
+.burst i {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  transform: rotate(var(--a)) translateY(-78px);
+  animation: pulse 1.4s ease-in-out infinite;
+  animation-delay: var(--d);
+}
+
+.burst i:nth-child(odd) {
+  width: 4px;
+  height: 4px;
+  margin: -2px;
+  transform: rotate(var(--a)) translateY(-62px);
+  opacity: 0.6;
+}
+
+.core {
+  position: absolute;
+  inset: 45px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--color-primary);
+  box-shadow: 0 0 0 14px color-mix(in srgb, var(--color-primary) 18%, transparent);
+  color: var(--color-text-inverse);
+}
+
+.core svg {
+  width: 32px;
+  height: 32px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@keyframes pulse {
+  50% { opacity: 0.25; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .burst i,
+  .overlay {
+    animation: none;
+  }
+}

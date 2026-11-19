@@ -127,3 +127,30 @@
 .mentionSpecial:hover {
   background-color: var(--color-warning-bg, rgba(255, 193, 7, 0.25));
 }
+
+/* A quoted message from a WhatsApp-style reply. */
+.reply {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 2px 0 6px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--color-primary);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.reply strong {
+  color: var(--color-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.reply span {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}

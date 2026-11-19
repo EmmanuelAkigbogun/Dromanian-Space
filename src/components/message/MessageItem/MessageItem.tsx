@@ -32,6 +32,7 @@ import { MessageReceipt } from '@/components/message/MessageReceipt';
 import { extractUrls, removeUrlsFromText } from '@/lib/message/richText';
 import type { Receipt } from '@/hooks/useChannelReceipts';
 import type { LinkDisplayMode, Message, Profile, Reaction } from '@/types';
+import { replySnippet, requestReply } from '@/components/chat/reply';
 import styles from './MessageItem.module.css';
 
 interface MessageItemProps {
@@ -159,6 +160,15 @@ export const MessageItem = memo(function MessageItem({ message, isOwn, profile, 
     }
   }, [message, editCtx, onStartEdit]);
 
+  const handleReply = useCallback(() => {
+    requestReply({
+      channelId: message.channel_id,
+      messageId: message.id,
+      name: displayName,
+      text: replySnippet(message.content, attachments.length > 0),
+    });
+  }, [message.channel_id, message.id, message.content, displayName, attachments.length]);
+
   const handleRequestDelete = useCallback(() => {
     setShowDeleteDialog(true);
   }, []);
@@ -248,6 +258,7 @@ export const MessageItem = memo(function MessageItem({ message, isOwn, profile, 
         canDelete={canDelete}
         onEdit={handleStartEdit}
         onDelete={handleRequestDelete}
+        onReply={handleReply}
       >
         <div
           className={`${styles.row} ${mine ? styles.rowOwn : ''} ${selectionMode ? styles.rowSelectable : ''}`}
@@ -258,6 +269,11 @@ export const MessageItem = memo(function MessageItem({ message, isOwn, profile, 
             id={`message-${message.id}`}
             className={`${styles.message} ${mine ? styles.messageOwn : ''} ${isGrouped ? styles.messageGrouped : ''} ${highlight ? 'message-highlight' : ''} ${isSelected ? styles.messageSelected : ''}`}
             onClick={handleRowClick}
+            onDoubleClick={(e) => {
+              if (selectionMode || (e.target as HTMLElement).closest('button, a, [data-no-select], input, textarea')) return;
+              window.getSelection()?.removeAllRanges();
+              handleReply();
+            }}
           >
             {!mine && (
               <div className={styles.avatar}>
@@ -405,6 +421,7 @@ export const MessageItem = memo(function MessageItem({ message, isOwn, profile, 
               onEdit={handleStartEdit}
               onDelete={handleRequestDelete}
               onReact={handleReact}
+              onReply={handleReply}
             />
           </div>
         </div>

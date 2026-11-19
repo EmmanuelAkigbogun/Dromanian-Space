@@ -18,6 +18,7 @@ import { MessageSelectionBanner } from '@/components/message/MessageSelectionBan
 import { FailedMessageBanner } from '@/components/message/FailedMessageBanner';
 import { shouldGroupWithPrevious, needsDateSeparator, getThreadMessageCounts } from '@/lib/message';
 import type { Message } from '@/types';
+import { TypingIndicator } from '@/components/typing/TypingIndicator';
 import styles from './MessageList.module.css';
 
 type VirtualItem =
@@ -199,6 +200,7 @@ export function MessageList() {
             onRemove={removeFailedMessage}
           />
         ))}
+        {currentChannel && <TypingIndicator channelId={currentChannel.id} channelType="channel" />}
         <MessageInput />
       </div>
     );
@@ -266,6 +268,7 @@ export function MessageList() {
         />
       ))}
 
+      {currentChannel && <TypingIndicator channelId={currentChannel.id} channelType="channel" />}
       <MessageInput />
     </div>
   );

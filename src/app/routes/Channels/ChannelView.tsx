@@ -26,6 +26,9 @@ import {
   useAiNotesSessionController,
 } from '@/components/ai/AiNotesSessionControls';
 import type { Channel } from '@/types';
+import { ChatDropZone } from '@/components/chat/ChatDropZone/ChatDropZone';
+import { ChatInfoPanel } from '@/components/chat/ChatInfoPanel/ChatInfoPanel';
+import { Avatar } from '@/components/ui/Avatar';
 import styles from './Channels.module.css';
 
 export function ChannelView() {
@@ -45,6 +48,7 @@ export function ChannelView() {
   const [invitingChannel, setInvitingChannel] = useState<Channel | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [showPinned, setShowPinned] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
 
   useEffect(() => {
     if (slug && currentChannel?.slug !== slug && currentChannel?.id !== slug) {
@@ -137,6 +141,16 @@ export function ChannelView() {
             {features.canSee('drive') && (
               <Button variant="secondary" onClick={() => navigate(`/drive?view=channel&channel=${currentChannel.id}`)}>Files</Button>
             )}
+            <button
+              type="button"
+              className={`${styles.infoToggle} ${showInfo ? styles.infoToggleOn : ''}`}
+              onClick={() => setShowInfo((v) => !v)}
+              aria-pressed={showInfo}
+              aria-label="Shared files and participants"
+              title="Shared files and participants"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5h.01" /></svg>
+            </button>
             <CallButton
               channelId={currentChannel.id}
               callType="channel"
@@ -173,11 +187,22 @@ export function ChannelView() {
 
       {isUserMember ? (
         <div className={styles.channelBody}>
-          <MessageProvider>
-            <EditProvider>
-              <MessageList />
-            </EditProvider>
-          </MessageProvider>
+          <ChatDropZone channelId={currentChannel.id} label={`#${dmDisplayNames[currentChannel.id] ?? currentChannel.name}`}>
+            <MessageProvider>
+              <EditProvider>
+                <MessageList />
+              </EditProvider>
+            </MessageProvider>
+          </ChatDropZone>
+          {showInfo && (
+            <ChatInfoPanel
+              channelId={currentChannel.id}
+              title={`#${dmDisplayNames[currentChannel.id] ?? currentChannel.name}`}
+              subtitle={`${memberCounts[currentChannel.id] ?? 0} ${(memberCounts[currentChannel.id] ?? 0) === 1 ? 'member' : 'members'}`}
+              avatar={<Avatar name={currentChannel.name} size="xl" />}
+              onClose={() => setShowInfo(false)}
+            />
+          )}
           {showPinned && (
             <div className={`${styles.pinnedPanel} ${activeThread ? styles.pinnedPanelWithThread : ''}`}>
               <PinnedMessagesPanel

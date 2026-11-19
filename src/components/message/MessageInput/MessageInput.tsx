@@ -25,6 +25,9 @@ import {
 } from '@/lib/composerSubmission';
 import { useInvalidateAttachments } from '@/hooks/useMessageAttachments';
 import type { LinkDisplayMode } from '@/types';
+import { useTypingIndicator } from '@/hooks/useTypingIndicator';
+import { CHAT_FILES_DROPPED, type ChatFilesDroppedDetail } from '@/components/chat/ChatDropZone/ChatDropZone';
+import { CHAT_REPLY, replyQuote, type ChatReplyDetail } from '@/components/chat/reply';
 import styles from './MessageInput.module.css';
 
 interface PendingFile {
@@ -157,6 +160,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [channelMemberIds, setChannelMemberIds] = useState<string[]>([]);
+  const [replyTo, setReplyTo] = useState<ChatReplyDetail | null>(null);
   const sendingRef = useRef(false);
   const operationSequenceRef = useRef(0);
   const activeOperationRef = useRef<number | null>(null);
@@ -171,6 +175,8 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const channelId = overrideChannelId ?? channelCtx?.currentChannel?.id;
+  // Typing indicator for the conversation (not for thread replies).
+  const { startTyping, stopTyping } = useTypingIndicator(parentId ? '' : channelId ?? '', 'channel');
   const routeScopeKey = composerRouteKey(channelId, conversationId, parentId);
   const scopeTokenRef = useRef<ComposerScopeToken>(nextComposerScopeToken(null, routeScopeKey));
   const activeEdit = editingOverride ?? editCtx?.editingMessage ?? null;
@@ -291,6 +297,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
     setContent(value);
     if (!hasRecoverableFailure()) setSendError(null);
     resizeTextarea(e.target);
+    if (value.trim()) startTyping(); else stopTyping();
 
     if (channelId && !parentId && !activeEdit) {
       saveDraft(`${userId}:${channelId}:${parentId ?? 'root'}`, value);
@@ -306,7 +313,7 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
       }
     }
     setMentionQuery(null);
-  }, [channelId, parentId, activeEdit, content.length, markComposerChanged, userId]);
+  }, [channelId, parentId, activeEdit, content.length, markComposerChanged, userId, startTyping, stopTyping]);
 
   const handleMentionSelect = useCallback((username: string) => {
     const lastAtIndex = content.lastIndexOf('@');
@@ -350,6 +357,26 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
       }
     });
   }, [markComposerChanged]);
+
+
+  // Files dropped anywhere on the conversation, and "Reply" on a message.
+  useEffect(() => {
+    if (parentId || !channelId) return;
+    const onFiles = (e: Event) => {
+      const detail = (e as CustomEvent<ChatFilesDroppedDetail>).detail;
+      if (detail.channelId === channelId) queueFiles(detail.files);
+    };
+    const onReply = (e: Event) => {
+      const detail = (e as CustomEvent<ChatReplyDetail>).detail;
+      if (detail.channelId !== channelId) return;
+      setReplyTo(detail);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    };
+    window.addEventListener(CHAT_FILES_DROPPED, onFiles);
+    window.addEventListener(CHAT_REPLY, onReply);
+    return () => { window.removeEventListener(CHAT_FILES_DROPPED, onFiles); window.removeEventListener(CHAT_REPLY, onReply); };
+  }, [parentId, channelId, queueFiles]);
+  useEffect(() => { setReplyTo(null); }, [channelId]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -793,8 +820,11 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
       return;
     }
 
+    stopTyping();
+    const quote = replyTo && content.trim() ? replyQuote(replyTo) : '';
+    if (quote) setReplyTo(null);
     const submission: MessageSubmission = {
-      content,
+      content: quote + content,
       files: [...pendingFiles],
       links: [...pendingLinkEmbeds],
       linkMode,
@@ -1050,6 +1080,16 @@ export function MessageInput({ parentId, placeholder = 'Type a message...', onMe
       onDrop={handleDrop}
     >
       {isDragging && <div className={styles.dropOverlay} role="status">Drop images or files to attach</div>}
+      {replyTo && !activeEdit && (
+        <div className={styles.replyChip} role="status">
+          <span className={styles.replyBar} aria-hidden="true" />
+          <span className={styles.replyText}>
+            <strong>Replying to {replyTo.name}</strong>
+            <span>{replyTo.text}</span>
+          </span>
+          <button type="button" className={styles.replyClose} aria-label="Cancel reply" onClick={() => { setReplyTo(null); textareaRef.current?.focus(); }}>×</button>
+        </div>
+      )}
       {pendingFiles.length > 0 && (
         <div className={styles.pendingFiles}>
           {pendingFiles.map((pf) => (

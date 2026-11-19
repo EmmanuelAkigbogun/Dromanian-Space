@@ -13,7 +13,20 @@ import { getProfile } from '@/lib/profile';
 import { getPresenceLabel, presenceToAvatarStatus } from '@/lib/presence';
 import type { ConversationWithParticipants } from '@/lib/conversation';
 import type { Profile } from '@/types';
+import { replySnippet } from '@/components/chat/reply';
 import styles from './DmSidebar.module.css';
+
+/** WhatsApp-style list time: 14:32 today, "Yesterday", weekday this week, else a date. */
+function chatListTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const day = 864e5;
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (d.getTime() >= startOfToday) return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  if (d.getTime() >= startOfToday - day) return 'Yesterday';
+  if (d.getTime() >= startOfToday - 6 * day) return d.toLocaleDateString(undefined, { weekday: 'short' });
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
 import { Floating } from '@/lib/overlay/Floating';
 
 interface DmSidebarProps {
@@ -253,16 +266,17 @@ export const DmSidebar = memo(function DmSidebar({ isCollapsed }: DmSidebarProps
                     )}
                   </div>
                   <div className={styles.conversationInfo}>
-                    <span className={styles.conversationName}>{name}</span>
-                    {isGroup && (
-                      <span className={styles.memberCount}>{participantCount} members</span>
-                    )}
-                    {conv.lastMessage && (
+                    <span className={styles.conversationTop}>
+                      <span className={styles.conversationName}>{name}</span>
+                      {conv.lastMessage && <time className={styles.lastTime}>{chatListTime(conv.lastMessage.created_at)}</time>}
+                    </span>
+                    {conv.lastMessage ? (
                       <span className={styles.lastMessage}>
-                        {conv.lastMessage.content.length > 40
-                          ? conv.lastMessage.content.slice(0, 40) + '...'
-                          : conv.lastMessage.content}
+                        {conv.lastMessage.user_id === userId ? 'You: ' : ''}
+                        {replySnippet(conv.lastMessage.content, true)}
                       </span>
+                    ) : isGroup && (
+                      <span className={styles.memberCount}>{participantCount} members</span>
                     )}
                   </div>
                 </button>

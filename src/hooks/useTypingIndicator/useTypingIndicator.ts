@@ -31,7 +31,7 @@ export function useTypingIndicator(
   useEffect(() => {
     if (!channelId || !userId) return;
 
-    const channelName = `${channelType}:${channelId}:typing`;
+    const channelName = `${channelType === 'conversation' ? 'dm' : 'channel'}:${channelId}:typing`;
     const channel = platform.channel(channelName);
     channelRef.current = channel;
 

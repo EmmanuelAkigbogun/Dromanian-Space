@@ -307,3 +307,22 @@
   color: var(--color-text-muted);
   flex-shrink: 0;
 }
+
+/* Name and last-message time on one line, like a chat list. */
+.conversationTop {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.conversationTop .conversationName {
+  flex: 1;
+  min-width: 0;
+}
+
+.lastTime {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  font-size: 11px;
+}

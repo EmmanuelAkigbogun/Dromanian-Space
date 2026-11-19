@@ -27,7 +27,12 @@ interface MessageActionsProps {
   onEdit: () => void;
   onDelete: () => void;
   onReact?: (emoji: string) => void;
+  /** WhatsApp-style reply: quote this message in the composer. */
+  onReply?: () => void;
 }
+
+/** One tap reactions on hover, like Teams and WhatsApp. */
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '🎉', '🙏'];
 
 export const MessageActions = memo(function MessageActions({
   message,
@@ -37,6 +42,7 @@ export const MessageActions = memo(function MessageActions({
   onEdit,
   onDelete,
   onReact,
+  onReply,
 }: MessageActionsProps) {
   const { currentChannel } = useChannelSafe();
   const { userId } = useAuth();
@@ -222,6 +228,34 @@ export const MessageActions = memo(function MessageActions({
       onMouseEnter={handleMouseEnter}
       onClick={(e) => e.stopPropagation()}
     >
+      <div className={styles.quickReactions} role="group" aria-label="Quick reactions">
+        {QUICK_REACTIONS.map((emoji) => (
+          <button
+            key={emoji}
+            type="button"
+            className={styles.quickReaction}
+            onClick={() => void handleEmojiSelect(emoji)}
+            title={`React ${emoji}`}
+            aria-label={`React with ${emoji}`}
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+      {onReply && (
+        <button
+          type="button"
+          className={styles.actionButton}
+          onClick={onReply}
+          title="Reply"
+          aria-label="Reply"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 14L4 9l5-5" />
+            <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+          </svg>
+        </button>
+      )}
       <button
         ref={reactionButtonRef}
         type="button"

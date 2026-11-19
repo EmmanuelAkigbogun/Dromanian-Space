@@ -1,5 +1,6 @@
 import { memo, useMemo, type ReactNode } from 'react';
 import { parseMessageContent, type ContentToken } from '@/lib/message/richText';
+import { parseReply } from '@/components/chat/reply';
 import styles from './MessageContent.module.css';
 
 interface MessageContentProps {
@@ -39,8 +40,18 @@ function renderTokens(tokens: ContentToken[]): ReactNode[] {
             </button>
           </div>
         );
-      case 'quote':
+      case 'quote': {
+        const reply = parseReply(token.value);
+        if (reply) {
+          return (
+            <blockquote key={i} className={styles.reply}>
+              <strong>{reply.name}</strong>
+              <span>{reply.text}</span>
+            </blockquote>
+          );
+        }
         return <blockquote key={i} className={styles.quote}>{token.value}</blockquote>;
+      }
       case 'unordered_list':
         return (
           <ul key={i} className={styles.list}>

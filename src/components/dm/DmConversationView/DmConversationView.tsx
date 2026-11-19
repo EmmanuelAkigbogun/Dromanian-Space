@@ -8,6 +8,9 @@ import { getChannelMessages, sendMessage as sendMessageService, updateMessage as
 import { getProfile } from '@/lib/profile';
 import { MessageInput } from '@/components/message/MessageInput';
 import { MessageItem } from '@/components/message/MessageItem';
+import { TypingIndicator } from '@/components/typing/TypingIndicator';
+import { ChatDropZone } from '@/components/chat/ChatDropZone/ChatDropZone';
+import { ChatInfoPanel } from '@/components/chat/ChatInfoPanel/ChatInfoPanel';
 import { MessageEmpty } from '@/components/message/MessageEmpty';
 import { MessageLoading } from '@/components/message/MessageLoading';
 import { DateSeparator } from '@/components/message/DateSeparator';
@@ -63,6 +66,7 @@ export function DmConversationView() {
   const [profileLoading, setProfileLoading] = useState(false);
   const [groupInfoOpen, setGroupInfoOpen] = useState(false);
   const [showPinned, setShowPinned] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const [pinnedMenuOpen, setPinnedMenuOpen] = useState(false);
   const pinnedMenuRef = useRef<HTMLDivElement>(null);
   const { activeThread } = useThread();
@@ -524,6 +528,18 @@ export function DmConversationView() {
               : getPresenceLabel(otherProfile ? presenceMap.get(otherProfile.id)?.status : 'offline')}
           </span>
         </div>
+        {channelId && (
+          <button
+            type="button"
+            className={`${styles.headerIconButton} ${showInfo ? styles.headerIconButtonActive : ''}`}
+            onClick={() => setShowInfo((v) => !v)}
+            aria-pressed={showInfo}
+            aria-label="Shared files and participants"
+            title="Shared files and participants"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5h.01" /></svg>
+          </button>
+        )}
         <div className={styles.pinnedMenuContainer} ref={pinnedMenuRef}>
           <button
             type="button"
@@ -624,6 +640,7 @@ export function DmConversationView() {
 
       <MessageSelectionBanner />
 
+      <ChatDropZone channelId={channelId ?? ''} label={displayName}>
       <div className={styles.dmBody}>
         <div className={styles.messageArea} ref={scrollAreaRef}>
           {messages.length === 0 ? (
@@ -673,7 +690,17 @@ export function DmConversationView() {
             />
           </div>
         )}
+        {showInfo && channelId && (
+          <ChatInfoPanel
+            channelId={channelId}
+            title={displayName}
+            subtitle={currentConversation.type === 'group' && currentParticipants ? `${currentParticipants.length} members` : getPresenceLabel(otherProfile ? presenceMap.get(otherProfile.id)?.status : 'offline')}
+            avatar={<Avatar src={displayAvatar ?? undefined} name={displayName} size="xl" />}
+            onClose={() => setShowInfo(false)}
+          />
+        )}
       </div>
+      </ChatDropZone>
 
       {failedMessages.map((fm) => (
         <FailedMessageBanner
@@ -685,6 +712,7 @@ export function DmConversationView() {
         />
       ))}
 
+      {channelId && <TypingIndicator channelId={channelId} channelType="channel" />}
       <MessageInput
         placeholder={`Message ${displayName}`}
         onSend={handleSendMessage}

@@ -1,0 +1,336 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: clamp(290px, 28vw, 360px);
+  flex-shrink: 0;
+  min-height: 0;
+  border-left: 1px solid var(--color-border);
+  background: var(--color-surface);
+  animation: panelIn 0.18s ease-out;
+}
+
+@keyframes panelIn {
+  from { opacity: 0; transform: translateX(12px); }
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 8px 0 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tabs {
+  display: flex;
+  flex: 1;
+  gap: 4px;
+}
+
+.tabs button {
+  padding: 10px 8px 12px;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+}
+
+.tabs .tabOn {
+  border-bottom-color: var(--color-primary);
+  color: var(--color-text);
+}
+
+.close {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--color-surface-secondary);
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 24px;
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 24px 0 18px;
+  text-align: center;
+}
+
+.identityAvatar {
+  display: grid;
+  margin-bottom: 8px;
+  place-items: center;
+}
+
+.identity h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: var(--font-weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.identity span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 84px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.tile:hover {
+  transform: translateY(-1px);
+  border-color: var(--color-border-hover);
+}
+
+.tile span {
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
+.tile strong {
+  font-size: 26px;
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.1;
+}
+
+.tile svg {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: var(--color-text-muted);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tileFiles {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--color-primary) 22%, var(--color-surface));
+}
+
+.tileFiles svg {
+  fill: color-mix(in srgb, var(--color-primary) 60%, transparent);
+  stroke: var(--color-primary);
+}
+
+.tileOn {
+  border-color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px var(--color-primary);
+}
+
+.section h4 {
+  margin: 4px 0 8px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+}
+
+.typeRow,
+.linkRow,
+.person {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 6px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+}
+
+.typeRow,
+.linkRow {
+  cursor: pointer;
+}
+
+.typeRow:hover:not(:disabled),
+.linkRow:hover {
+  background: var(--color-surface-secondary);
+}
+
+.typeRow:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.typeIcon {
+  --c: var(--color-primary);
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  place-items: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--c) 18%, transparent);
+  color: var(--c);
+}
+
+.typeIcon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+[data-group='documents'] .typeIcon { --c: #6d7cf7; }
+[data-group='photos'] .typeIcon { --c: #d4a72c; }
+[data-group='videos'] .typeIcon { --c: #2bb3c0; }
+[data-group='audio'] .typeIcon { --c: #a855f7; }
+[data-group='other'] .typeIcon { --c: #e5735b; }
+
+.rowText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rowText strong {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowText strong em {
+  color: var(--color-text-muted);
+  font-style: normal;
+  font-weight: var(--font-weight-normal, 400);
+}
+
+.rowText > span {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  color: var(--color-text-muted);
+  font-size: 18px;
+  transition: transform 0.15s ease;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+.fileList {
+  margin: 0 0 8px 48px;
+  padding: 0;
+  list-style: none;
+}
+
+.fileList button {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fileList button:hover {
+  background: var(--color-surface-secondary);
+}
+
+.fileName {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileMeta {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.favicon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--color-primary-subtle);
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: var(--font-weight-semibold);
+}
+
+.muted {
+  margin: 8px 6px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+@media (max-width: 1023px) {
+  .panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: var(--z-mobile-surface, 60);
+    width: min(380px, 100%);
+    box-shadow: -4px 0 16px rgb(0 0 0 / 0.2);
+  }
+}
