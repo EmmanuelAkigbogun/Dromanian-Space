@@ -56,7 +56,7 @@ export interface Column {
 export interface Context {
   people: Person[];
   companies: Pick<Company, 'id' | 'name'>[];
-  contacts: Pick<Contact, 'id' | 'name'>[];
+  contacts: Pick<Contact, 'id' | 'name' | 'company_id'>[];
   stages: Stage[];
   pipelines: Pipeline[];
   fields: CustomField[];

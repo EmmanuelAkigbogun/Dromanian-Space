@@ -4,6 +4,7 @@ import {
   AGGREGATES, aggregate, aggregatesFor, displayValue, readValue,
   type Column, type CrmRecord, type Kind, type ViewState,
 } from './model';
+import { Avatar } from './ui';
 import s from './CRM.module.css';
 
 interface Props {
@@ -19,13 +20,22 @@ interface Props {
   /** ?client=… so links stay in the same CRM. */
   book: string;
   suggestions: Record<string, string[]>;
+  /** Open the record in the side preview. */
+  onPreview: (record: CrmRecord) => void;
 }
 
 const href = (v: string) => (/^https?:\/\//i.test(v) ? v : `https://${v}`);
 
 /** A spreadsheet of records: click a cell to edit it, a header to sort, a footer to calculate. */
-export function RecordTable({ kind, records, columns, view, onView, canEdit, onSave, selected, onSelect, book, suggestions }: Props) {
+export function RecordTable({ kind, records: all, columns, view, onView, canEdit, onSave, selected, onSelect, book, suggestions, onPreview }: Props) {
   const [editing, setEditing] = useState<{ id: string; key: string } | null>(null);
+  const [pageSize, setPageSize] = useState(() => {
+    try { return Number(localStorage.getItem('crm.pageSize')) || 25; } catch { return 25; }
+  });
+  const [pageWanted, setPage] = useState(0);
+  const pages = Math.max(1, Math.ceil(all.length / pageSize));
+  const page = Math.min(pageWanted, pages - 1);
+  const records = all.slice(page * pageSize, (page + 1) * pageSize);
   const allSelected = records.length > 0 && records.every((r) => selected.has(r.id));
 
   const sortBy = (column: Column) => {
@@ -36,6 +46,7 @@ export function RecordTable({ kind, records, columns, view, onView, canEdit, onS
     onView({ ...view, columns: { ...view.columns, [column.key]: { ...view.columns[column.key], aggregate: op || undefined } } });
 
   return (
+    <>
     <div className={s.tableWrap}>
       <table className={s.table}>
         <colgroup>
@@ -49,7 +60,14 @@ export function RecordTable({ kind, records, columns, view, onView, canEdit, onS
                 type="checkbox"
                 aria-label="Select all"
                 checked={allSelected}
-                onChange={() => onSelect(allSelected ? new Set() : new Set(records.map((r) => r.id)))}
+                onChange={() => {
+                  const next = new Set(selected);
+                  for (const r of records) {
+                    if (allSelected) next.delete(r.id);
+                    else next.add(r.id);
+                  }
+                  onSelect(next);
+                }}
               />
             </th>
             {columns.map((c, i) => (
@@ -106,12 +124,13 @@ export function RecordTable({ kind, records, columns, view, onView, canEdit, onS
                       />
                     ) : i === 0 ? (
                       <div className={s.nameCell}>
+                        <Avatar name={r.name} kind={kind} />
                         <Link className={s.nameLink} to={`/crm/${kind}/${r.id}${book}`} onClick={(e) => e.stopPropagation()}>
                           {r.name}
                         </Link>
-                        <Link className={s.open} to={`/crm/${kind}/${r.id}${book}`} onClick={(e) => e.stopPropagation()}>
-                          Open
-                        </Link>
+                        <button type="button" className={s.open} onClick={(e) => { e.stopPropagation(); onPreview(r); }} aria-label={`Preview ${r.name}`}>
+                          Preview
+                        </button>
                       </div>
                     ) : (
                       <CellView record={r} column={c} editable={editable} onToggle={(v) => void onSave(r, c, v)} />
@@ -130,13 +149,13 @@ export function RecordTable({ kind, records, columns, view, onView, canEdit, onS
               return (
                 <td key={c.key} className={i === 0 ? s.stickyCol : undefined} style={i === 0 ? { left: 36 } : undefined}>
                   {i === 0 ? (
-                    `${records.length} ${records.length === 1 ? 'record' : 'records'}`
+                    `${all.length} ${all.length === 1 ? 'record' : 'records'}`
                   ) : (
                     <select aria-label={`Calculate ${c.label}`} value={op} onChange={(e) => setAggregate(c, e.target.value)}>
                       <option value="">{op ? '' : 'Calculate'}</option>
                       {aggregatesFor(c.type).map((a) => (
                         <option key={a} value={a}>
-                          {op === a ? `${AGGREGATES[a]}: ${aggregate(records, c, a)}` : AGGREGATES[a]}
+                          {op === a ? `${AGGREGATES[a]}: ${aggregate(all, c, a)}` : AGGREGATES[a]}
                         </option>
                       ))}
                     </select>
@@ -148,7 +167,34 @@ export function RecordTable({ kind, records, columns, view, onView, canEdit, onS
         </tfoot>
       </table>
     </div>
+    <nav className={s.pager} aria-label="Pages">
+      <button type="button" className={s.ghost} disabled={page === 0} onClick={() => setPage(page - 1)}>‹ Prev</button>
+      {pageNumbers(page, pages).map((n, i) => n < 0
+        ? <span key={`gap${i}`} className={s.hint}>…</span>
+        : <button key={n} type="button" className={`${s.pageNumber} ${n === page ? s.pageNumberOn : ''}`} aria-current={n === page ? 'page' : undefined} onClick={() => setPage(n)}>{n + 1}</button>)}
+      <button type="button" className={s.ghost} disabled={page >= pages - 1} onClick={() => setPage(page + 1)}>Next ›</button>
+      <select className={s.pageSize} aria-label="Records per page" value={pageSize} onChange={(e) => {
+        const n = Number(e.target.value);
+        setPageSize(n);
+        setPage(0);
+        try { localStorage.setItem('crm.pageSize', String(n)); } catch { /* per-viewer convenience only */ }
+      }}>
+        {[25, 50, 100, 250].map((n) => <option key={n} value={n}>{n} per page</option>)}
+      </select>
+    </nav>
+    </>
   );
+}
+
+/** Page indexes to show, with -1 for a gap: 1 … 4 5 6 … 12. */
+function pageNumbers(page: number, pages: number): number[] {
+  const keep = new Set([0, pages - 1, page - 1, page, page + 1].filter((n) => n >= 0 && n < pages));
+  const out: number[] = [];
+  [...keep].sort((a, b) => a - b).forEach((n, i, arr) => {
+    if (i && n - arr[i - 1] > 1) out.push(-1);
+    out.push(n);
+  });
+  return out;
 }
 
 function CellView({ record, column, editable, onToggle }: { record: CrmRecord; column: Column; editable: boolean; onToggle: (v: boolean) => void }) {

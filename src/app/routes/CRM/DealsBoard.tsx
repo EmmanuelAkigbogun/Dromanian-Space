@@ -21,7 +21,7 @@ export function DealsBoard({ deals, stages, pipelines, pipelineId, onPipeline, c
   const [over, setOver] = useState<string | null>(null);
   const columns = stages.filter((st) => st.pipeline_id === pipelineId).sort((a, b) => a.position - b.position);
 
-  if (!pipelines.length) return <div className={s.empty}>No pipeline yet. An administrator can create one with “Stages”.</div>;
+  if (!pipelines.length) return <div className={s.empty}>No pipeline yet. An administrator can create one with Actions → Edit pipeline stages.</div>;
 
   return (
     <>

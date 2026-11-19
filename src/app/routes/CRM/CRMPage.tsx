@@ -14,6 +14,9 @@ import { RecordTable } from './RecordTable';
 import { DealsBoard } from './DealsBoard';
 import { RecordView } from './RecordView';
 import { ImportDialog } from './ImportDialog';
+import { Preview } from './Preview';
+import { Bento } from './Bento';
+import { Menu, MenuItem, QuickFilter } from './ui';
 import { toCsv } from './spreadsheet';
 import {
   EMPTY_VIEW, OPERATORS, SINGULAR, STAGE_COLORS, TABLES, applyView, columnsFor, displayValue, filterKind,
@@ -27,6 +30,13 @@ const KINDS: Kind[] = ['companies', 'contacts', 'deals'];
 const EMAIL_SEARCH_DONE = new Set(['succeeded', 'failed', 'dead', 'cancelled']);
 const MAX_EMAIL_SELECTION = 300;
 const LIMIT = 1000;
+const MINE = 'mine';
+/** Choice columns offered as one-click filters above each list, like HubSpot's. */
+const QUICK_FILTERS: Record<Kind, string[]> = {
+  companies: ['owner_id'],
+  contacts: ['owner_id', 'lifecycle_stage', 'company_id'],
+  deals: ['owner_id', 'stage_id'],
+};
 
 export default function CRMPage() {
   const { currentWorkspace, currentRole } = useWorkspaceContext();
@@ -63,6 +73,9 @@ function CRM({ ws, userId, admin, kind, client }: { ws: string; userId: string; 
   const [pipelineId, setPipelineId] = useState('');
   const [dialog, setDialog] = useState<'new' | 'import' | 'client' | 'stages' | 'properties' | 'saveView' | null>(null);
   const [columnsOpen, setColumnsOpen] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const mineView: ViewState = { ...EMPTY_VIEW, rules: [{ field: 'owner_id', op: 'any', value: [userId] }] };
   const columnsButton = useRef<HTMLButtonElement>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -79,7 +92,7 @@ function CRM({ ws, userId, admin, kind, client }: { ws: string; userId: string; 
     queryFn: async (): Promise<Context> => {
       const [companies, contacts, stages, pipelines, fields, people] = await Promise.all([
         result(inBook(platform.from('crm_companies').select('id,name').eq('workspace_id', ws)).order('name').limit(2000)),
-        result(inBook(platform.from('crm_contacts').select('id,name').eq('workspace_id', ws)).order('name').limit(2000)),
+        result(inBook(platform.from('crm_contacts').select('id,name,company_id').eq('workspace_id', ws)).order('name').limit(2000)),
         result(platform.from('crm_stages').select('*').eq('workspace_id', ws).order('position')),
         result(platform.from('crm_pipelines').select('*').eq('workspace_id', ws)),
         result(platform.from('crm_custom_fields').select('*').eq('workspace_id', ws).order('position')),
@@ -98,7 +111,7 @@ function CRM({ ws, userId, admin, kind, client }: { ws: string; userId: string; 
     queryFn: (): Promise<SavedView[]> => result(platform.from('crm_views').select('*').eq('workspace_id', ws).eq('entity', kind).order('position').order('created_at')),
   });
   const savedView = views.data?.find((v) => v.id === activeView);
-  const dirty = savedView ? !sameView(view, viewFromSaved(savedView)) : !sameView(view, EMPTY_VIEW);
+  const dirty = !sameView(view, savedView ? viewFromSaved(savedView) : activeView === MINE ? mineView : EMPTY_VIEW);
 
   const rows = useQuery({
     queryKey: [...base, 'rows', kind, client, search, JSON.stringify(savedFromView(view)), ctx.isSuccess],
@@ -199,230 +212,313 @@ function CRM({ ws, userId, admin, kind, client }: { ws: string; userId: string; 
     });
   };
 
+  const dialogs = (
+    <>
+    {dialog === 'new' && ctx.data && (
+      <NewRecord ws={ws} userId={userId} kind={kind} client={client} ctx={ctx.data} pipelineId={pipeline}
+        onClose={() => setDialog(null)} onSaved={async (id) => { setDialog(null); await refresh(); navigate(`/crm/${kind}/${id}${book}`); }} />
+    )}
+    {dialog === 'import' && kind !== 'deals' && (
+      <ImportDialog ws={ws} userId={userId} admin={admin} kind={kind} client={client} bookName={bookName} fields={context.fields}
+        onClose={() => setDialog(null)} onDone={async () => { await refresh(); }} />
+    )}
+    {dialog === 'client' && (
+      <AddClient ws={ws} userId={userId} onClose={() => setDialog(null)} onSaved={async (id) => { setDialog(null); await refresh(); navigate(`/crm/companies?client=${id}`); }} />
+    )}
+    {dialog === 'stages' && <StagesDialog ws={ws} stages={context.stages} pipelines={context.pipelines} pipelineId={pipeline} onClose={() => setDialog(null)} onChanged={refresh} />}
+    {dialog === 'properties' && <PropertiesDialog ws={ws} userId={userId} kind={kind} fields={context.fields} onClose={() => setDialog(null)} onChanged={refresh} />}
+    {dialog === 'saveView' && (
+      <NameDialog title="Save view" label="View name" onClose={() => setDialog(null)} onSave={async (name) => {
+        const row = await result(platform.from('crm_views').insert({ workspace_id: ws, entity: kind, name, created_by: userId, position: views.data?.length ?? 0, ...savedFromView(view) }).select().single());
+        setActiveView(row.id);
+        setDialog(null);
+        await refresh();
+      }} />
+    )}
+    </>
+  );
+
   const selectedRecord = recordId ? record.data : null;
   const selectedCompany = kind === 'companies' ? (selectedRecord as Company | null) : null;
   const anyError = error || rows.error || ctx.error || record.error || clients.error || views.error;
   const objectName = kind[0].toUpperCase() + kind.slice(1);
-  const objectDescription = kind === 'companies'
-    ? 'Manage organisations, ownership, brand files and account activity.'
-    : kind === 'contacts'
-      ? 'Keep customer and prospect contacts connected to the right companies.'
-      : 'Track opportunities from first conversation through close.';
+  const previewRecord = previewId ? rows.data?.find((r) => r.id === previewId) ?? null : null;
+  const total = rows.data?.length ?? 0;
+  const advancedRules = view.rules.filter((r) => !(r.op === 'any' && QUICK_FILTERS[kind].includes(r.field)));
+  const chooseView = (id: string | null) => {
+    setActiveView(id);
+    setSelected(new Set());
+    setView(id === MINE ? mineView : id ? viewFromSaved(views.data!.find((v) => v.id === id)!) : EMPTY_VIEW);
+  };
+
+  const bookSwitcher = (
+    <Menu align="start" className={s.bookButton} label={<><span className={s.bookDot} aria-hidden="true" />{clientName ? `${clientName}'s CRM` : 'Our CRM'}</>}>
+      {(close) => (
+        <>
+          <span className={s.menuLabel}>Switch CRM</span>
+          <MenuItem onClick={() => { close(); navigate(`/crm/${kind}`); }}>{!client ? '✓ ' : ''}Our CRM</MenuItem>
+          {clients.data?.map((c) => (
+            <MenuItem key={c.id} onClick={() => { close(); navigate(`/crm/${kind}?client=${c.id}`); }}>{client === c.id ? '✓ ' : ''}{c.name}</MenuItem>
+          ))}
+          <hr className={s.menuRule} />
+          <MenuItem onClick={() => { close(); setDialog('client'); }}>+ New client CRM</MenuItem>
+        </>
+      )}
+    </Menu>
+  );
+
+  const objectTabs = (
+    <nav className={s.kinds} aria-label="Records">
+      {KINDS.map((x) => (
+        <Link key={x} className={`${s.kind} ${x === kind ? s.kindActive : ''}`} to={`/crm/${x}${book}`} aria-current={x === kind ? 'page' : undefined}>
+          {x[0].toUpperCase() + x.slice(1)}
+        </Link>
+      ))}
+    </nav>
+  );
+
+  if (recordId) {
+    return (
+      <div className={s.page}>
+        <div className={`${s.top} ${s.topSlim}`}>
+          <div className={s.titleRow}>{bookSwitcher}{objectTabs}</div>
+        </div>
+        {anyError && <p role="alert" className={s.error} style={{ marginTop: 12 }}>{error || errorText(anyError)}</p>}
+        {selectedRecord ? (
+          <RecordView ws={ws} userId={userId} kind={kind} record={selectedRecord} columns={columns} people={context.people}
+            editable={editable(selectedRecord)} suggestions={suggestions} onSave={saveCell} book={book}
+            actions={(close) => (
+              <>
+                {selectedCompany?.drive_folder_id && <MenuItem onClick={() => { close(); navigate(`/drive/folder/${selectedCompany.drive_folder_id}`); }}>Open brand files</MenuItem>}
+                {selectedCompany && !selectedCompany.client_id && (selectedCompany.is_client
+                  ? <MenuItem onClick={() => { close(); navigate(`/crm/companies?client=${selectedCompany.id}`); }}>Open {selectedCompany.name}'s CRM</MenuItem>
+                  : editable(selectedCompany) && (
+                    <MenuItem disabled={busy} onClick={() => { close(); void act(async () => {
+                      await result(platform.from('crm_companies').update({ is_client: true }).eq('id', selectedCompany.id).eq('workspace_id', ws));
+                      navigate(`/crm/companies?client=${selectedCompany.id}`);
+                    }); }}>Give it its own CRM</MenuItem>
+                  ))}
+                <MenuItem onClick={() => { close(); navigate(`/agents?crm=${recordId}&crm_kind=${kind}`); }}>Ask Sales Assistant</MenuItem>
+                {admin && (
+                  <>
+                    <hr className={s.menuRule} />
+                    <MenuItem danger disabled={busy} onClick={() => {
+                      close();
+                      if (!window.confirm(`Delete ${selectedRecord.name}? Its contacts and deals stay, unlinked; its Drive folder is kept.`)) return;
+                      void act(async () => {
+                        await result(platform.from(TABLES[kind]).delete().eq('id', selectedRecord.id).eq('workspace_id', ws));
+                        navigate(`/crm/${kind}${book}`);
+                      });
+                    }}>Delete {SINGULAR[kind]}</MenuItem>
+                  </>
+                )}
+              </>
+            )} />
+        ) : (
+          <div className={s.empty}>{record.isPending ? 'Loading…' : 'This record is no longer available.'}</div>
+        )}
+        {dialogs}
+      </div>
+    );
+  }
 
   return (
     <div className={s.page}>
       <div className={s.top}>
         <div className={s.titleRow}>
           <div className={s.titleBlock}>
-            <span className={s.eyebrow}>{clientName ? `${clientName}'s CRM` : 'CRM'}</span>
-            <h1 className={s.title}>{objectName}</h1>
-            {!recordId && <p className={s.subtitle}>{objectDescription}</p>}
+            {bookSwitcher}
+            <h1 className={s.title}>
+              {objectName}
+              {rows.data && <span className={s.titleCount}>{total.toLocaleString()}{total === LIMIT ? '+' : ''} {total === 1 ? 'record' : 'records'}</span>}
+            </h1>
           </div>
-          <div className={s.books} role="navigation" aria-label="CRMs">
-            <Link className={`${s.chip} ${!client ? s.chipActive : ''}`} to={`/crm/${kind}`}>Our CRM</Link>
-            {clients.data?.map((c) => (
-              <Link key={c.id} className={`${s.chip} ${client === c.id ? s.chipActive : ''}`} to={`/crm/${kind}?client=${c.id}`}>{c.name}</Link>
-            ))}
-            <button className={s.chip} onClick={() => setDialog('client')}>+ Client CRM</button>
+          <div className={s.headerActions}>
+            <Menu label="Actions">
+              {(close) => (
+                <>
+                  {kind !== 'deals' && <MenuItem onClick={() => { close(); setDialog('import'); }}>Import from a file or Drive</MenuItem>}
+                  <MenuItem disabled={!rows.data?.length} onClick={() => { close(); exportCsv(); }}>Export this view (CSV)</MenuItem>
+                  {kind === 'contacts' && <MenuItem disabled={busy} onClick={() => { close(); findEmails(); }}>Find missing emails</MenuItem>}
+                  {kind === 'deals' && admin && <MenuItem onClick={() => { close(); setDialog('stages'); }}>Edit pipeline stages</MenuItem>}
+                  {admin && <MenuItem onClick={() => { close(); setDialog('properties'); }}>Manage properties</MenuItem>}
+                </>
+              )}
+            </Menu>
+            {kind !== 'deals' && <button className={s.button} onClick={() => setDialog('import')}>Import</button>}
+            <button className={s.primary} onClick={() => setDialog('new')}>Create {SINGULAR[kind]}</button>
           </div>
         </div>
-        <nav className={s.kinds} aria-label="Records">
-          {KINDS.map((x) => (
-            <Link key={x} className={`${s.kind} ${x === kind ? s.kindActive : ''}`} to={`/crm/${x}${book}`}>
-              {x[0].toUpperCase() + x.slice(1)}
-              {x === kind && !recordId && rows.data && <span className={s.count}>{rows.data.length}{rows.data.length === LIMIT ? '+' : ''}</span>}
-            </Link>
-          ))}
-        </nav>
+        {objectTabs}
       </div>
 
       {anyError && <p role="alert" className={s.error} style={{ marginTop: 12 }}>{error || errorText(anyError)}</p>}
 
-      {recordId ? (
-        <>
-          <div className={`${s.toolbar} ${s.recordToolbar}`}>
-            <Link className={s.button} to={`/crm/${kind}${book}`} aria-label={`Back to ${kind}`}>
-              <span aria-hidden="true">←</span> {objectName}
-            </Link>
-            {selectedCompany?.drive_folder_id && (
-              <Link className={s.primary} to={`/drive/folder/${selectedCompany.drive_folder_id}`}>
-                Brand files
-              </Link>
-            )}
-            {selectedCompany && !selectedCompany.client_id && (selectedCompany.is_client
-              ? <Link className={s.button} to={`/crm/companies?client=${selectedCompany.id}`}>Open {selectedCompany.name}'s CRM</Link>
-              : editable(selectedCompany) && (
-                <button className={s.button} disabled={busy} onClick={() => void act(async () => {
-                  await result(platform.from('crm_companies').update({ is_client: true }).eq('id', selectedCompany.id).eq('workspace_id', ws));
-                  navigate(`/crm/companies?client=${selectedCompany.id}`);
-                })}>Give it its own CRM</button>
-              ))}
-            <Link className={s.button} to={`/agents?crm=${recordId}&crm_kind=${kind}`}>Ask Sales Assistant</Link>
-            <span className={s.spacer} />
-            {admin && selectedRecord && (
-              <button className={`${s.button} ${s.danger}`} disabled={busy} onClick={() => {
-                if (!window.confirm(`Delete ${selectedRecord.name}? Its contacts and deals stay, unlinked; its Drive folder is kept.`)) return;
-                void act(async () => {
-                  await result(platform.from(TABLES[kind]).delete().eq('id', selectedRecord.id).eq('workspace_id', ws));
-                  navigate(`/crm/${kind}${book}`);
-                });
-              }}>Delete</button>
-            )}
+      <div className={s.viewTabs} role="tablist" aria-label={`${objectName} views`}>
+        <button role="tab" aria-selected={!activeView} className={`${s.viewTab} ${!activeView ? s.viewTabOn : ''}`} onClick={() => chooseView(null)}>All {kind}</button>
+        <button role="tab" aria-selected={activeView === MINE} className={`${s.viewTab} ${activeView === MINE ? s.viewTabOn : ''}`} onClick={() => chooseView(MINE)}>My {kind}</button>
+        {views.data?.map((v) => (
+          <button key={v.id} role="tab" aria-selected={activeView === v.id} className={`${s.viewTab} ${activeView === v.id ? s.viewTabOn : ''}`} onClick={() => chooseView(v.id)}>{v.name}</button>
+        ))}
+        <span className={s.viewTabActions}>
+          {dirty && savedView && (
+            <button className={s.linkButton} disabled={busy} onClick={() => void act(() => result(platform.from('crm_views').update(savedFromView(view)).eq('id', savedView.id)))}>Save changes to “{savedView.name}”</button>
+          )}
+          {dirty && <button className={s.linkButton} onClick={() => setDialog('saveView')}>+ Save as new view</button>}
+          {dirty && <button className={s.linkButton} onClick={() => chooseView(activeView)}>Reset</button>}
+          {savedView && !dirty && (admin || savedView.created_by === userId) && (
+            <button className={`${s.linkButton} ${s.danger}`} onClick={() => {
+              if (!window.confirm(`Delete the view “${savedView.name}”?`)) return;
+              void act(async () => { await result(platform.from('crm_views').delete().eq('id', savedView.id)); chooseView(null); });
+            }}>Delete view</button>
+          )}
+        </span>
+      </div>
+
+      <div className={s.filterRow}>
+        <label className={s.searchWrap}>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m16.5 16.5 4 4" /></svg>
+          <span className={s.srOnly}>Search {kind}</span>
+          <input className={s.search} type="search" placeholder={`Search ${kind} by name`} value={search} onChange={(e) => setSearch(e.target.value)} />
+        </label>
+        {QUICK_FILTERS[kind].map((key) => {
+          const c = columns.find((x) => x.key === key);
+          return c ? <QuickFilter key={key} column={c} view={view} onView={setView} /> : null;
+        })}
+        {kind === 'companies' && (
+          <button className={`${s.filterButton} ${view.rules.some((r) => r.field === 'customer_since' && r.op === 'not_empty') ? s.filterButtonOn : ''}`}
+            onClick={() => {
+              const on = view.rules.some((r) => r.field === 'customer_since' && r.op === 'not_empty');
+              setView({ ...view, rules: on ? view.rules.filter((r) => !(r.field === 'customer_since' && r.op === 'not_empty')) : [...view.rules, { field: 'customer_since', op: 'not_empty' }] });
+            }}>Customers only</button>
+        )}
+        <button className={`${s.filterButton} ${showFilters || advancedRules.length ? s.filterButtonOn : ''}`} onClick={() => {
+          if (!showFilters && !advancedRules.length) {
+            const c = visible[1] ?? columns[0];
+            setView({ ...view, rules: [...view.rules, { field: c.key, op: OPERATORS[filterKind(c.type)][0].op }] });
+          }
+          setShowFilters(!showFilters);
+        }}>
+          <svg aria-hidden="true" viewBox="0 0 24 24" className={s.filterIcon}><path d="M4 6h16M7 12h10M10 18h4" /></svg>
+          Advanced filters{advancedRules.length ? ` (${advancedRules.length})` : ''}
+        </button>
+        {view.rules.length > 0 && <button className={s.linkButton} onClick={() => { setView({ ...view, rules: [] }); setShowFilters(false); }}>Clear all</button>}
+        <span className={s.spacer} />
+        {kind === 'deals' && (
+          <div className={s.segmented} role="group" aria-label="Layout">
+            <button className={!board ? s.segmentOn : undefined} aria-pressed={!board} onClick={() => setBoard(false)}>Table</button>
+            <button className={board ? s.segmentOn : undefined} aria-pressed={board} onClick={() => setBoard(true)}>Board</button>
           </div>
-          {selectedRecord ? (
-            <RecordView ws={ws} userId={userId} kind={kind} record={selectedRecord} columns={columns} people={context.people}
-              editable={editable(selectedRecord)} suggestions={suggestions} onSave={saveCell} book={book} />
+        )}
+        <div className={s.menuWrap}>
+          <button ref={columnsButton} className={s.filterButton} onClick={() => setColumnsOpen(!columnsOpen)} aria-haspopup="dialog" aria-expanded={columnsOpen}>Edit columns</button>
+          <Floating open={columnsOpen} anchor={columnsButton} placement="bottom-end" offset={4} onDismiss={() => setColumnsOpen(false)} role="dialog" aria-label="Columns" className={s.menu}>
+            <span className={s.menuLabel}>Shown columns</span>
+            {columns.slice(1).map((c) => {
+              const hidden = view.columns[c.key]?.hidden ?? !c.shown;
+              return (
+                <label key={c.key} className={s.menuCheck}>
+                  <input type="checkbox" checked={!hidden} onChange={() => setView({ ...view, columns: { ...view.columns, [c.key]: { ...view.columns[c.key], hidden: !hidden } } })} />
+                  {c.label}
+                </label>
+              );
+            })}
+            {admin && <MenuItem onClick={() => { setColumnsOpen(false); setDialog('properties'); }}>Manage properties…</MenuItem>}
+          </Floating>
+        </div>
+      </div>
+
+      {(showFilters || advancedRules.length > 0) && <FilterBar view={view} columns={columns} onView={setView} hide={(r) => r.op === 'any' && QUICK_FILTERS[kind].includes(r.field)} />}
+      {emailJob && (
+        <div className={s.notice} role="status">
+          <span>
+            {!emailSearch.data || emailSearch.data.status === 'queued' || emailSearch.data.status === 'running'
+              ? `Searching for emails for ${emailJob.contacts} contact${emailJob.contacts === 1 ? '' : 's'}… results appear as each company is done.${emailJob.mailboxCheck ? '' : ' Mailbox checks are not set up on this server, so only addresses published on company websites can be found.'}`
+              : emailSearch.data.status === 'succeeded'
+                ? `Email search finished: ${Object.entries(emailSearch.data.result ?? {}).filter(([k]) => !['contacts', 'domains'].includes(k)).map(([k, v]) => `${v} ${k.toLowerCase()}`).join(', ') || 'nothing to do'}. See the Email status column.`
+                : `Email search stopped: ${emailSearch.data.last_error ?? emailSearch.data.status}`}
+          </span>
+          <button className={s.linkButton} onClick={() => setEmailJob(null)}>Dismiss</button>
+        </div>
+      )}
+      {clientName && <p className={s.bookNote}>You are in <strong>{clientName}'s CRM</strong>. Its records stay separate from our CRM.</p>}
+      {rows.data && rows.data.length > 0 && (
+        <Bento kind={kind} rows={rows.data} context={context} narrowed={!!search.trim() || view.rules.length > 0} book={book}
+          onPick={(field, value, op = 'any') => {
+            const rule: Rule = op === 'any' ? { field, op, value: [value] } : { field, op, value };
+            setView({ ...view, rules: [...view.rules.filter((r) => r.field !== field), rule] });
+            if (op === 'is') setShowFilters(true);
+          }} />
+      )}
+
+      {selected.size > 0 && (
+        <div className={s.bulk} role="toolbar" aria-label="Selected record actions">
+          <strong>{selected.size} selected</strong>
+          {selected.size < total && <button className={s.linkButton} onClick={() => setSelected(new Set(rows.data!.map((r) => r.id)))}>Select all {total.toLocaleString()}</button>}
+          <span className={s.bulkDivider} />
+          {kind === 'contacts' && (
+            <button className={s.button} disabled={busy || selected.size > MAX_EMAIL_SELECTION}
+              title={selected.size > MAX_EMAIL_SELECTION ? `Select up to ${MAX_EMAIL_SELECTION}, or use Actions → Find missing emails` : undefined}
+              onClick={() => findEmails([...selected])}>Find emails</button>
+          )}
+          {admin && <button className={`${s.button} ${s.danger}`} disabled={busy} onClick={deleteSelected}>Delete</button>}
+          <span className={s.spacer} />
+          <button className={s.linkButton} onClick={() => setSelected(new Set())}>Clear selection</button>
+        </div>
+      )}
+
+      {rows.isPending ? (
+        <div className={s.empty}>Loading…</div>
+      ) : kind === 'deals' && board ? (
+        <DealsBoard
+          deals={(rows.data ?? []) as Deal[]}
+          stages={context.stages}
+          pipelines={context.pipelines}
+          pipelineId={pipeline}
+          onPipeline={setPipelineId}
+          companyName={(id) => context.companies.find((c) => c.id === id)?.name ?? ''}
+          canEdit={editable}
+          onMove={(d, stageId) => saveCell(d, columns.find((c) => c.key === 'stage_id')!, stageId)}
+          book={book}
+        />
+      ) : !rows.data?.length ? (
+        <div className={s.empty}>
+          {search || view.rules.length ? (
+            <>
+              <p className={s.emptyTitle}>No {kind} match this view</p>
+              <p>Try a different search or remove some filters.</p>
+              <button className={s.button} onClick={() => { setSearch(''); setView({ ...view, rules: [] }); }}>Clear search and filters</button>
+            </>
           ) : (
-            <div className={s.empty}>{record.isPending ? 'Loading…' : 'This record is no longer available.'}</div>
-          )}
-        </>
-      ) : (
-        <>
-          <div className={s.viewBar}>
-            <span className={s.viewLabel}>Views</span>
-            <div className={s.views} role="navigation" aria-label={`Saved ${kind} views`}>
-              <button className={`${s.chip} ${!activeView ? s.chipActive : ''}`} onClick={() => { setActiveView(null); setView(EMPTY_VIEW); }}>All {kind}</button>
-              {views.data?.map((v) => (
-                <button key={v.id} className={`${s.chip} ${activeView === v.id ? s.chipActive : ''}`} onClick={() => { setActiveView(v.id); setView(viewFromSaved(v)); }}>{v.name}</button>
-              ))}
-              {dirty && savedView && (
-                <button className={s.ghost} disabled={busy} onClick={() => void act(() => result(platform.from('crm_views').update(savedFromView(view)).eq('id', savedView.id)))}>Update “{savedView.name}”</button>
-              )}
-              {dirty && <button className={s.ghost} onClick={() => setDialog('saveView')}>Save as view</button>}
-              {savedView && (admin || savedView.created_by === userId) && (
-                <button className={s.ghost} onClick={() => {
-                  if (!window.confirm(`Delete the view “${savedView.name}”?`)) return;
-                  void act(async () => { await result(platform.from('crm_views').delete().eq('id', savedView.id)); setActiveView(null); setView(EMPTY_VIEW); });
-                }}>Delete view</button>
-              )}
-            </div>
-          </div>
-
-          <div className={s.toolbar}>
-            <label className={s.searchWrap}>
-              <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" /><path d="m16.5 16.5 4 4" /></svg>
-              <span className={s.srOnly}>Search {kind}</span>
-              <input className={s.search} type="search" placeholder={`Search ${kind}…`} value={search} onChange={(e) => setSearch(e.target.value)} />
-            </label>
-            <button className={s.button} onClick={() => setView({ ...view, rules: [...view.rules, { field: (visible[1] ?? columns[0]).key, op: OPERATORS[filterKind((visible[1] ?? columns[0]).type)][0].op }] })}>+ Filter</button>
-            {kind === 'companies' && (
-              <button className={s.button} onClick={() => setView({ ...view, rules: [...view.rules, { field: 'customer_since', op: 'not_empty' }] })}>Customers</button>
-            )}
-            {kind === 'deals' && <button className={s.button} onClick={() => setBoard(!board)}>{board ? 'Table' : 'Board'}</button>}
-            <div className={s.menuWrap}>
-              <button ref={columnsButton} className={s.button} onClick={() => setColumnsOpen(!columnsOpen)} aria-haspopup="dialog" aria-expanded={columnsOpen}>Columns</button>
-              <Floating open={columnsOpen} anchor={columnsButton} placement="bottom-start" offset={4} onDismiss={() => setColumnsOpen(false)} role="dialog" aria-label="Columns" className={s.menu}>
-                  {columns.slice(1).map((c) => {
-                    const hidden = view.columns[c.key]?.hidden ?? !c.shown;
-                    return (
-                      <label key={c.key}>
-                        <input type="checkbox" checked={!hidden} onChange={() => setView({ ...view, columns: { ...view.columns, [c.key]: { ...view.columns[c.key], hidden: !hidden } } })} />
-                        {c.label}
-                      </label>
-                    );
-                  })}
-                  {admin && <button className={s.ghost} onClick={() => { setColumnsOpen(false); setDialog('properties'); }}>Manage properties…</button>}
-              </Floating>
-            </div>
-            <span className={s.spacer} />
-            {kind !== 'deals' && <button className={s.button} onClick={() => setDialog('import')}>Import</button>}
-            {kind === 'contacts' && <button className={s.button} disabled={busy} onClick={() => findEmails()}>Find emails</button>}
-            <button className={s.button} onClick={exportCsv} disabled={!rows.data?.length}>Export</button>
-            {kind === 'deals' && admin && <button className={s.button} onClick={() => setDialog('stages')}>Stages</button>}
-            <button className={s.primary} onClick={() => setDialog('new')}>Create {SINGULAR[kind]}</button>
-          </div>
-
-          {view.rules.length > 0 && <FilterBar view={view} columns={columns} onView={setView} />}
-          {emailJob && (
-            <p className={s.hint} role="status" style={{ padding: '0 20px 8px' }}>
-              {!emailSearch.data || emailSearch.data.status === 'queued' || emailSearch.data.status === 'running'
-                ? `Searching for emails for ${emailJob.contacts} contact${emailJob.contacts === 1 ? '' : 's'}… results appear here as each company is done.${emailJob.mailboxCheck ? '' : ' Mailbox checks are not set up on this server, so only addresses published on company websites can be found.'}`
-                : emailSearch.data.status === 'succeeded'
-                  ? `Email search finished: ${Object.entries(emailSearch.data.result ?? {}).filter(([k]) => !['contacts', 'domains'].includes(k)).map(([k, v]) => `${v} ${k.toLowerCase()}`).join(', ') || 'nothing to do'}. See the Email status column.`
-                  : `Email search stopped: ${emailSearch.data.last_error ?? emailSearch.data.status}`}
-              {' '}<button className={s.ghost} onClick={() => setEmailJob(null)}>Dismiss</button>
-            </p>
-          )}
-          {clientName && <p className={s.hint} style={{ padding: '0 20px 8px' }}>Records here stay separate from our CRM. Companies added here get no Drive folder.</p>}
-          {selected.size > 0 && (
-            <div className={s.bulk} role="toolbar" aria-label="Selected record actions">
-              <strong>{selected.size} selected</strong>
-              {kind === 'contacts' && (
-                <button className={s.button} disabled={busy || selected.size > MAX_EMAIL_SELECTION}
-                  title={selected.size > MAX_EMAIL_SELECTION ? `Select up to ${MAX_EMAIL_SELECTION}, or use Find emails above for all` : undefined}
-                  onClick={() => findEmails([...selected])}>Find emails</button>
-              )}
-              {admin && <button className={`${s.button} ${s.danger}`} disabled={busy} onClick={deleteSelected}>Delete</button>}
-              <button className={s.ghost} onClick={() => setSelected(new Set())}>Clear</button>
-            </div>
-          )}
-
-          {!rows.isPending && rows.data && (
-            <div className={s.resultMeta} aria-live="polite">
-              {rows.data.length.toLocaleString()}{rows.data.length === LIMIT ? '+' : ''} {rows.data.length === 1 ? SINGULAR[kind] : kind}
-              {(search || view.rules.length > 0) && <span> matching this view</span>}
-            </div>
-          )}
-
-          {rows.isPending ? (
-            <div className={s.empty}>Loading…</div>
-          ) : kind === 'deals' && board ? (
-            <DealsBoard
-              deals={(rows.data ?? []) as Deal[]}
-              stages={context.stages}
-              pipelines={context.pipelines}
-              pipelineId={pipeline}
-              onPipeline={setPipelineId}
-              companyName={(id) => context.companies.find((c) => c.id === id)?.name ?? ''}
-              canEdit={editable}
-              onMove={(d, stageId) => saveCell(d, columns.find((c) => c.key === 'stage_id')!, stageId)}
-              book={book}
-            />
-          ) : !rows.data?.length && !search && !view.rules.length ? (
-            <div className={s.empty}>
-              <p>No {kind} in {bookName} yet.</p>
+            <>
+              <p className={s.emptyTitle}>No {kind} in {bookName} yet</p>
               <div className={s.choiceRow} style={{ justifyContent: 'center' }}>
                 <button className={s.primary} onClick={() => setDialog('new')}>Create {SINGULAR[kind]}</button>
                 {kind !== 'deals' && <button className={s.button} onClick={() => setDialog('import')}>Import from a file or Drive</button>}
               </div>
-            </div>
-          ) : (
-            <RecordTable kind={kind} records={rows.data ?? []} columns={visible} view={view} onView={setView} canEdit={editable}
-              onSave={saveCell} selected={selected} onSelect={setSelected} book={book} suggestions={suggestions} />
+            </>
           )}
-        </>
+        </div>
+      ) : (
+        <RecordTable key={`${search}|${JSON.stringify(view.rules)}|${view.sort}|${view.sortDesc}`} kind={kind} records={rows.data} columns={visible} view={view} onView={setView} canEdit={editable}
+          onSave={saveCell} selected={selected} onSelect={setSelected} book={book} suggestions={suggestions} onPreview={(r) => setPreviewId(r.id)} />
       )}
 
-      {dialog === 'new' && ctx.data && (
-        <NewRecord ws={ws} userId={userId} kind={kind} client={client} ctx={ctx.data} pipelineId={pipeline}
-          onClose={() => setDialog(null)} onSaved={async (id) => { setDialog(null); await refresh(); navigate(`/crm/${kind}/${id}${book}`); }} />
+      {previewRecord && (
+        <Preview kind={kind} record={previewRecord} columns={columns} editable={editable(previewRecord)} suggestions={suggestions}
+          onSave={saveCell} onClose={() => setPreviewId(null)} book={book} />
       )}
-      {dialog === 'import' && kind !== 'deals' && (
-        <ImportDialog ws={ws} userId={userId} admin={admin} kind={kind} client={client} bookName={bookName} fields={context.fields}
-          onClose={() => setDialog(null)} onDone={async () => { await refresh(); }} />
-      )}
-      {dialog === 'client' && (
-        <AddClient ws={ws} userId={userId} onClose={() => setDialog(null)} onSaved={async (id) => { setDialog(null); await refresh(); navigate(`/crm/companies?client=${id}`); }} />
-      )}
-      {dialog === 'stages' && <StagesDialog ws={ws} stages={context.stages} pipelines={context.pipelines} pipelineId={pipeline} onClose={() => setDialog(null)} onChanged={refresh} />}
-      {dialog === 'properties' && <PropertiesDialog ws={ws} userId={userId} kind={kind} fields={context.fields} onClose={() => setDialog(null)} onChanged={refresh} />}
-      {dialog === 'saveView' && (
-        <NameDialog title="Save view" label="View name" onClose={() => setDialog(null)} onSave={async (name) => {
-          const row = await result(platform.from('crm_views').insert({ workspace_id: ws, entity: kind, name, created_by: userId, position: views.data?.length ?? 0, ...savedFromView(view) }).select().single());
-          setActiveView(row.id);
-          setDialog(null);
-          await refresh();
-        }} />
-      )}
+      {dialogs}
     </div>
   );
 }
 
-function FilterBar({ view, columns, onView }: { view: ViewState; columns: Column[]; onView: (v: ViewState) => void }) {
+function FilterBar({ view, columns, onView, hide }: { view: ViewState; columns: Column[]; onView: (v: ViewState) => void; hide?: (r: Rule) => boolean }) {
   const setRule = (i: number, rule: Rule) => onView({ ...view, rules: view.rules.map((r, j) => (j === i ? rule : r)) });
   return (
     <div className={s.filters}>
       {view.rules.map((rule, i) => {
+        if (hide?.(rule)) return null;
         const column = columns.find((c) => c.key === rule.field) ?? columns[0];
         const fk = filterKind(column.type);
         const value = Array.isArray(rule.value) ? rule.value[0] ?? '' : rule.value ?? '';
@@ -450,13 +546,16 @@ function FilterBar({ view, columns, onView }: { view: ViewState; columns: Column
           </span>
         );
       })}
+      <button className={s.linkButton} onClick={() => {
+        const c = columns[1] ?? columns[0];
+        onView({ ...view, rules: [...view.rules, { field: c.key, op: OPERATORS[filterKind(c.type)][0].op }] });
+      }}>+ Add filter</button>
       {view.rules.length > 1 && (
         <select className={s.rule} aria-label="Match" value={view.match} onChange={(e) => onView({ ...view, match: e.target.value as 'all' | 'any' })}>
           <option value="all">Match all filters</option>
           <option value="any">Match any filter</option>
         </select>
       )}
-      <button className={s.ghost} onClick={() => onView({ ...view, rules: [] })}>Clear filters</button>
     </div>
   );
 }
