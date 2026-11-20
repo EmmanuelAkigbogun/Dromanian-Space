@@ -150,6 +150,7 @@ export function Sidebar({ primaryNavigation, secondaryNavigation = [] }: Sidebar
           <>
             {link('/agents', 'Agent directory', 'agents')}
             {link('/agents/team', 'Team chat', 'team')}
+            {link('/agents/history', 'History', 'clock')}
           </>,
         )}
         <p className={styles.hint}>Open an agent to start a private conversation, choose knowledge sources and review its proposals.</p>

@@ -35,6 +35,7 @@ const CRMPage = lazy(() => import('@/app/routes/CRM/CRMPage'));
 const ThreadsPage = lazy(() => import('@/app/routes/Threads/ThreadsPage'));
 const DrivePage = lazy(() => import('@/app/routes/Drive/DrivePage'));
 const AgentsPage = lazy(() => import('@/app/routes/Agents/AgentsPage'));
+const AgentsHistory = lazy(() => import('@/app/routes/Agents/AgentsHistory'));
 const ThreadPanel = lazy(() => import('@/components/message/ThreadPanel').then((m) => ({ default: m.ThreadPanel })));
 const DmConversationView = lazy(() => import('@/components/dm').then((m) => ({ default: m.DmConversationView })));
 const CommandPalette = lazy(() => import('@/components/command-palette/CommandPalette').then((m) => ({ default: m.CommandPalette })));
@@ -164,6 +165,7 @@ function AppLayoutWithThread() {
               <Route path="/" element={<Home />} />
               <Route path="/ai" element={<Navigate to="/agents" replace />} />
               <Route path="/agents" element={<AgentsPage />} />
+              <Route path="/agents/history" element={<AgentsHistory />} />
               <Route path="/agents/:agentId" element={<AgentsPage />} />
               <Route path="/agents/conversations/:conversationId" element={<AgentsPage />} />
               <Route path="/agents/c/:conversationId" element={<AgentsPage />} />

@@ -15,4 +15,10 @@ describe('companionTools', () => {
   it('is a known, implemented tool', () => {
     expect(KNOWN_TOOLS).toContain('crm_report');
   });
+  it('gives read-only GitHub tools to the coordinator and workspace-reading agents only', () => {
+    expect(companionTools(['delegate_to_specialists'], { coordinator: true })).toEqual(expect.arrayContaining(['list_github_repos', 'read_github_repo']));
+    expect(companionTools(['search_workspace'])).toEqual(['search_workspace', 'list_github_repos', 'read_github_repo']);
+    expect(companionTools(['read_file'])).not.toContain('list_github_repos');
+    expect(KNOWN_TOOLS).toEqual(expect.arrayContaining(['list_github_repos', 'read_github_repo']));
+  });
 });

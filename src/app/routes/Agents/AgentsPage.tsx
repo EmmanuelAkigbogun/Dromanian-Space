@@ -110,6 +110,8 @@ const TOOL_LABELS: Record<string, string> = {
   search_crm_notes: 'Search CRM notes and comments',
   read_crm_record: 'Read CRM records',
   crm_report: 'Count and break down CRM records',
+  list_github_repos: 'List your connected GitHub repositories',
+  read_github_repo: 'Read a GitHub repository: commits and issues',
   list_drive: 'Find files and folders in Drive',
   compute_csv_metrics: 'Calculate metrics from CSV or Excel files',
   workspace_metrics: 'Calculate workspace metrics',
@@ -257,6 +259,11 @@ async function consumeEvents(response: Response, onEvent: (name: string, data: R
       const name = /^event: (.+)$/m.exec(chunk)?.[1];
       const raw = /^data: (.+)$/m.exec(chunk)?.[1];
       if (name && raw) await onEvent(name, JSON.parse(raw));
+      // The run is over: stop reading instead of waiting for the connection to close.
+      if (name === 'done') {
+        await reader.cancel().catch(() => {});
+        return;
+      }
     }
   }
 }
@@ -293,7 +300,7 @@ function Agents({ ws, userId, admin }: { ws: string; userId: string; admin: bool
   const conversations = useQuery({
     queryKey: [...base, 'conversations'],
     queryFn: () =>
-      result(platform.from('agent_conversations').select('*').eq('workspace_id', ws).order('last_message_at', { ascending: false }).limit(100)),
+      result(platform.from('agent_conversations').select('*').eq('workspace_id', ws).is('archived_at', null).order('last_message_at', { ascending: false }).limit(100)),
     staleTime: 5000,
   });
 
@@ -658,7 +665,10 @@ function AgentView(props: {
 
   const refresh = () => cache.invalidateQueries({ queryKey: base });
   const running = activity.data?.top.find((r) => ['running', 'queued'].includes(r.status));
-  const activeRunId = following ?? running?.id ?? null;
+  // A run the database already shows as finished is never "working", whatever its stream does.
+  const followedRun = following ? activity.data?.runs.find((r) => r.id === following) : undefined;
+  const followedFinished = !!followedRun && !['running', 'queued'].includes(followedRun.status);
+  const activeRunId = (followedFinished ? null : following) ?? running?.id ?? null;
   useEffect(() => {
     if (!sending && !activeRunId) return;
     const started = runStartedAt ?? (running?.created_at ? new Date(running.created_at).getTime() : Date.now());
@@ -952,6 +962,7 @@ function AgentView(props: {
           </div>
         </div>
         <div className={s.actions}>
+          <Link className={s.button} to="/agents/history">History</Link>
           <Link className={s.button} to="/agents">All agents</Link>
           {agent && (props.admin || agent.created_by === userId) && !isTeam && (
             <button className={s.button} onClick={() => setSettings(true)}>Agent settings</button>
@@ -1020,7 +1031,7 @@ function AgentView(props: {
               ))}
             </section>
           )}
-          {(sending || activeRunId) && (
+          {(sending || activeRunId) && !(followedFinished && !running) && (
             <section className={a.runStatus}>
               <span className={a.runSpinner} aria-hidden="true" />
               <div role="status" aria-live="polite" className={a.runStatusText}>

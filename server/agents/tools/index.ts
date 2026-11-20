@@ -4,6 +4,7 @@ import { submitTasksForApproval } from './approvals.js';
 import { browserScrape } from './browser.js';
 import { crmReport, readCrmRecord, proposeCrmUpdate, searchCrm, searchCrmNotes } from './crm.js';
 import { computeCsvMetrics } from './csv-metrics.js';
+import { listGithubRepos, readGithubRepo } from './github.js';
 import { listDrive, proposeDriveAction } from './drive.js';
 import { proposeChannelMessage, proposeDocument, proposeSocialPosts, proposeTask } from './propose.js';
 import { listTasks, readConversationTool, readFile, searchKnowledge, searchWorkspace } from './read.js';
@@ -18,6 +19,7 @@ export const TOOL_REGISTRY: Record<string, AgentTool> = Object.fromEntries(
     searchCrm, searchCrmNotes, readCrmRecord, crmReport, proposeCrmUpdate, listDrive, proposeDriveAction, searchWorkspace, searchKnowledge, readFile, readConversationTool, listTasks, computeCsvMetrics,
     proposeTask, proposeDocument, proposeChannelMessage, proposeSocialPosts, readCalendar, proposeCalendarEvent, workspaceMetrics, readBrandKit,
     readPersonalNotes, savePersonalNote, delegateToSpecialists, submitTasksForApproval, browserScrape,
+    listGithubRepos, readGithubRepo,
   ].map((t) => [t.name, t as unknown as AgentTool]),
 );
 
@@ -35,10 +37,16 @@ export const KNOWN_TOOLS = [...Object.keys(TOOL_REGISTRY), ...PROVIDER_TOOLS];
 export function companionTools(tools: readonly string[], opts: { coordinator?: boolean } = {}): string[] {
   const out = [...tools];
   if ((tools.includes('search_crm') || opts.coordinator) && !out.includes('crm_report')) out.push('crm_report');
+  // GitHub reads only what the requester's own connected accounts can read.
+  if (tools.includes('search_workspace') || tools.includes('list_tasks') || opts.coordinator) {
+    for (const name of ['list_github_repos', 'read_github_repo']) if (!out.includes(name)) out.push(name);
+  }
   return out;
 }
 
 /** Run guidance that goes with companion tools. */
+export const GITHUB_GUIDANCE = 'GitHub: the requester may have GitHub accounts connected in Darkspace. For anything about their repositories, commits, issues or connected accounts, call list_github_repos and read_github_repo; never ask them to paste a repository list. To pair repositories with tasks, read the repository and compare its commits and issues with the project tasks it returns.';
+
 export const CRM_COUNTS_GUIDANCE = 'CRM counts: this workspace has its own built-in CRM; never ask which CRM product or database is used. For any count, total, share or breakdown of CRM records (for example "how many companies have at least one contact"), call crm_report and quote its numbers and the CRM it covers. Never estimate from search_crm listings, which are capped at 50 rows.';
 
 export interface ToolAvailability {
