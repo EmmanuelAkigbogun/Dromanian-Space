@@ -11,6 +11,7 @@ import { asAuthenticated, authenticate, databasePool } from '../server/database.
 import { errorResponse, HttpError, json, readJson } from '../server/http.js';
 import { connect, connectionFor, createProjectFromRepo, disconnect, listRepos, reviewProject } from '../server/github.js';
 import { createProjectFolder, linkExistingTasks } from '../server/github-setup.js';
+import { log } from '../server/log.js';
 import { accountsOf, appConfig, appManifest, authorizeUrl, listAccountRepos, ownAccount, signState } from '../server/github-accounts.js';
 
 const uuid = z.string().uuid();
@@ -87,13 +88,22 @@ export async function POST(request: Request): Promise<Response> {
       case 'create_project': {
         await requireMember(user, body.workspace_id);
         if (body.account_id) await ownAccount(user.id, body.account_id);
-        const created = await createProjectFromRepo(body.workspace_id, user.id, body.repo, body.account_id);
+        const { suggest, ...created } = await createProjectFromRepo(body.workspace_id, user.id, body.repo, body.account_id);
         // Extras never undo the project: a failure is reported, not thrown.
         const folder_id = body.drive_folder === false ? null
-          : await createProjectFolder(user, body.workspace_id, created.project_id, body.repo).catch(() => null);
-        const linked = body.link_tasks === false ? 0
-          : await linkExistingTasks(user, body.workspace_id, created.project_id, body.repo, created.description).catch(() => 0);
-        return json({ ...created, folder_id, linked });
+          : await createProjectFolder(user, body.workspace_id, created.project_id, created.repo).catch(() => null);
+        // The two AI steps take minutes; answering only after them ran past
+        // the proxy's 100 s limit (524). They finish in the background.
+        const linkTasks = body.link_tasks !== false;
+        void Promise.allSettled([
+          suggest(),
+          linkTasks ? linkExistingTasks(user, body.workspace_id, created.project_id, created.repo, created.description) : Promise.resolve(0),
+        ]).then(([suggested, linked]) => {
+          for (const [step, r] of [['suggest tasks', suggested], ['link tasks', linked]] as const) {
+            if (r.status === 'rejected') log.warn('github project background step failed', { repo: created.repo, step, error: r.reason instanceof Error ? r.reason : String(r.reason) });
+          }
+        });
+        return json({ ...created, folder_id, background: true });
       }
       case 'app_manifest': {
         await requireMember(user, body.workspace_id, true);

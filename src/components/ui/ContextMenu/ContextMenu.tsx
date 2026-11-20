@@ -28,6 +28,11 @@ function useContextMenuContext() {
   return context;
 }
 
+/** Opens the surrounding menu from a button (null outside a menu). */
+export function useOpenContextMenu(): ((x: number, y: number) => void) | null {
+  return useContext(ContextMenuContext)?.onOpen ?? null;
+}
+
 interface ContextMenuProviderProps {
   children: ReactNode;
   onOpenChange?: (open: boolean) => void;
@@ -57,9 +62,12 @@ function Provider({ children, onOpenChange }: ContextMenuProviderProps) {
       if (event.key === 'Escape') onClose();
     };
 
-    document.addEventListener('click', handleClickOutside);
+    // Listen from the next tick, so the click that opened the menu from a
+    // button does not reach this listener and close it again.
+    const listen = setTimeout(() => document.addEventListener('click', handleClickOutside), 0);
     document.addEventListener('keydown', handleKeyDown);
     return () => {
+      clearTimeout(listen);
       document.removeEventListener('click', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
     };

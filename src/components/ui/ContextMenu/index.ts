@@ -5,4 +5,5 @@ export {
   Item as ContextMenuItem,
   Separator as ContextMenuSeparator,
   Label as ContextMenuLabel,
+  useOpenContextMenu,
 } from './ContextMenu';

@@ -130,8 +130,10 @@ export async function createProjectFromRepo(workspaceId: string, userId: string,
     p_issues: issues.map((i) => ({ number: i.number, title: i.title, body: (i.body ?? '').slice(0, 4000), url: i.html_url })),
   });
 
-  let suggested = 0;
-  try {
+  // The AI starting list is slow (a minute or more), so the caller runs it
+  // after answering; the suggestions land in task approvals.
+  const suggest = async (): Promise<number> => {
+    let suggested = 0;
     const readme = await fetch(`${API}/repos/${repo.full_name}/readme`, {
       headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github.raw', 'user-agent': 'darkspace-project-agent' },
       signal: AbortSignal.timeout(20_000),
@@ -146,10 +148,9 @@ export async function createProjectFromRepo(workspaceId: string, userId: string,
     if (ideas?.tasks?.length) {
       suggested = await rpc<number>('github_suggest_tasks', { p_actor: userId, p_project_id: projectId, p_tasks: ideas.tasks.slice(0, 8) });
     }
-  } catch (err) {
-    log.warn('github task suggestions failed', { repo: repo.full_name, error: err instanceof Error ? err : String(err) });
-  }
-  return { project_id: projectId, imported, suggested, description: repo.description };
+    return suggested;
+  };
+  return { project_id: projectId, repo: repo.full_name, imported, description: repo.description, suggest };
 }
 
 // ── Weekly review ───────────────────────────────────────────────────────────

@@ -1,8 +1,10 @@
-// The hover bar on a message holds reactions only: five quick ones and a
-// picker for the rest. Everything else (reply, copy, share, forward, thread,
-// pin, save, select, edit, delete) lives in the right-click / long-press menu.
+// The hover bar on a message holds reactions (five quick ones and a picker)
+// and one "More actions" button. Everything else (reply, copy, share, forward,
+// thread, pin, save, select, edit, delete) lives in the message menu, which
+// that button, a right-click or a long-press opens.
 import { memo, useCallback, useRef, useState } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { useOpenContextMenu } from '@/components/ui/ContextMenu';
 import { ReactionPicker } from '@/components/message/ReactionPicker';
 import { addReaction } from '@/lib/message';
 import type { Message } from '@/types';
@@ -28,6 +30,7 @@ export const MessageActions = memo(function MessageActions({ message, isOwn, onR
   const [showPicker, setShowPicker] = useState(false);
   const [pickerPosition, setPickerPosition] = useState<{ x: number; y: number } | undefined>();
   const pickerButton = useRef<HTMLButtonElement>(null);
+  const openMenu = useOpenContextMenu();
 
   const react = useCallback(async (emoji: string) => {
     setShowPicker(false);
@@ -66,7 +69,7 @@ export const MessageActions = memo(function MessageActions({ message, isOwn, onR
             setPickerPosition({ x: e.clientX, y: e.clientY });
             setShowPicker(true);
           }}
-          title="More reactions · right-click the message for other actions"
+          title="More reactions"
           aria-label="More reactions"
           aria-haspopup="dialog"
           aria-expanded={showPicker}
@@ -77,6 +80,24 @@ export const MessageActions = memo(function MessageActions({ message, isOwn, onR
           </svg>
           <span aria-hidden="true">+</span>
         </button>
+        {openMenu && (
+          <button
+            type="button"
+            className={styles.moreActions}
+            onClick={(e) => {
+              e.stopPropagation();
+              const r = e.currentTarget.getBoundingClientRect();
+              openMenu(r.right - 220, r.bottom + 4);
+            }}
+            title="More actions: copy, edit, delete…"
+            aria-label="More actions"
+            aria-haspopup="menu"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" />
+            </svg>
+          </button>
+        )}
       </div>
       {showPicker && (
         <ReactionPicker

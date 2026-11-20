@@ -34,6 +34,13 @@
   width: 100%;
 }
 
+/* Each row is its own layer (it is transformed), so the next row would paint
+   over the hover bar that rises above a message. Lift the active row. */
+.virtualRow:hover,
+.virtualRow:focus-within {
+  z-index: 2;
+}
+
 .loadMore {
   display: flex;
   justify-content: center;

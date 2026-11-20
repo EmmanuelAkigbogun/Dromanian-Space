@@ -227,14 +227,14 @@ function RepoPicker({ workspaceId, accounts, onClose }: { workspaceId: string; a
     for (const name of names) {
       setProgress((p) => ({ ...p, [name]: { state: 'working' } }));
       try {
-        const r = await post<{ project_id: string; imported: number; suggested: number; folder_id: string | null; linked: number }>({
+        const r = await post<{ project_id: string; imported: number; folder_id: string | null }>({
           action: 'create_project', workspace_id: workspaceId, repo: name, ...(accountId ? { account_id: accountId } : {}),
           drive_folder: driveFolder, link_tasks: linkTasks,
         });
         const parts = [`${r.imported} issues → tasks`];
-        if (linkTasks) parts.push(`${r.linked} existing tasks tied`);
-        if (r.suggested) parts.push(`${r.suggested} suggestions to approve`);
         if (driveFolder) parts.push(r.folder_id ? 'Drive folder ready' : 'no Drive folder');
+        // The AI steps finish on the server after this answer.
+        parts.push(linkTasks ? 'AI task suggestions and matching follow in a few minutes' : 'AI task suggestions follow in a few minutes');
         setProgress((p) => ({ ...p, [name]: { state: 'done', note: parts.join(' · '), projectId: r.project_id } }));
       } catch (e) {
         setProgress((p) => ({ ...p, [name]: { state: 'failed', note: (e as Error).message } }));
@@ -256,7 +256,7 @@ function RepoPicker({ workspaceId, accounts, onClose }: { workspaceId: string; a
                   <span className={styles.progressDot} aria-hidden="true" />
                   <span className={styles.repoText}>
                     <strong>{name}</strong>
-                    <span>{p.state === 'waiting' ? 'Waiting…' : p.state === 'working' ? 'Creating the project, importing issues, matching tasks…' : p.note}</span>
+                    <span>{p.state === 'waiting' ? 'Waiting…' : p.state === 'working' ? 'Creating the project and importing issues…' : p.note}</span>
                   </span>
                   {p.projectId && <button type="button" className={styles.link} onClick={() => { onClose(); navigate(`/projects/${p.projectId}`); }}>Open</button>}
                 </li>
