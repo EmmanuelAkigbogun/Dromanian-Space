@@ -69,7 +69,7 @@ export interface TaskActivity {
   created_at: string;
 }
 
-export type TaskAction = 'created' | 'status_changed' | 'assigned' | 'unassigned' | 'completed' | 'priority_changed' | 'edited' | 'commented' | 'label_added' | 'label_removed';
+export type TaskAction = 'created' | 'status_changed' | 'assigned' | 'unassigned' | 'completed' | 'priority_changed' | 'edited' | 'commented' | 'label_added' | 'label_removed' | 'agent_progress';
 
 export const TASK_STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
   { value: 'backlog', label: 'Backlog' },

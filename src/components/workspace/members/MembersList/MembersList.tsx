@@ -14,6 +14,7 @@ import { MemberActionsMenu } from './MemberActionsMenu';
 import { RemoveMemberConfirmDialog } from '../RemoveMemberConfirmDialog';
 import { RoleChangeDialog } from '../RoleChangeDialog';
 import type { WorkspaceMember, Profile, WorkspaceRole } from '@/types';
+import { BlockedMembers, blockMember } from './BlockedMembers';
 import styles from './MembersList.module.css';
 
 interface MemberWithProfile extends WorkspaceMember {
@@ -29,6 +30,7 @@ const ROLE_ORDER: Record<WorkspaceRole, number> = { owner: 0, admin: 1, member: 
 export function MembersList() {
   const { userId } = useAuth();
   const { currentWorkspace, isAdmin, isOwner } = useWorkspace();
+  const [blockedVersion, setBlockedVersion] = useState(0);
   const { toast } = useToast();
 
   const [members, setMembers] = useState<MemberWithProfile[]>([]);
@@ -296,6 +298,17 @@ export function MembersList() {
                         setRoleChangeTarget(member);
                       }}
                       onRemove={() => setRemoveTarget(member)}
+                      onBlock={() => {
+                        const name = member.profile?.display_name || member.profile?.username || 'this person';
+                        if (!currentWorkspace || !window.confirm(`Remove ${name} and block them? They lose access now and can't rejoin through an invite link, invitation or join request until you unblock them.`)) return;
+                        blockMember(currentWorkspace.id, member.user_id)
+                          .then(() => {
+                            setMembers((prev) => prev.filter((m) => m.user_id !== member.user_id));
+                            setBlockedVersion((v) => v + 1);
+                            toast({ variant: 'success', description: `${name} was removed and blocked.` });
+                          })
+                          .catch((e: Error) => toast({ variant: 'error', description: e.message }));
+                      }}
                       isProjectManager={projectManagers.has(member.user_id)}
                       onToggleProjectManager={isAdmin ? () => void toggleProjectManager(member) : undefined}
                     />
@@ -306,6 +319,8 @@ export function MembersList() {
           })}
         </ul>
       )}
+
+      {(isAdmin || isOwner) && currentWorkspace && <BlockedMembers workspaceId={currentWorkspace.id} version={blockedVersion} />}
 
       <RemoveMemberConfirmDialog
         open={removeTarget !== null}

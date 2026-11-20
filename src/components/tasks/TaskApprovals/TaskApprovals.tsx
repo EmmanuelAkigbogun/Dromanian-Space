@@ -18,6 +18,7 @@ import {
 } from '@/lib/tasks/approvals';
 import { TASK_PRIORITY_OPTIONS } from '@/types/task';
 import { formatRelativeTime } from '@/utils';
+import { StatusProposals } from './StatusProposals';
 import styles from './TaskApprovals.module.css';
 
 const PRIORITIES = TASK_PRIORITY_OPTIONS.filter((p) => p.value !== 'none').map((p) => ({ value: p.value, label: p.label }));
@@ -134,6 +135,7 @@ export function TaskApprovals({ workspaceId, isApprover, onPendingCountChange }:
 
   return (
     <section className={styles.approvals} aria-label="Task approvals">
+      <StatusProposals workspaceId={workspaceId} isApprover={isApprover} />
       <div className={styles.intro}>
         <div>
           <h3 className={styles.heading}>Waiting for approval{pending.length ? ` (${pending.length})` : ''}</h3>

@@ -6,11 +6,12 @@ import { useToast } from '@/components/ui/Toast';
 import { ProjectList } from '@/components/projects/ProjectList';
 import { ProjectDialog } from '@/components/projects/ProjectDialog';
 import type { Project } from '@/types';
+import { GithubConnectBar } from '@/components/github/GithubProjects';
 import styles from './ProjectsPage.module.css';
 
 export function ProjectsPage() {
   const navigate = useNavigate();
-  const { currentWorkspace } = useWorkspace();
+  const { currentWorkspace, isAdmin } = useWorkspace();
   const { toast } = useToast();
   const {
     projects,
@@ -108,6 +109,8 @@ export function ProjectsPage() {
           </button>
         </div>
       </div>
+
+      {currentWorkspace?.id && <GithubConnectBar workspaceId={currentWorkspace.id} isAdmin={isAdmin} />}
 
       <div className={styles.searchBar}>
         <div className={styles.searchInputWrapper}>

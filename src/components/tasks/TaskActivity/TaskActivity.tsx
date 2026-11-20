@@ -22,6 +22,7 @@ function getActionIcon(action: TaskAction): string {
     case 'commented': return 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z';
     case 'label_added':
     case 'label_removed': return 'M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z';
+    case 'agent_progress': return 'M6 3v12M18 9a3 3 0 100-6 3 3 0 000 6zM6 21a3 3 0 100-6 3 3 0 000 6zM18 9a9 9 0 01-9 9';
     default: return 'M12 2v20M2 12h20';
   }
 }
@@ -38,6 +39,7 @@ function getActionColor(action: TaskAction): string {
     case 'commented': return 'var(--color-info)';
     case 'label_added': return 'var(--color-primary)';
     case 'label_removed': return 'var(--color-error)';
+    case 'agent_progress': return 'var(--color-primary)';
     default: return 'var(--color-text-muted)';
   }
 }
@@ -123,9 +125,16 @@ export function TaskActivity({ taskId }: TaskActivityProps) {
               <div className={styles.entryContent}>
                 <div className={styles.entryDescription}>
                   <span className={styles.entryUser}>
-                    {profile?.display_name ?? profile?.username ?? 'Unknown'}
+                    {activity.action === 'agent_progress' ? 'Project agent' : profile?.display_name ?? profile?.username ?? 'Unknown'}
                   </span>{' '}
-                  {activity.description}
+                  {activity.action === 'agent_progress' ? activity.description?.replace(/^Project agent:s*/, '') : activity.description}
+                  {activity.action === 'agent_progress' && Array.isArray(activity.details?.commits) && (
+                    <span className={styles.commits}>
+                      {(activity.details.commits as Array<{ sha: string; url: string; message: string }>).map((c) => (
+                        <a key={c.sha} href={c.url} target="_blank" rel="noopener noreferrer" title={c.message} className={styles.commit}>{c.sha}</a>
+                      ))}
+                    </span>
+                  )}
                   {valueId && (
                     <span
                       className={styles.entryValue}

@@ -85,3 +85,25 @@
   text-align: center;
   padding: var(--space-4);
 }
+
+/* Commits linked by the project agent. */
+.commits {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: 6px;
+}
+
+.commit {
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--color-surface-secondary);
+  color: var(--color-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-decoration: none;
+}
+
+.commit:hover {
+  text-decoration: underline;
+}

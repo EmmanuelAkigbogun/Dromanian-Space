@@ -8,11 +8,13 @@ interface MemberActionsMenuProps {
   canManage: boolean;
   onRoleChange: (role: 'admin' | 'member') => void;
   onRemove: () => void;
+  /** Remove and keep them from rejoining until unblocked. */
+  onBlock?: () => void;
   isProjectManager: boolean;
   onToggleProjectManager?: () => void;
 }
 
-export function MemberActionsMenu({ currentRole, canManage, onRoleChange, onRemove, isProjectManager, onToggleProjectManager }: MemberActionsMenuProps) {
+export function MemberActionsMenu({ currentRole, canManage, onRoleChange, onRemove, onBlock, isProjectManager, onToggleProjectManager }: MemberActionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -80,6 +82,18 @@ export function MemberActionsMenu({ currentRole, canManage, onRoleChange, onRemo
               }}
             >
               Remove member
+            </button>
+          )}
+          {canManage && onBlock && (
+            <button
+              type="button"
+              className={`${styles.actionsItem} ${styles.actionsItemDanger}`}
+              onClick={() => {
+                onBlock();
+                setIsOpen(false);
+              }}
+            >
+              Remove and block
             </button>
           )}
       </Floating>

@@ -1,0 +1,219 @@
+.bar,
+.projectBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-surface);
+  font-size: 13px;
+}
+
+.bar {
+  margin: 0 0 16px;
+}
+
+.projectBar {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+}
+
+.mark {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  fill: var(--color-text);
+}
+
+.barText {
+  flex: 1;
+  min-width: 200px;
+  color: var(--color-text-secondary);
+}
+
+.projectBar .barText {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.barText strong {
+  color: var(--color-text);
+}
+
+.repoLink {
+  color: var(--color-text);
+  font-weight: var(--font-weight-semibold);
+  text-decoration: none;
+}
+
+.repoLink:hover {
+  text-decoration: underline;
+}
+
+.dot {
+  color: var(--color-text-muted);
+}
+
+.lastRun {
+  flex: 1;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  text-align: center;
+}
+
+.primary,
+.secondary {
+  padding: 7px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.primary {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+.primary:disabled,
+.secondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.link {
+  border: 0;
+  background: none;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.muted {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.error {
+  margin: 0;
+  color: var(--color-error);
+  font-size: 13px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.steps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.steps a {
+  color: var(--color-primary);
+}
+
+.input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.input:focus {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.repoList {
+  display: flex;
+  flex-direction: column;
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.repo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.repo:last-child {
+  border-bottom: 0;
+}
+
+.repo:hover:not(:disabled) {
+  background: var(--color-surface-secondary);
+}
+
+.repoText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.repoText strong {
+  font-size: 14px;
+}
+
+.repoText em {
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.repoText span {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repoMeta {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}

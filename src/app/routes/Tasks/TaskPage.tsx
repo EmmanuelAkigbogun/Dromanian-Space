@@ -6,6 +6,7 @@ import { useTasks } from '@/hooks/useTasks';
 import { platform } from '@/lib/platform';
 import { isTaskApprover, subscribeToTaskRequests } from '@/lib/tasks/approvals';
 import { TaskApprovals } from '@/components/tasks/TaskApprovals';
+import { usePendingStatusProposals } from '@/components/tasks/TaskApprovals/StatusProposals';
 import { TaskList } from '@/components/tasks/TaskList';
 import { TaskBoard } from '@/components/tasks/TaskBoard';
 import { TaskDialog } from '@/components/tasks/TaskDialog';
@@ -80,6 +81,7 @@ export function TaskPage() {
   }, [tasks, customStatusesVersion]);
 
   const workspaceId = currentWorkspace?.id;
+  const pendingStatusChanges = usePendingStatusProposals(workspaceId).data?.length ?? 0;
   useEffect(() => {
     if (!workspaceId || !userId) return;
     let cancelled = false;
@@ -215,8 +217,8 @@ export function TaskPage() {
             </button>
             <button type="button" role="tab" aria-selected={showApprovals} className={`${styles.tab} ${showApprovals ? styles.tabActive : ''}`} onClick={() => setTab(true)}>
               Approvals
-              {pendingApprovals > 0 && (
-                <span className={styles.tabBadge} aria-label={`${pendingApprovals} waiting`}>{pendingApprovals}</span>
+              {pendingApprovals + pendingStatusChanges > 0 && (
+                <span className={styles.tabBadge} aria-label={`${pendingApprovals + pendingStatusChanges} waiting`}>{pendingApprovals + pendingStatusChanges}</span>
               )}
             </button>
           </div>

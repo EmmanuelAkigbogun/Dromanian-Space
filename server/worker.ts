@@ -10,6 +10,7 @@ import { JOB_KINDS, runJob, runMaintenance } from './jobs/runner.js';
 import type { JobRow } from './jobs/types.js';
 import { reconcileStorage } from './storage-maintenance.js';
 import { runResidentSummaries } from './agents/resident.js';
+import { runGithubReviews } from './github.js';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -64,6 +65,11 @@ export function startWorker(options: WorkerOptions = {}): RunningWorker {
             return 0;
           });
           if (summaries) log.info('daily AI summaries started', { count: summaries });
+          const reviews = await runGithubReviews().catch((err) => {
+            log.warn('weekly GitHub reviews failed', { error: err instanceof Error ? err : String(err) });
+            return 0;
+          });
+          if (reviews) log.info('weekly GitHub reviews done', { count: reviews });
           if (Date.now() - lastStorageMaintenance > 60 * 60_000) {
             lastStorageMaintenance = Date.now();
             const storage = await reconcileStorage();
