@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { asAuthenticated, authenticate, databasePool } from '../server/database.js';
 import { errorResponse, HttpError, json, readJson } from '../server/http.js';
 import { connect, connectionFor, createProjectFromRepo, disconnect, listRepos, reviewProject } from '../server/github.js';
+import { createProjectFolder, linkExistingTasks } from '../server/github-setup.js';
 import { accountsOf, appConfig, appManifest, authorizeUrl, listAccountRepos, ownAccount, signState } from '../server/github-accounts.js';
 
 const uuid = z.string().uuid();
@@ -17,7 +18,7 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('connect'), workspace_id: uuid, token: z.string().min(20).max(400) }),
   z.object({ action: z.literal('disconnect'), workspace_id: uuid }),
   z.object({ action: z.literal('repos'), workspace_id: uuid, account_id: uuid.optional() }),
-  z.object({ action: z.literal('create_project'), workspace_id: uuid, repo: z.string().min(3).max(200), account_id: uuid.optional() }),
+  z.object({ action: z.literal('create_project'), workspace_id: uuid, repo: z.string().min(3).max(200), account_id: uuid.optional(), drive_folder: z.boolean().optional(), link_tasks: z.boolean().optional() }),
   z.object({ action: z.literal('app_manifest'), workspace_id: uuid, origin: z.string().url() }),
   z.object({ action: z.literal('authorize'), origin: z.string().url(), another: z.boolean().optional() }),
   z.object({ action: z.literal('disconnect_account'), account_id: uuid }),
@@ -83,10 +84,17 @@ export async function POST(request: Request): Promise<Response> {
         await requireMember(user, body.workspace_id);
         if (body.account_id) { await ownAccount(user.id, body.account_id); return json({ repos: await listAccountRepos(body.account_id) }); }
         return json({ repos: await listRepos(body.workspace_id) });
-      case 'create_project':
+      case 'create_project': {
         await requireMember(user, body.workspace_id);
         if (body.account_id) await ownAccount(user.id, body.account_id);
-        return json(await createProjectFromRepo(body.workspace_id, user.id, body.repo, body.account_id));
+        const created = await createProjectFromRepo(body.workspace_id, user.id, body.repo, body.account_id);
+        // Extras never undo the project: a failure is reported, not thrown.
+        const folder_id = body.drive_folder === false ? null
+          : await createProjectFolder(user, body.workspace_id, created.project_id, body.repo).catch(() => null);
+        const linked = body.link_tasks === false ? 0
+          : await linkExistingTasks(user, body.workspace_id, created.project_id, body.repo, created.description).catch(() => 0);
+        return json({ ...created, folder_id, linked });
+      }
       case 'app_manifest': {
         await requireMember(user, body.workspace_id, true);
         const origin = checkedOrigin(request, body.origin);

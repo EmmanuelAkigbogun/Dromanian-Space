@@ -198,60 +198,123 @@ export function GithubConnectBar({ workspaceId, isAdmin }: { workspaceId: string
 
 function RepoPicker({ workspaceId, accounts, onClose }: { workspaceId: string; accounts: GithubAccount[]; onClose: () => void }) {
   const navigate = useNavigate();
-  const { toast } = useToast();
+  const cache = useQueryClient();
   const [accountId, setAccountId] = useState<string | undefined>(accounts[0]?.id);
   const [search, setSearch] = useState('');
-  const [busy, setBusy] = useState<string | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [driveFolder, setDriveFolder] = useState(true);
+  const [linkTasks, setLinkTasks] = useState(true);
+  const [progress, setProgress] = useState<Record<string, { state: 'waiting' | 'working' | 'done' | 'failed'; note?: string; projectId?: string }>>({});
+  const running = Object.values(progress).some((p) => p.state === 'waiting' || p.state === 'working');
+  const finished = Object.keys(progress).length > 0 && !running;
   const repos = useQuery({
     queryKey: ['github-repos', workspaceId, accountId ?? 'token'],
     queryFn: () => post<{ repos: Repo[] }>({ action: 'repos', workspace_id: workspaceId, ...(accountId ? { account_id: accountId } : {}) }),
   });
+  const existing = useQuery({
+    queryKey: ['github-linked', workspaceId],
+    queryFn: async () => {
+      const { data } = await platform.from('project_github_links').select('repo_full_name,project_id').eq('workspace_id', workspaceId);
+      return new Map(((data ?? []) as { repo_full_name: string; project_id: string }[]).map((r) => [r.repo_full_name.toLowerCase(), r.project_id]));
+    },
+  });
   const list = useMemo(() => (repos.data?.repos ?? []).filter((r) => !search.trim() || r.full_name.toLowerCase().includes(search.trim().toLowerCase())), [repos.data, search]);
-  const create = (repo: Repo) => {
-    setBusy(repo.full_name);
-    post<{ project_id: string; imported: number; suggested: number }>({ action: 'create_project', workspace_id: workspaceId, repo: repo.full_name, ...(accountId ? { account_id: accountId } : {}) })
-      .then((r) => {
-        toast({ variant: 'success', description: `Project created: ${r.imported} issues imported as tasks${r.suggested ? `, ${r.suggested} suggested tasks waiting in Tasks → Approvals` : ''}.` });
-        onClose();
-        navigate(`/projects/${r.project_id}`);
-      })
-      .catch((e: Error) => toast({ variant: 'error', description: e.message }))
-      .finally(() => setBusy(null));
+  const toggle = (name: string) => setPicked((p) => { const n = new Set(p); if (n.has(name)) n.delete(name); else n.add(name); return n; });
+
+  const createAll = async () => {
+    const names = [...picked];
+    setProgress(Object.fromEntries(names.map((n) => [n, { state: 'waiting' as const }])));
+    for (const name of names) {
+      setProgress((p) => ({ ...p, [name]: { state: 'working' } }));
+      try {
+        const r = await post<{ project_id: string; imported: number; suggested: number; folder_id: string | null; linked: number }>({
+          action: 'create_project', workspace_id: workspaceId, repo: name, ...(accountId ? { account_id: accountId } : {}),
+          drive_folder: driveFolder, link_tasks: linkTasks,
+        });
+        const parts = [`${r.imported} issues → tasks`];
+        if (linkTasks) parts.push(`${r.linked} existing tasks tied`);
+        if (r.suggested) parts.push(`${r.suggested} suggestions to approve`);
+        if (driveFolder) parts.push(r.folder_id ? 'Drive folder ready' : 'no Drive folder');
+        setProgress((p) => ({ ...p, [name]: { state: 'done', note: parts.join(' · '), projectId: r.project_id } }));
+      } catch (e) {
+        setProgress((p) => ({ ...p, [name]: { state: 'failed', note: (e as Error).message } }));
+      }
+    }
+    void cache.invalidateQueries({ queryKey: ['github-linked', workspaceId] });
   };
+
+  const days = (iso: string) => Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 864e5));
+
   return (
-    <Dialog open onClose={onClose} title="New project from a repository" size="md">
+    <Dialog open onClose={running ? () => {} : onClose} title="New projects from repositories" size="lg">
       <div className={styles.form}>
-        {accounts.length > 1 && (
-          <div className={styles.accountTabs} role="tablist" aria-label="GitHub account">
-            {accounts.map((a) => (
-              <button key={a.id} type="button" role="tab" aria-selected={a.id === accountId} className={a.id === accountId ? styles.accountTabOn : undefined} onClick={() => setAccountId(a.id)}>
-                {a.avatar_url && <img src={a.avatar_url} alt="" />}@{a.login}
+        {Object.keys(progress).length ? (
+          <>
+            <ul className={styles.progressList}>
+              {Object.entries(progress).map(([name, p]) => (
+                <li key={name} data-state={p.state}>
+                  <span className={styles.progressDot} aria-hidden="true" />
+                  <span className={styles.repoText}>
+                    <strong>{name}</strong>
+                    <span>{p.state === 'waiting' ? 'Waiting…' : p.state === 'working' ? 'Creating the project, importing issues, matching tasks…' : p.note}</span>
+                  </span>
+                  {p.projectId && <button type="button" className={styles.link} onClick={() => { onClose(); navigate(`/projects/${p.projectId}`); }}>Open</button>}
+                </li>
+              ))}
+            </ul>
+            {finished && <div className={styles.actions}><button type="button" className={styles.primary} onClick={onClose}>Done</button></div>}
+          </>
+        ) : (
+          <>
+            {accounts.length > 1 && (
+              <div className={styles.accountTabs} role="tablist" aria-label="GitHub account">
+                {accounts.map((a) => (
+                  <button key={a.id} type="button" role="tab" aria-selected={a.id === accountId} className={a.id === accountId ? styles.accountTabOn : undefined} onClick={() => { setAccountId(a.id); setPicked(new Set()); }}>
+                    {a.avatar_url && <img src={a.avatar_url} alt="" />}@{a.login}
+                  </button>
+                ))}
+              </div>
+            )}
+            <input className={styles.input} autoFocus placeholder="Search repositories" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search repositories" />
+            <div className={styles.repoList}>
+              {repos.isPending && <p className={styles.muted}>Loading repositories…</p>}
+              {repos.error && <p className={styles.error}>{(repos.error as Error).message}</p>}
+              {list.map((r) => {
+                const already = existing.data?.get(r.full_name.toLowerCase());
+                return (
+                  <label key={r.full_name} className={`${styles.repo} ${already ? styles.repoDone : ''}`}>
+                    <input type="checkbox" disabled={!!already} checked={picked.has(r.full_name)} onChange={() => toggle(r.full_name)} />
+                    <span className={styles.repoText}>
+                      <strong>{r.full_name}{r.private && <em> private</em>}</strong>
+                      <span>{r.description ?? 'No description'}</span>
+                    </span>
+                    <span className={styles.repoMeta}>
+                      {already ? 'Already a project' : `pushed ${days(r.pushed_at)}d ago · ${r.open_issues_count} open`}
+                    </span>
+                  </label>
+                );
+              })}
+              {repos.data && !list.length && <p className={styles.muted}>No repositories here. Use “Choose repositories” in Settings → Connected accounts to give Darkspace access to more.</p>}
+            </div>
+            <div className={styles.options}>
+              <label><input type="checkbox" checked={driveFolder} onChange={(e) => setDriveFolder(e.target.checked)} /> Create a Drive folder for each (My files → Projects)</label>
+              <label><input type="checkbox" checked={linkTasks} onChange={(e) => setLinkTasks(e.target.checked)} /> Move my existing tasks that clearly belong to the repository into its project</label>
+            </div>
+            <p className={styles.muted}>Open issues become tasks; the agent also proposes starting tasks for Tasks → Approvals. Every Thursday it checks each project’s commits against its tasks.</p>
+            <div className={styles.actions}>
+              <button type="button" className={styles.secondary} onClick={onClose}>Cancel</button>
+              <button type="button" className={styles.primary} disabled={!picked.size} onClick={() => void createAll()}>
+                {picked.size ? `Create ${picked.size} project${picked.size === 1 ? '' : 's'}` : 'Select repositories'}
               </button>
-            ))}
-          </div>
+            </div>
+          </>
         )}
-        <input className={styles.input} autoFocus placeholder="Search repositories" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Search repositories" />
-        <div className={styles.repoList}>
-          {repos.isPending && <p className={styles.muted}>Loading repositories…</p>}
-          {repos.error && <p className={styles.error}>{(repos.error as Error).message}</p>}
-          {list.map((r) => (
-            <button key={r.full_name} type="button" className={styles.repo} disabled={!!busy} onClick={() => create(r)}>
-              <span className={styles.repoText}>
-                <strong>{r.full_name}{r.private && <em> private</em>}</strong>
-                <span>{r.description ?? 'No description'}</span>
-              </span>
-              <span className={styles.repoMeta}>{busy === r.full_name ? 'Creating…' : `${r.open_issues_count} open`}</span>
-            </button>
-          ))}
-          {repos.data && !list.length && <p className={styles.muted}>No repositories here. Use “Choose repositories” in Settings → Connected accounts to give Darkspace access to more.</p>}
-        </div>
-        <p className={styles.muted}>Open issues become tasks. The agent also proposes starting tasks from the README and recent commits; you approve them in Tasks → Approvals.</p>
       </div>
     </Dialog>
   );
 }
 
-interface Link { project_id: string; repo_full_name: string; html_url: string | null; review_weekday: number; review_time: string; last_reviewed_at: string | null; last_review: { commits?: number; notes?: number; proposals?: number } | null }
+interface Link { project_id: string; drive_folder_id: string | null; repo_full_name: string; html_url: string | null; review_weekday: number; review_time: string; last_reviewed_at: string | null; last_review: { commits?: number; notes?: number; proposals?: number } | null }
 
 const DAYS = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'];
 
@@ -262,7 +325,7 @@ export function GithubProjectBar({ projectId }: { projectId: string }) {
   const link = useQuery({
     queryKey: ['github-link', projectId],
     queryFn: async (): Promise<Link | null> => {
-      const { data } = await platform.from('project_github_links').select('project_id,repo_full_name,html_url,review_weekday,review_time,last_reviewed_at,last_review').eq('project_id', projectId).limit(1);
+      const { data } = await platform.from('project_github_links').select('project_id,drive_folder_id,repo_full_name,html_url,review_weekday,review_time,last_reviewed_at,last_review').eq('project_id', projectId).limit(1);
       return ((data as Link[] | null) ?? [])[0] ?? null;
     },
   });
@@ -273,6 +336,7 @@ export function GithubProjectBar({ projectId }: { projectId: string }) {
     <div className={styles.projectBar}>
       <GithubMark />
       <a href={l.html_url ?? `https://github.com/${l.repo_full_name}`} target="_blank" rel="noopener noreferrer" className={styles.repoLink}>{l.repo_full_name}</a>
+      {l.drive_folder_id && <><span className={styles.dot} aria-hidden="true">·</span><a className={styles.repoLink} href={`/drive/folder/${l.drive_folder_id}`}>Drive folder</a></>}
       <span className={styles.dot} aria-hidden="true">·</span>
       <span className={styles.barText}>Project agent checks commits {DAYS[l.review_weekday]} at {l.review_time.slice(0, 5)}</span>
       {l.last_reviewed_at && (

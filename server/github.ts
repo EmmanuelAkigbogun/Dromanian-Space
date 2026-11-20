@@ -95,7 +95,7 @@ export async function listRepos(workspaceId: string): Promise<RepoSummary[]> {
 // ── AI ──────────────────────────────────────────────────────────────────────
 
 /** One model turn that must answer with JSON; returns null when it can't. */
-async function askJson<T>(system: string, prompt: string): Promise<T | null> {
+export async function askJson<T>(system: string, prompt: string): Promise<T | null> {
   const model = platformDefaultModel();
   const provider = providerFor(model);
   if (!provider?.configured()) return null;
@@ -149,7 +149,7 @@ export async function createProjectFromRepo(workspaceId: string, userId: string,
   } catch (err) {
     log.warn('github task suggestions failed', { repo: repo.full_name, error: err instanceof Error ? err : String(err) });
   }
-  return { project_id: projectId, imported, suggested };
+  return { project_id: projectId, imported, suggested, description: repo.description };
 }
 
 // ── Weekly review ───────────────────────────────────────────────────────────

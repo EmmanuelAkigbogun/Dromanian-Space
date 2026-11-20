@@ -383,3 +383,78 @@
   border-color: var(--color-primary);
   background: var(--color-primary-subtle);
 }
+
+/* Multi-select picker */
+label.repo {
+  cursor: pointer;
+}
+
+.repo input {
+  accent-color: var(--color-primary);
+}
+
+.repoDone {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.options input {
+  accent-color: var(--color-primary);
+}
+
+.progressList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.progressList li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.progressDot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border-radius: 50%;
+  background: var(--color-border-hover);
+}
+
+.progressList li[data-state='working'] .progressDot {
+  background: var(--color-primary);
+  animation: blink 1s ease-in-out infinite;
+}
+
+.progressList li[data-state='done'] .progressDot {
+  background: var(--color-success);
+}
+
+.progressList li[data-state='failed'] .progressDot {
+  background: var(--color-error);
+}
+
+@keyframes blink {
+  50% { opacity: 0.3; }
+}
