@@ -651,7 +651,7 @@ export function DmConversationView() {
                       if (resident && !window.confirm('Turn off the permanent AI? It stops reading new messages after today and posts no more daily summaries.')) return;
                       groupActions.setResident(channelId, !resident)
                         .then(() => refreshGroup(channelId))
-                        .then(() => toast({ variant: 'success', description: resident ? 'Permanent AI turned off.' : 'AI is on in this group. It posts a daily summary at 18:00.' }))
+                        .then(() => toast({ variant: 'success', description: resident ? 'Permanent AI turned off.' : 'AI is on in this group.' }))
                         .catch((err: Error) => toast({ variant: 'error', description: err.message }));
                     })}
                     {item('Leave group', () => {

@@ -52,16 +52,10 @@ export const groupActions = {
 /** "AI is on": shown at the top of a conversation with a permanent AI. */
 export function ResidentNotice({ resident, agentName, busy }: { resident: Resident; agentName: string; busy?: string | null }) {
   return (
-    <div className={styles.notice} role="status">
-      <span className={styles.pulse} aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M12 3l1.9 5.8L20 10l-5 3.6L16.8 20 12 16.4 7.2 20 9 13.6 4 10l6.1-1.2z" /></svg>
-      </span>
-      <span className={styles.noticeText}>
-        <strong>AI is on · {agentName}</strong>
-        <span>
-          {busy ?? <>Reads every message in this group and posts a daily summary at {summaryTimeLabel(resident.summary_time)}, with proposed tasks shown as cards for approval. @mention it to ask anything.</>}
-        </span>
-      </span>
+    <div className={styles.notice} role="status" title={`Daily summary at ${summaryTimeLabel(resident.summary_time)}`}>
+      <span className={styles.pulse} aria-hidden="true" />
+      <strong>AI on</strong>
+      <span>· {busy ?? agentName}</span>
     </div>
   );
 }

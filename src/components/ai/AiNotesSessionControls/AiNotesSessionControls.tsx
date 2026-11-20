@@ -274,9 +274,9 @@ export function AiNotesSessionBanner({
   } = controller;
 
   if (resident) {
-    const busy = notesRunning ? 'Writing today’s summary and proposed tasks…'
-      : reviewRunning ? 'Reviewing the conversation so far…'
-        : reviewReady ? 'Review posted. Answer its questions here; the summary still goes out at the usual time, or choose Finish & send tasks to send it now.'
+    const busy = notesRunning ? 'Writing summary…'
+      : reviewRunning ? 'Reviewing…'
+        : reviewReady ? 'Review posted'
           : null;
     return <ResidentNotice resident={resident} agentName={agent?.name ?? 'AI assistant'} busy={busy} />;
   }

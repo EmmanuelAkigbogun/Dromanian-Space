@@ -1,62 +1,45 @@
 .notice {
-  display: flex;
+  display: inline-flex;
+  align-self: flex-start;
   align-items: center;
-  gap: 12px;
-  margin: 8px clamp(8px, 1.5vw, 20px) 0;
-  padding: 10px 14px;
-  border: 1px solid color-mix(in srgb, var(--color-primary) 45%, var(--color-border));
-  border-radius: 14px;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--color-primary) 16%, var(--color-surface)), var(--color-surface));
-  color: var(--color-text);
+  gap: 5px;
+  margin: 6px clamp(8px, 1.5vw, 20px) 0;
+  padding: 2px 9px 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
+  color: var(--color-text-secondary);
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.notice strong {
+  color: var(--color-primary);
+  font-weight: var(--font-weight-semibold);
 }
 
 .pulse {
   position: relative;
-  display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
-  place-items: center;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--color-primary);
-  color: var(--color-text-inverse);
+  background: var(--color-success);
 }
 
 .pulse::after {
   position: absolute;
-  inset: -4px;
-  border: 2px solid var(--color-primary);
+  inset: -3px;
+  border: 1px solid var(--color-success);
   border-radius: 50%;
   opacity: 0;
   animation: ring 2.4s ease-out infinite;
   content: '';
 }
 
-.pulse svg {
-  width: 18px;
-  height: 18px;
-  fill: currentColor;
-}
-
 @keyframes ring {
   0% { opacity: 0.6; transform: scale(0.9); }
   100% { opacity: 0; transform: scale(1.35); }
-}
-
-.noticeText {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.noticeText strong {
-  font-weight: var(--font-weight-semibold);
-}
-
-.noticeText span {
-  color: var(--color-text-secondary);
 }
 
 .form {
