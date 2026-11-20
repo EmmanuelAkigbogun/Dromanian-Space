@@ -13,7 +13,7 @@ import { PROVIDER_KEYS, PROVIDER_LABELS, providerFor, providerNameFor } from '..
 import { ProviderError, type Effort, type ModelProvider, type TurnUsage } from '../ai/provider.js';
 import { CitationRegistry, resolveCitations, sourcesFooter } from './citations.js';
 import { AgnoRunError, providerAgentRunner, remoteAgentRunner, type AgentRuntimeConfig, type AgentRunner } from './agno.js';
-import { companionTools, CRM_COUNTS_GUIDANCE, GITHUB_GUIDANCE, PROVIDER_TOOLS, TOOL_REGISTRY, toolSpecs } from './tools/index.js';
+import { companionTools, CRM_COUNTS_GUIDANCE, GITHUB_GUIDANCE, VISUAL_ANSWER_GUIDANCE, PROVIDER_TOOLS, TOOL_REGISTRY, toolSpecs } from './tools/index.js';
 import { browserScraperReadiness } from './tools/browser.js';
 import { readConversation, memberChannels } from './tools/read.js';
 import { quoteData, type AgentTool, type RunContext, type RunScope, type SourceKind, type ToolOutput } from './tools/types.js';
@@ -536,6 +536,8 @@ export async function executeRun(
   const runTools = companionTools(version.tools, { coordinator: isCoordinator });
   if (runTools.includes('crm_report') && !run.scope?.session_id) contextLines.push(CRM_COUNTS_GUIDANCE);
   if (runTools.includes('list_github_repos') && !run.scope?.session_id) contextLines.push(GITHUB_GUIDANCE);
+  // Answers read in the agent chat are drawn visually (charts, stat tiles, tables).
+  if (run.depth === 0 && run.destination?.type !== 'channel' && !run.scope?.session_id) contextLines.push(VISUAL_ANSWER_GUIDANCE);
   const browserReadiness = webResearchEnabled && (version.tools.includes('browser_scrape') || isCoordinator)
     ? await browserScraperReadiness()
     : { available: false, reason: undefined };

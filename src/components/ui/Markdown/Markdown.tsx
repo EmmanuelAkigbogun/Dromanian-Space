@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { Chart, parseChart, parseStats, Stats, statusTone } from './Visuals';
 import styles from './Markdown.module.css';
 
 // Renders the Markdown subset agents write (headings, lists, emphasis, code,
@@ -53,11 +54,16 @@ export function Markdown({ text, className }: { text: string; className?: string
       continue;
     }
     if (line.startsWith('```')) {
+      const lang = line.slice(3).trim().toLowerCase();
       const body: string[] = [];
       i++;
       while (i < lines.length && !lines[i].startsWith('```')) body.push(lines[i++]);
       i++;
-      blocks.push(<pre key={key}><code>{body.join('\n')}</code></pre>);
+      const chart = lang === 'chart' ? parseChart(body.join('\n')) : null;
+      const stats = lang === 'stats' ? parseStats(body.join('\n')) : null;
+      if (chart) blocks.push(<Chart key={key} spec={chart} />);
+      else if (stats) blocks.push(<Stats key={key} items={stats} />);
+      else blocks.push(<pre key={key}><code>{body.join('\n')}</code></pre>);
       continue;
     }
     const heading = /^(#{1,6})\s+(.*)$/.exec(line);
@@ -77,7 +83,10 @@ export function Markdown({ text, className }: { text: string; className?: string
         <div key={key} className={styles.tableWrap}>
           <table>
             <thead><tr>{head.map((h, j) => <th key={j}>{inline(h, `${key}h${j}`)}</th>)}</tr></thead>
-            <tbody>{rows.map((r, ri) => <tr key={ri}>{r.map((c, j) => <td key={j}>{inline(c, `${key}r${ri}c${j}`)}</td>)}</tr>)}</tbody>
+            <tbody>{rows.map((r, ri) => <tr key={ri}>{r.map((c, j) => {
+              const tone = statusTone(c);
+              return <td key={j}>{tone ? <span className={styles.pill} data-tone={tone}>{c}</span> : inline(c, `${key}r${ri}c${j}`)}</td>;
+            })}</tr>)}</tbody>
           </table>
         </div>,
       );
@@ -94,7 +103,9 @@ export function Markdown({ text, className }: { text: string; className?: string
     if (line.startsWith('>')) {
       const quote: string[] = [];
       while (i < lines.length && lines[i].startsWith('>')) quote.push(lines[i++].replace(/^>\s?/, ''));
-      blocks.push(<blockquote key={key}>{inline(quote.join(' '), key)}</blockquote>);
+      const joined = quote.join(' ');
+      const tone = /^\s*(✅|🟢)/u.test(joined) ? 'good' : /^\s*(⚠️|🟡)/u.test(joined) ? 'warn' : /^\s*(❌|🔴)/u.test(joined) ? 'bad' : 'info';
+      blocks.push(<blockquote key={key} data-tone={tone}>{inline(joined, key)}</blockquote>);
       continue;
     }
     const para: string[] = [];

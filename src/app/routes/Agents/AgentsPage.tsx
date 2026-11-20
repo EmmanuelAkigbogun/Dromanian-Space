@@ -330,6 +330,8 @@ function Agents({ ws, userId, admin }: { ws: string; userId: string; admin: bool
       AI connected · {status.data.embeddings.configured ? 'semantic and full-text retrieval' : 'full-text retrieval (semantic search not configured)'}
     </div>
   );
+  // Inside a chat only problems are worth the space.
+  const chatNotice = status.isPending || (status.data?.provider.configured && status.data.settings.enabled) ? null : configurationNotice;
   const notice = (
     <>
       {configurationNotice}
@@ -346,7 +348,7 @@ function Agents({ ws, userId, admin }: { ws: string; userId: string; admin: bool
   );
 
   return (
-    <div className={s.page}>
+    <div className={s.page} data-content-layout={chosenId || conversationId ? 'full-bleed' : undefined} style={chosenId || conversationId ? { padding: '20px clamp(16px, 2.5vw, 40px) 24px' } : undefined}>
       {chosenId || conversationId ? (
         agent || archived ? (
           <AgentView
@@ -357,7 +359,7 @@ function Agents({ ws, userId, admin }: { ws: string; userId: string; admin: bool
             agent={agent}
             directory={directory.data ?? []}
             status={status.data}
-            notice={notice}
+            notice={chatNotice}
             conversationId={conversationId}
             conversations={(conversations.data ?? []).filter((c) => c.agent_id === (agent?.id ?? conversation?.agent_id))}
             onOpenAiSettings={() => setAiSettings(true)}
@@ -678,9 +680,9 @@ function AgentView(props: {
     const timer = window.setInterval(update, 1000);
     return () => window.clearInterval(timer);
   }, [sending, activeRunId, runStartedAt, running?.created_at]);
-  const { blocking, limitations, notes: readinessNotes } = agent
+  const { blocking, limitations } = agent
     ? readiness(agent, props.status)
-    : { blocking: ['This agent was retired.'], limitations: [], notes: [] };
+    : { blocking: ['This agent was retired.'], limitations: [] };
   const available = !blocking.length;
   const isTeam = agent?.kind === 'coordinator';
   const agentsById = new Map(props.directory.map((x) => [x.id, x]));
@@ -947,8 +949,6 @@ function AgentView(props: {
         return { task_id: t.id, agent: agentsById.get(t.agent_id)?.name ?? 'Specialist', status: child?.status ?? t.status };
       });
   const liveMessageId = stream ? activity.data?.top[0]?.output_message_id : undefined;
-  const toolNames = agent?.tools ?? [];
-  const toolInfo = (name: string) => props.status?.tools.find((t) => t.name === name);
 
   return (
     <>
@@ -962,6 +962,9 @@ function AgentView(props: {
           </div>
         </div>
         <div className={s.actions}>
+          {conversationId && agent && (
+            <Link className={s.primary} to={isTeam ? '/agents/team' : `/agents/${agent.id}`}>New conversation</Link>
+          )}
           <Link className={s.button} to="/agents/history">History</Link>
           <Link className={s.button} to="/agents">All agents</Link>
           {agent && (props.admin || agent.created_by === userId) && !isTeam && (
@@ -1129,48 +1132,9 @@ function AgentView(props: {
             </form>
           )}
         </div>
-        <aside className={a.side}>
-          {agent && (
-            <section>
-              <h3>Readiness</h3>
-              <ul>
-                {!blocking.length && !limitations.length && (
-                  <li className={a.state}><span className={`${a.dot} ${a.ready}`} />Ready for core work.</li>
-                )}
-                {blocking.map((b) => (
-                  <li key={b} className={a.state}><span className={`${a.dot} ${a.blocked}`} />{b}</li>
-                ))}
-                {limitations.map((n) => (
-                  <li key={n} className={a.state}><span className={`${a.dot} ${a.limited}`} />{n}</li>
-                ))}
-                {readinessNotes.map((n) => (
-                  <li key={n} className={a.state}><span className={`${a.dot} ${a.limited}`} />{n}</li>
-                ))}
-              </ul>
-            </section>
-          )}
-          {agent && (
-            <section>
-              <h3>What {isTeam ? 'the team lead' : agent.name} can do</h3>
-              <ul>
-                {toolNames.map((name) => {
-                  const info = toolInfo(name);
-                  return (
-                    <li key={name}>
-                      {TOOL_LABELS[name] ?? name}
-                      {info?.approval === 'review_card' ? <span className={s.muted}> · needs your approval</span> : null}
-                      {info?.approval === 'project_manager' ? <span className={s.muted}> · a project manager approves</span> : null}
-                      {info && !info.available ? <span className={s.muted}> · unavailable: {info.reason}</span> : null}
-                    </li>
-                  );
-                })}
-              </ul>
-              {!isTeam && <p className={a.handle}>Mention @{agent.handle} in a channel for a reply in the thread.</p>}
-            </section>
-          )}
           {agent?.template_key === 'personal_coach' && (
-            <section>
-              <h3>Your private notes</h3>
+            <details className={a.coachNotes}>
+              <summary>Your private notes</summary>
               <p className={s.muted}>Only you can see these. They are never used to answer anyone else.</p>
               <ul>
                 {notes.data?.map((n) => (
@@ -1186,25 +1150,9 @@ function AgentView(props: {
                 ))}
                 {notes.data && !notes.data.length && <li className={s.muted}>Ask {agent.name} to remember something.</li>}
               </ul>
-            </section>
+            </details>
           )}
-          <section>
-            <h3>Conversations</h3>
-            <ul>
-              {props.conversations.slice(0, 12).map((c) => (
-                <li key={c.id}>
-                  <Link className={s.link} to={`/agents/conversations/${c.id}`} aria-current={c.id === conversationId ? 'page' : undefined}>
-                    {c.title}
-                  </Link>
-                </li>
-              ))}
-              {!props.conversations.length && <li className={s.muted}>None yet.</li>}
-            </ul>
-            {conversationId && agent && (
-              <p><Link className={s.button} to={isTeam ? '/agents/team' : `/agents/${agent.id}`}>New conversation</Link></p>
-            )}
-          </section>
-        </aside>
+
       </div>
       <Dialog open={picker} onClose={() => setPicker(false)} title="Choose sources">
         <div className={s.form}>

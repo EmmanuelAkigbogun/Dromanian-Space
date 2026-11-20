@@ -47,6 +47,16 @@ export function companionTools(tools: readonly string[], opts: { coordinator?: b
 /** Run guidance that goes with companion tools. */
 export const GITHUB_GUIDANCE = 'GitHub: the requester may have GitHub accounts connected in Darkspace. For anything about their repositories, commits, issues or connected accounts, call list_github_repos and read_github_repo; never ask them to paste a repository list. To pair repositories with tasks, read the repository and compare its commits and issues with the project tasks it returns.';
 
+export const VISUAL_ANSWER_GUIDANCE = [
+  'Format every answer to be scanned visually in the agent chat:',
+  '- Start with one bold summary line. Use ## headings for sections, short bullet lists and **bold** key numbers; no long paragraphs.',
+  '- Lists of items with attributes (repositories, tasks, companies, people) go in a markdown table. Put a status word (Done, In progress, Pending, Blocked, Overdue, Yes, No) in its own column; it is drawn as a coloured pill.',
+  '- Two to six headline numbers go in a stats block: ```stats then a JSON array of {"label","value","note","tone":"good|warn|bad|neutral"} then ```.',
+  '- Counts or amounts per category (3+ categories) go in a chart block: ```chart then {"type":"bar" or "pie","title","unit","data":[{"label","value"}]} then ```. Use pie only for parts of a whole.',
+  '- Put a key warning, risk or next step in a callout line starting with > ✅, > ⚠️ or > ❌.',
+  '- Only chart real numbers you have from tools; never invent data to fill a visual.',
+].join('\n');
+
 export const CRM_COUNTS_GUIDANCE = 'CRM counts: this workspace has its own built-in CRM; never ask which CRM product or database is used. For any count, total, share or breakdown of CRM records (for example "how many companies have at least one contact"), call crm_report and quote its numbers and the CRM it covers. Never estimate from search_crm listings, which are capped at 50 rows.';
 
 export interface ToolAvailability {
