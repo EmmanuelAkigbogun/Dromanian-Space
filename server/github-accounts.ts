@@ -79,8 +79,9 @@ export async function saveCreatedApp(code: string, userId: string, origin: strin
 export const installUrl = (app: AppConfig, state: string) =>
   `https://github.com/apps/${app.slug}/installations/new?state=${encodeURIComponent(state)}`;
 
-export const authorizeUrl = (app: AppConfig, state: string) =>
-  `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(app.client_id)}&state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(`${app.origin}/api/github/callback`)}`;
+/** `pickAccount` shows GitHub's account chooser, so another account can be added. */
+export const authorizeUrl = (app: AppConfig, state: string, pickAccount = false) =>
+  `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(app.client_id)}&state=${encodeURIComponent(state)}&redirect_uri=${encodeURIComponent(`${app.origin}/api/github/callback`)}${pickAccount ? '&prompt=select_account' : ''}`;
 
 interface TokenSet { access_token: string; refresh_token?: string; expires_in?: number }
 

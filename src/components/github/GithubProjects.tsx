@@ -41,8 +41,8 @@ export function useGithubStatus(workspaceId: string | undefined) {
 }
 
 /** Opens GitHub's sign-in; GitHub sends the person back to Connected accounts. */
-export async function connectGithubAccount() {
-  const { url } = await post<{ url: string }>({ action: 'authorize', origin: window.location.origin });
+export async function connectGithubAccount(another = false) {
+  const { url } = await post<{ url: string }>({ action: 'authorize', origin: window.location.origin, another });
   window.location.assign(url);
 }
 
@@ -107,7 +107,7 @@ export function ConnectedAccounts({ workspaceId, isAdmin }: { workspaceId: strin
             <span>Read-only: repositories, issues and commits for the project agent.</span>
           </div>
           {app ? (
-            <button type="button" className={styles.primary} disabled={busy} onClick={() => run(connectGithubAccount)}>
+            <button type="button" className={styles.primary} disabled={busy} onClick={() => run(() => connectGithubAccount(accounts.length > 0))}>
               {accounts.length ? 'Add another account' : 'Connect GitHub account'}
             </button>
           ) : isAdmin ? (
@@ -145,7 +145,7 @@ export function ConnectedAccounts({ workspaceId, isAdmin }: { workspaceId: strin
             ))}
           </ul>
         )}
-        {accounts.length > 0 && <p className={styles.muted}>To add a different GitHub account, switch accounts on github.com first, then choose Add another account.</p>}
+        {accounts.length > 0 && <p className={styles.muted}>Add another account opens GitHub’s account picker, where you can choose or sign in to a different GitHub account. Each one then appears here with its own repositories.</p>}
       </div>
     </section>
   );

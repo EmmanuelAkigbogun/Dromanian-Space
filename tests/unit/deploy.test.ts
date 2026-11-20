@@ -357,6 +357,11 @@ describe('standalone compose safety', () => {
     expect(headers).toContain("script-src 'self' 'unsafe-hashes' 'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='");
     expect(headers).not.toContain("script-src 'self' 'unsafe-inline'");
   });
+
+  it('lets forms leave only for the one-time GitHub app setup', () => {
+    const headers = read('deploy/nginx/security-headers.conf');
+    expect(headers).toContain("form-action 'self' https://github.com\"");
+  });
 });
 
 describe('migrations', () => {

@@ -19,7 +19,7 @@ const Body = z.discriminatedUnion('action', [
   z.object({ action: z.literal('repos'), workspace_id: uuid, account_id: uuid.optional() }),
   z.object({ action: z.literal('create_project'), workspace_id: uuid, repo: z.string().min(3).max(200), account_id: uuid.optional() }),
   z.object({ action: z.literal('app_manifest'), workspace_id: uuid, origin: z.string().url() }),
-  z.object({ action: z.literal('authorize'), origin: z.string().url() }),
+  z.object({ action: z.literal('authorize'), origin: z.string().url(), another: z.boolean().optional() }),
   z.object({ action: z.literal('disconnect_account'), account_id: uuid }),
   z.object({ action: z.literal('review'), project_id: uuid }),
 ]);
@@ -97,7 +97,7 @@ export async function POST(request: Request): Promise<Response> {
         const app = await appConfig();
         if (!app) throw new HttpError(400, 'github_app_missing', 'An admin needs to set up GitHub sign-in first.');
         const origin = checkedOrigin(request, body.origin);
-        return json({ url: authorizeUrl(app, signState({ k: 'connect', u: user.id, o: origin })) });
+        return json({ url: authorizeUrl(app, signState({ k: 'connect', u: user.id, o: origin }), body.another === true) });
       }
       case 'disconnect_account':
         await databasePool().query('DELETE FROM public.user_github_accounts WHERE id = $1 AND user_id = $2', [body.account_id, user.id]);
