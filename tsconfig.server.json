@@ -22,5 +22,7 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["api", "server", "scripts", "tools", "tests", "vitest.config.ts"]
+  "include": ["api", "server", "scripts", "tools", "tests", "vitest.config.ts"],
+  /* Renders React components (needs JSX); vitest still runs it. */
+  "exclude": ["tests/unit/markdown-visuals.test.ts"]
 }

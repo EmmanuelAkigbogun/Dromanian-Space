@@ -2,8 +2,8 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
-import { Markdown } from '../../src/components/ui/Markdown/Markdown';
-import { parseChart, parseStats, statusTone } from '../../src/components/ui/Markdown/Visuals';
+import { Markdown } from '../../src/components/ui/Markdown/Markdown.js';
+import { parseChart, parseStats, statusTone } from '../../src/components/ui/Markdown/Visuals.js';
 
 const render = (text: string) => renderToStaticMarkup(createElement(MemoryRouter, null, createElement(Markdown, { text })));
 
