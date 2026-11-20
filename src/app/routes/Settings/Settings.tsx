@@ -17,6 +17,7 @@ import { TypographySettings } from '@/components/workspace/TypographySettings';
 import { ColorSettings } from '@/components/workspace/ColorSettings';
 import { FeatureSettings } from '@/components/workspace/FeatureSettings';
 import { DomainSettings } from '@/components/workspace/DomainSettings';
+import { ConnectedAccounts } from '@/components/github/GithubProjects';
 import styles from './Settings.module.css';
 
 export function Settings() {
@@ -32,6 +33,7 @@ export function Settings() {
   const validTabs = [
     'general',
     'members',
+    'accounts',
     'features',
     'domains',
     'typography',
@@ -69,6 +71,7 @@ export function Settings() {
         <TabsList>
           <TabsTrigger id="general">General</TabsTrigger>
           <TabsTrigger id="members">Members</TabsTrigger>
+          <TabsTrigger id="accounts">Connected accounts</TabsTrigger>
           {canManage && <TabsTrigger id="features">Features</TabsTrigger>}
           {canManage && isPlatformAdmin && <TabsTrigger id="domains">Domains</TabsTrigger>}
           <TabsTrigger id="typography">Typography</TabsTrigger>
@@ -89,6 +92,12 @@ export function Settings() {
         <TabsContent id="members">
           <div className={styles.panel}>
             <MembersList />
+          </div>
+        </TabsContent>
+
+        <TabsContent id="accounts">
+          <div className={styles.panel}>
+            {currentWorkspace && <ConnectedAccounts workspaceId={currentWorkspace.id} isAdmin={currentRole === 'owner' || currentRole === 'admin'} />}
           </div>
         </TabsContent>
 

@@ -9,13 +9,14 @@ import { databasePool, rpc } from './database.js';
 import { HttpError } from './http.js';
 import { log } from './log.js';
 import { platformDefaultModel, providerFor } from './ai/registry.js';
+import { accountToken } from './github-accounts.js';
 
-const API = 'https://api.github.com';
+export const API = 'https://api.github.com';
 const REPO = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 interface Sealed { iv: string; tag: string; data: string }
 
-function key(): Buffer {
+export function key(): Buffer {
   const secret = process.env.APP_JWT_SECRET?.trim();
   if (!secret || secret.length < 32) throw new Error('APP_JWT_SECRET is required to protect GitHub tokens.');
   return createHash('sha256').update(`dromanian-github-tokens:${secret}`).digest();
@@ -34,7 +35,7 @@ export function openToken(sealed: Sealed): string {
   return Buffer.concat([decipher.update(Buffer.from(sealed.data, 'base64')), decipher.final()]).toString('utf8');
 }
 
-async function gh<T>(token: string, path: string): Promise<T> {
+export async function gh<T>(token: string, path: string): Promise<T> {
   const res = await fetch(`${API}${path}`, {
     headers: {
       authorization: `Bearer ${token}`,
@@ -114,14 +115,15 @@ async function askJson<T>(system: string, prompt: string): Promise<T | null> {
 interface Issue { number: number; title: string; body: string | null; html_url: string; pull_request?: unknown }
 interface Commit { sha: string; html_url: string; commit: { message: string; author: { name: string; date: string } | null }; author: { login: string } | null }
 
-export async function createProjectFromRepo(workspaceId: string, userId: string, repoName: string) {
+export async function createProjectFromRepo(workspaceId: string, userId: string, repoName: string, accountId?: string) {
   if (!REPO.test(repoName)) throw new HttpError(400, 'bad_repo', 'Choose a repository as owner/name.');
-  const token = await tokenFor(workspaceId);
+  const token = accountId ? await accountToken(accountId) : await tokenFor(workspaceId);
   const repo = await gh<RepoSummary>(token, `/repos/${repoName}`);
   const projectId = await rpc<string>('github_create_project', {
     p_actor: userId, p_workspace_id: workspaceId, p_repo: repo.full_name, p_description: repo.description,
     p_branch: repo.default_branch, p_url: repo.html_url,
   });
+  if (accountId) await rpc('github_link_account', { p_project_id: projectId, p_account_id: accountId });
   const issues = (await gh<Issue[]>(token, `/repos/${repo.full_name}/issues?state=open&per_page=100`)).filter((i) => !i.pull_request);
   const imported = await rpc<number>('github_import_issues', {
     p_actor: userId, p_project_id: projectId,
@@ -152,13 +154,14 @@ export async function createProjectFromRepo(workspaceId: string, userId: string,
 
 // ── Weekly review ───────────────────────────────────────────────────────────
 
-interface Link { project_id: string; workspace_id: string; repo_full_name: string; default_branch: string; last_reviewed_at: string | null }
+interface Link { project_id: string; workspace_id: string; repo_full_name: string; default_branch: string; last_reviewed_at: string | null; github_account_id: string | null }
 
 export async function reviewProject(projectId: string): Promise<{ commits: number; notes: number; proposals: number }> {
-  const r = await databasePool().query<Link>('SELECT project_id, workspace_id, repo_full_name, default_branch, last_reviewed_at FROM public.project_github_links WHERE project_id = $1', [projectId]);
+  const r = await databasePool().query<Link>('SELECT project_id, workspace_id, repo_full_name, default_branch, last_reviewed_at, github_account_id FROM public.project_github_links WHERE project_id = $1', [projectId]);
   const link = r.rows[0];
   if (!link) throw new HttpError(404, 'not_found', 'This project is not linked to GitHub.');
-  const token = await tokenFor(link.workspace_id);
+  // The account that created the project; older projects use the workspace token.
+  const token = link.github_account_id ? await accountToken(link.github_account_id) : await tokenFor(link.workspace_id);
   const since = link.last_reviewed_at ? new Date(link.last_reviewed_at) : new Date(Date.now() - 7 * 864e5);
   const commits = await gh<Commit[]>(token, `/repos/${link.repo_full_name}/commits?sha=${encodeURIComponent(link.default_branch)}&since=${since.toISOString()}&per_page=100`);
 

@@ -217,3 +217,169 @@
   font-size: 12px;
   white-space: nowrap;
 }
+
+/* Connected accounts (Settings) */
+.accounts {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 720px;
+}
+
+.accountsHead h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: var(--font-weight-semibold);
+}
+
+.provider {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-surface);
+}
+
+.providerHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.providerMark {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  fill: var(--color-text);
+}
+
+.providerText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  font-size: 13px;
+}
+
+.providerText strong {
+  font-size: 15px;
+}
+
+.providerText span,
+.setupNote {
+  color: var(--color-text-secondary);
+}
+
+.setupNote {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--color-surface-secondary);
+  font-size: 13px;
+}
+
+.accountList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 50%;
+  background: var(--color-surface-secondary);
+}
+
+.accountText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.accountText span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.disconnect {
+  padding: 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: none;
+  color: var(--color-error);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.disconnect:hover {
+  background: var(--color-error-subtle);
+}
+
+/* Account chips on the Projects bar */
+.chips {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px 2px 2px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+}
+
+.chip img,
+.accountTabs img {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+}
+
+.accountTabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.accountTabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px 4px 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.accountTabs .accountTabOn {
+  border-color: var(--color-primary);
+  background: var(--color-primary-subtle);
+}
